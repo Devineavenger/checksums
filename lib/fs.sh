@@ -1,4 +1,5 @@
 # fs.sh
+# Filesystem helpers: exclusions, discovery, cleanup, and simple counts.
 
 _safe_name(){ local n="$1"; [ -n "$n" ] || printf '%s' '__DO_NOT_MATCH__'; }
 

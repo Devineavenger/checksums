@@ -1,4 +1,6 @@
 # first_run.sh
+# First-run verification logic and md5 verification helper.
+# Unmodified behavior for 2.2, except counters and verify-only awareness.
 
 verify_md5_file() {
   local dir="$1" sumf="$dir/$MD5_FILENAME"
@@ -64,17 +66,21 @@ first_run_verify() {
     if verify_md5_file "$d"; then
       first_run_log "Verified OK: $d"
       log "Verified OK: $d"
-      if [ "$DRY_RUN" -eq 1 ]; then
-        first_run_log "DRYRUN: would create meta/log for $d"
+      count_verified=$((count_verified+1))
+      # On success, create meta/log using normal processing (unless dry-run or verify-only)
+      if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
+        first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
       else
         process_single_directory "$d"
       fi
       continue
     fi
 
+    # mismatch detected
     first_run_log "Verification FAILED for $d"
     log "Verification FAILED for $d"
 
+    # If FIRST_RUN_CHOICE non-interactive, obey it
     case "$FIRST_RUN_CHOICE" in
       skip)
         first_run_log "CHOICE skip: recorded mismatch for $d"
@@ -82,6 +88,12 @@ first_run_verify() {
         continue
         ;;
       overwrite)
+        # In verify-only mode, we cannot overwrite; record the intent but skip the write.
+        if [ "$VERIFY_ONLY" -eq 1 ]; then
+          first_run_log "CHOICE overwrite suppressed in verify-only for $d"
+          record_error "First-run: overwrite requested but skipped (verify-only) for $d"
+          continue
+        fi
         first_run_log "CHOICE overwrite: recomputing checksums for $d"
         log "Auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
@@ -90,6 +102,7 @@ first_run_verify() {
         else
           process_single_directory "$d"
           first_run_log "OVERWRITE completed for $d"
+          count_overwritten=$((count_overwritten+1))
         fi
         continue
         ;;
@@ -104,12 +117,18 @@ first_run_verify() {
               break
               ;;
             o|O)
+              if [ "$VERIFY_ONLY" -eq 1 ]; then
+                first_run_log "CHOICE overwrite suppressed in verify-only for $d"
+                record_error "First-run: overwrite requested but skipped (verify-only) for $d"
+                break
+              fi
               first_run_log "CHOICE overwrite for $d"
               if [ "$DRY_RUN" -eq 1 ]; then
                 first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
               else
                 process_single_directory "$d"
                 first_run_log "OVERWRITE completed for $d"
+                count_overwritten=$((count_overwritten+1))
               fi
               break
               ;;

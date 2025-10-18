@@ -1,4 +1,5 @@
 # tools.sh
+# Tool detection and preflight checks; preserves original hints and messaging.
 
 detect_tools() {
   if command -v md5sum >/dev/null 2>&1; then TOOL_md5_cmd="md5sum"; elif command -v md5 >/dev/null 2>&1; then TOOL_md5_cmd="md5 -r"; fi
@@ -37,8 +38,23 @@ HINTS
 
 check_required_tools() {
   local missing=()
-  if [ "$PER_FILE_ALGO" = "md5" ]; then [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5"); else [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum"); fi
-  if [ "$META_SIG_ALGO" = "sha256" ]; then [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum"); elif [ "$META_SIG_ALGO" = "md5" ]; then [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5"); fi
-  if [ "${#missing[@]}" -gt 0 ]; then record_error "Missing required tools: ${missing[*]}"; _global_log 1 "Tool installation hints:"; install_hints; return 1; fi
+  # per-file hashing
+  if [ "$PER_FILE_ALGO" = "md5" ]; then
+    [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5")
+  else
+    [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum")
+  fi
+  # meta signature
+  if [ "$META_SIG_ALGO" = "sha256" ]; then
+    [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum")
+  elif [ "$META_SIG_ALGO" = "md5" ]; then
+    [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5")
+  fi
+  if [ "${#missing[@]}" -gt 0 ]; then
+    record_error "Missing required tools: ${missing[*]}"
+    _global_log 1 "Tool installation hints:"
+    install_hints
+    return 1
+  fi
   return 0
 }

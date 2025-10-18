@@ -1,4 +1,5 @@
 # usage.sh
+# Prints CLI usage, kept aligned with previous versions, expanded for 2.1/2.2 features.
 
 usage() {
   cat <<EOF
@@ -19,8 +20,9 @@ Options:
   -C CHOICE     first-run choice: skip | overwrite | prompt (default prompt)
   -p N          parallel hashing jobs (default 1)
   -o FORMAT     log format: text (default), json, csv
+  -V            verify-only mode (audit; no writes)
   -y            yes (skip confirmation)
-  -V            show version and exit
+  --version     show version and exit
   -h            help
 EOF
 }

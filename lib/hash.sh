@@ -1,4 +1,5 @@
 # hash.sh
+# Hashing helpers + portable parallel job control without wait -n.
 
 file_hash() {
   local f="$1" algo="$2"

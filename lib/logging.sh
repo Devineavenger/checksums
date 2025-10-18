@@ -1,4 +1,6 @@
 # logging.sh
+# Handles logging in text/json/csv formats, error recording, and log rotation.
+# Now also supports audit trail headers with run ID.
 
 CSV_HEADER_PRINTED=0
 
@@ -42,6 +44,11 @@ rotate_log() {
   if [ -f "$logfile" ]; then
     local ts; ts=$(date +"%Y%m%d-%H%M%S")
     mv "$logfile" "${logfile}.${ts}"
-    ls -1t "${logfile}".* 2>/dev/null | tail -n +2 | xargs -r rm -f --
+    ls -1t "${logfile}".* 2>/dev/null | tail -n +6 | xargs -r rm -f --
   fi
+}
+
+log_run_header() {
+  local logfile="$1"
+  printf '#run\t%s\t%s\n' "$RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$logfile"
 }

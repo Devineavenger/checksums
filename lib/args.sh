@@ -1,10 +1,14 @@
 # args.sh
+# Argument parsing and normalization, preserving original semantics where possible.
+# 2.2 adds -V for verify-only; moves version print to --version.
 
 parse_args() {
   LOG_BASE=""
   LOG_FORMAT="${LOG_FORMAT:-text}"
+  VERIFY_ONLY=0
 
-  while getopts "f:a:m:l:ndvrFC:p:o:yVh" opt 2>/dev/null; do
+  # Support GNU long options via -:
+  while getopts "f:a:m:l:ndvrFC:p:o:yVh-:" opt 2>/dev/null; do
     case $opt in
       f) BASE_NAME=$OPTARG ;;
       a) PER_FILE_ALGO=$OPTARG ;;
@@ -19,9 +23,16 @@ parse_args() {
       p) PARALLEL_JOBS=$OPTARG ;;
       o) LOG_FORMAT=$OPTARG ;;
       y) YES=1 ;;
-      V) printf '%s version %s\n' "$ME" "$VER"; exit 0 ;;
+      V) VERIFY_ONLY=1 ;;  # 2.2: verify-only audit mode, no writes
       h) usage; exit 0 ;;
-      *) usage; exit 1 ;;
+      -)
+        case "$OPTARG" in
+          version) printf '%s version %s\n' "$ME" "$VER"; exit 0 ;;
+          *) usage; exit 1 ;;
+        esac
+        ;;
+      *)
+        usage; exit 1 ;;
     esac
   done
   shift $((OPTIND -1))
