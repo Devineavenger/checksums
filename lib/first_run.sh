@@ -1,0 +1,134 @@
+# first_run.sh
+
+verify_md5_file() {
+  local dir="$1" sumf="$dir/$MD5_FILENAME"
+  [ -f "$sumf" ] || return 2
+  dbg "Verifying $sumf"
+  if command -v md5sum >/dev/null 2>&1; then
+    if md5sum --check --status "$sumf" >/dev/null 2>&1; then
+      return 0
+    else
+      if [ -n "$FIRST_RUN_LOG" ]; then
+        printf '---- md5sum --check output for %s ----\n' "$sumf" >> "$FIRST_RUN_LOG"
+        md5sum --check "$sumf" >> "$FIRST_RUN_LOG" 2>&1 || true
+        printf '---- end md5sum output for %s ----\n\n' "$sumf" >> "$FIRST_RUN_LOG"
+      fi
+      return 1
+    fi
+  else
+    # emulate when md5sum not available (macOS md5)
+    local missing=0 bad=0 expected fname actual
+    while IFS= read -r entry; do
+      [ -z "$entry" ] && continue
+      expected=$(printf '%s' "$entry" | awk '{print $1}')
+      fname=$(printf '%s' "$entry" | awk '{$1=""; sub(/^ +/,""); print}')
+      local fpath="$dir/$fname"
+      if [ ! -e "$fpath" ]; then
+        missing=1
+        [ -n "$FIRST_RUN_LOG" ] && printf 'MISSING: %s\n' "$fpath" >> "$FIRST_RUN_LOG"
+        continue
+      fi
+      actual=$(file_hash "$fpath" "md5")
+      if [ "$actual" != "$expected" ]; then
+        bad=1
+        [ -n "$FIRST_RUN_LOG" ] && printf 'MISMATCH %s: expected %s actual %s\n' "$fname" "$expected" "$actual" >> "$FIRST_RUN_LOG"
+      fi
+    done < "$sumf"
+    [ "$missing" -eq 0 ] && [ "$bad" -eq 0 ]
+    return $(( missing || bad ))
+  fi
+}
+
+first_run_verify() {
+  local base="$1"
+  local -a targets=()
+
+  while IFS= read -r -d '' f; do
+    local d; d=$(dirname "$f")
+    [ ! -f "$d/$META_FILENAME" ] && [ ! -f "$d/$LOG_FILENAME" ] && targets+=("$d")
+  done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+
+  if [ "${#targets[@]}" -eq 0 ]; then
+    log "First-run: no existing $MD5_FILENAME needing verification found."
+    return 0
+  fi
+
+  FIRST_RUN_LOG="${TARGET_DIR%/}/first_run.log"
+  : > "$FIRST_RUN_LOG"
+  log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
+  first_run_log "First-run start: base=$base  files: ${#targets[@]}"
+
+  for d in "${targets[@]}"; do
+    first_run_log "Verifying directory: $d"
+    log "Verifying existing checksums in: $d"
+    if verify_md5_file "$d"; then
+      first_run_log "Verified OK: $d"
+      log "Verified OK: $d"
+      if [ "$DRY_RUN" -eq 1 ]; then
+        first_run_log "DRYRUN: would create meta/log for $d"
+      else
+        process_single_directory "$d"
+      fi
+      continue
+    fi
+
+    first_run_log "Verification FAILED for $d"
+    log "Verification FAILED for $d"
+
+    case "$FIRST_RUN_CHOICE" in
+      skip)
+        first_run_log "CHOICE skip: recorded mismatch for $d"
+        record_error "First-run: skipped $d due to checksum mismatch"
+        continue
+        ;;
+      overwrite)
+        first_run_log "CHOICE overwrite: recomputing checksums for $d"
+        log "Auto-overwrite: recomputing for $d"
+        if [ "$DRY_RUN" -eq 1 ]; then
+          first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+          log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+        else
+          process_single_directory "$d"
+          first_run_log "OVERWRITE completed for $d"
+        fi
+        continue
+        ;;
+      prompt)
+        while true; do
+          printf 'Directory %s has mismatched checksums. Choose action: [s]kip, [o]verwrite, [a]bort: ' "$d"
+          if ! IFS= read -r choice; then choice="s"; fi
+          case "$choice" in
+            s|S)
+              first_run_log "CHOICE skip for $d"
+              record_error "First-run: skipped $d due to checksum mismatch"
+              break
+              ;;
+            o|O)
+              first_run_log "CHOICE overwrite for $d"
+              if [ "$DRY_RUN" -eq 1 ]; then
+                first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+              else
+                process_single_directory "$d"
+                first_run_log "OVERWRITE completed for $d"
+              fi
+              break
+              ;;
+            a|A)
+              first_run_log "CHOICE abort at $d"
+              log "User aborted at first-run mismatch in $d"
+              exit 2
+              ;;
+            *) printf 'Please enter s, o, or a\n' ;;
+          esac
+        done
+        ;;
+      *)
+        first_run_log "Unknown FIRST_RUN_CHOICE='$FIRST_RUN_CHOICE'; treating as skip for $d"
+        record_error "First-run: unknown choice for $d; skipped"
+        ;;
+    esac
+  done
+
+  first_run_log "First-run completed."
+  return 0
+}
