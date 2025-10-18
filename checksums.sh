@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# checksums.sh - v2.3.1
+# checksums.sh - v2.4.0
 #
 # Modular checksum manager with parallel + inode incremental hashing
 #
-# v2.1: Added summary report, structured logs, log rotation
-# v2.2: Added verification-only mode (-V) and audit trail with run ID
-# v2.3: Added config file support, skip/include patterns, non-interactive modes, 2-log rotation
-# v2.3.1: Extended config support with --config FILE and default <BASE_NAME>.conf
+# v2.1: summary report, structured logs, log rotation
+# v2.2: verification-only mode (-V), audit trail with run ID
+# v2.3: config file support, skip/include patterns, non-interactive modes, 2-log rotation
+# v2.3.1: --config FILE option and default <BASE_NAME>.conf
+# v2.4: cross-platform stat abstraction, Bash 3.2 fallback for associative arrays
 
 set -o pipefail
 shopt -s nullglob
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.3.1")"
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.4.0")"
 ME="$(basename "$0")"
 
 # === Defaults (can be overridden by config file or CLI) ===
@@ -31,7 +32,7 @@ FIRST_RUN_CHOICE="prompt"         # Action on mismatch in first-run: "skip", "ov
 PARALLEL_JOBS=1                   # Number of parallel hashing jobs (-p N)
 LOG_FORMAT="text"                 # Log output format: "text" (default), "json", or "csv" (-o)
 VERIFY_ONLY=0                     # Verification-only audit mode (-V); no writes, just checks
-CONFIG_FILE=""                    # 2.3.1: explicit config file path (--config FILE)
+CONFIG_FILE=""                    # explicit config file path (--config FILE)
 
 # === Filenames (set later based on BASE_NAME/LOG_BASE) ===
 MD5_FILENAME=""                   # Will become "<BASE_NAME>.md5"
@@ -46,7 +47,7 @@ MD5_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""
 TOOL_md5_cmd=""                   # Command for md5 (md5sum or md5 -r)
 TOOL_sha256=""                    # Command for sha256sum
 TOOL_shasum=""                    # Command for shasum -a 256
-TOOL_stat_gnu=0                   # 1 if GNU stat is available, else 0
+TOOL_stat_gnu=0                   # retained for compatibility with older modules (not used in 2.4)
 TOOL_flock=0                      # 1 if flock is available, else 0
 
 # === Logging state ===
@@ -82,6 +83,9 @@ run_checksums() {
   [ "$VERBOSE" -gt 0 ] && [ "$DEBUG" -eq 0 ] && log_level=2
 
   detect_tools
+  detect_stat         # v2.4: detect stat style once and cache format strings
+  check_bash_version  # v2.4: detect Bash version for assoc array fallback
+
   if ! check_required_tools; then fatal "Missing tools; see run log for hints."; fi
 
   cd "$TARGET_DIR" || fatal "Cannot cd to $TARGET_DIR"
@@ -114,7 +118,7 @@ run_checksums() {
   log "Run ID: $RUN_ID"
   log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
 
-  # === Prompt handling with assume-yes/no ===
+  # === Prompt handling with assume-yes/no (2.3) ===
   if [ "$YES" -eq 0 ] && [ "$ASSUME_NO" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
     printf 'About to process directories under %s. Continue? [y/N]: ' "$TARGET_DIR"
     if ! IFS= read -r ans; then exit 1; fi
@@ -133,7 +137,7 @@ run_checksums() {
   process_directories "$TARGET_DIR"
   cleanup_leftover_locks "$TARGET_DIR"
 
-  # === Central summary report ===
+  # === Central summary report (2.1+) ===
   log "Summary:"
   log "  Verified:    $count_verified"
   log "  Skipped:     $count_skipped"

@@ -1,13 +1,15 @@
 # process.sh
+#
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
-# 2.3 continues honoring config-based patterns and non-interactive behavior.
+# v2.4: switched from get_inode/get_dev/get_mtime/get_size to stat_field (unified abstraction).
+# v2.4: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available.
 
 process_single_directory() {
   local d="$1"
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
-  # Prepare per-directory log: rotate (2.1, now keep only 2) and add audit run header (2.2)
+  # Prepare per-directory log: rotate (2.1, keep only 2 in 2.3) and add audit run header (2.2)
   LOG_FILEPATH="$logf"
   if [ "$DRY_RUN" -eq 0 ]; then
     rotate_log "$LOG_FILEPATH"
@@ -40,7 +42,7 @@ process_single_directory() {
   # Verification-only mode: do not write, only check md5 and meta
   if [ "$VERIFY_ONLY" -eq 1 ]; then
     local vmd5=2
-    vmd5=$(verify_md5_file "$d"); # 0 ok, 1 mismatch, 2 missing
+    vmd5=$(verify_md5_file "$d")  # 0 ok, 1 mismatch, 2 missing
     if [ "$vmd5" -eq 0 ]; then
       log "Verify-only: MD5 OK for $d"
     elif [ "$vmd5" -eq 1 ]; then
@@ -80,15 +82,41 @@ process_single_directory() {
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks)
+  # v2.4: dual approach depending on USE_ASSOC.
   declare -A old_path_by_inode old_mtime old_size old_hash
   declare -A inode_hash_cache  # inode:dev -> hash
-  for p in "${!meta_inode_dev[@]}"; do
-    old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
-    old_mtime["$p"]="${meta_mtime[$p]}"
-    old_size["$p"]="${meta_size[$p]}"
-    old_hash["$p"]="${meta_hash_by_path[$p]}"
-    inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]}"
-  done
+  local MAP_old_path_by_inode MAP_old_mtime MAP_old_size MAP_old_hash MAP_inode_hash_cache
+  if [ "$USE_ASSOC" -eq 0 ]; then
+    MAP_old_path_by_inode="$(mktemp)"; : > "$MAP_old_path_by_inode"
+    MAP_old_mtime="$(mktemp)"; : > "$MAP_old_mtime"
+    MAP_old_size="$(mktemp)"; : > "$MAP_old_size"
+    MAP_old_hash="$(mktemp)"; : > "$MAP_old_hash"
+    MAP_inode_hash_cache="$(mktemp)"; : > "$MAP_inode_hash_cache"
+  fi
+
+  # Transfer meta data to our caches (associative or text maps)
+  if [ "$USE_ASSOC" -eq 1 ]; then
+    for p in "${!meta_inode_dev[@]}"; do
+      old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
+      old_mtime["$p"]="${meta_mtime[$p]}"
+      old_size["$p"]="${meta_size[$p]}"
+      old_hash["$p"]="${meta_hash_by_path[$p]}"
+      inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]}"
+    done
+  else
+    # meta_* arrays exist only when Bash >= 4; for fallback, re-read meta file lines
+    if [ -f "$metaf" ]; then
+      while IFS=$'\t' read -r path inode dev mtime size hash; do
+        [ -z "$path" ] && continue
+        case "$path" in \#meta|\#sig|\#run) continue ;; esac
+        map_set "$MAP_old_path_by_inode" "${inode}:${dev}" "$path"
+        map_set "$MAP_old_mtime" "$path" "$mtime"
+        map_set "$MAP_old_size" "$path" "$size"
+        map_set "$MAP_old_hash" "$path" "$hash"
+        map_set "$MAP_inode_hash_cache" "${inode}:${dev}" "$hash"
+      done < "$metaf"
+    fi
+  fi
 
   # Collect tasks for hashing
   local results_file=""
@@ -97,50 +125,95 @@ process_single_directory() {
     : > "$results_file"
   fi
 
+  # These maps are per-run; dual storage based on USE_ASSOC
   declare -A path_to_hash  # path -> hash (filled for reused or after parallel)
   declare -A path_to_inode # path -> inode:dev
   declare -A path_to_meta  # path -> "fname<TAB>inode<TAB>dev<TAB>mtime<TAB>size"
+  local MAP_path_to_hash MAP_path_to_inode MAP_path_to_meta
+  if [ "$USE_ASSOC" -eq 0 ]; then
+    MAP_path_to_hash="$(mktemp)"; : > "$MAP_path_to_hash"
+    MAP_path_to_inode="$(mktemp)"; : > "$MAP_path_to_inode"
+    MAP_path_to_meta="$(mktemp)"; : > "$MAP_path_to_meta"
+  fi
 
   # Decide reuse vs compute; spawn parallel hash tasks
   for fpath in "${files[@]}"; do
     local fname inode dev mtime size inode_dev reuse h
     fname=$(basename "$fpath")
-    inode=$(get_inode "$fpath"); dev=$(get_dev "$fpath")
-    mtime=$(get_mtime "$fpath"); size=$(get_size "$fpath")
+    inode=$(stat_field "$fpath" inode); dev=$(stat_field "$fpath" dev)
+    mtime=$(stat_field "$fpath" mtime); size=$(stat_field "$fpath" size)
     inode_dev="${inode}:${dev}"
     reuse=0; h=""
 
     # Strong incremental by inode (renames and hardlinks)
-    if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
-      if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
-        local oldp="${old_path_by_inode[$inode_dev]}"
-        if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
-          h="${inode_hash_cache[$inode_dev]}"; reuse=1
-          log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+    if [ "$USE_ASSOC" -eq 1 ]; then
+      if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
+        if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
+          local oldp="${old_path_by_inode[$inode_dev]}"
+          if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
+            h="${inode_hash_cache[$inode_dev]}"; reuse=1
+            log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+          fi
         fi
+      fi
+    else
+      local oldp; oldp="$(map_get "$MAP_old_path_by_inode" "$inode_dev")"
+      local cached; cached="$(map_get "$MAP_inode_hash_cache" "$inode_dev")"
+      local om; om="$(map_get "$MAP_old_mtime" "$oldp")"
+      local os; os="$(map_get "$MAP_old_size" "$oldp")"
+      if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
+        h="$cached"; reuse=1
+        log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
       fi
     fi
 
     # Fallback: reuse by same path if unchanged
-    if [ "$reuse" -eq 0 ] && [ -n "${meta_mtime[$fname]:-}" ]; then
-      if [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
-        h="${meta_hash_by_path[$fname]}"; reuse=1
-        inode_hash_cache["$inode_dev"]="$h"
-        log "Reusing hash for unchanged file $fname"
+    if [ "$reuse" -eq 0 ]; then
+      if [ "$USE_ASSOC" -eq 1 ]; then
+        if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
+          h="${meta_hash_by_path[$fname]}"; reuse=1
+          inode_hash_cache["$inode_dev"]="$h"
+          log "Reusing hash for unchanged file $fname"
+        fi
+      else
+        # When using fallback, meta_* arrays may not exist; leverage text maps if available
+        local mm ms mh
+        mm="$(map_get "$MAP_old_mtime" "$fname")"
+        ms="$(map_get "$MAP_old_size" "$fname")"
+        mh="$(map_get "$MAP_old_hash" "$fname")"
+        if [ -n "$mm" ] && [ "$mm" = "$mtime" ] && [ -n "$ms" ] && [ "$ms" = "$size" ] && [ -n "$mh" ]; then
+          h="$mh"; reuse=1
+          map_set "$MAP_inode_hash_cache" "$inode_dev" "$h"
+          log "Reusing hash for unchanged file $fname"
+        fi
       fi
     fi
 
-    path_to_inode["$fpath"]="$inode_dev"
-    path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
+    # Record inode, meta tuple, and hash (assoc vs text)
+    if [ "$USE_ASSOC" -eq 1 ]; then
+      path_to_inode["$fpath"]="$inode_dev"
+      path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
+    else
+      map_set "$MAP_path_to_inode" "$fpath" "$inode_dev"
+      map_set "$MAP_path_to_meta" "$fpath" "${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
+    fi
 
     if [ "$reuse" -eq 1 ]; then
-      path_to_hash["$fpath"]="$h"
+      if [ "$USE_ASSOC" -eq 1 ]; then
+        path_to_hash["$fpath"]="$h"
+      else
+        map_set "$MAP_path_to_hash" "$fpath" "$h"
+      fi
       continue
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
       log "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
-      path_to_hash["$fpath"]=""
+      if [ "$USE_ASSOC" -eq 1 ]; then
+        path_to_hash["$fpath"]=""
+      else
+        map_set "$MAP_path_to_hash" "$fpath" ""
+      fi
     else
       _par_maybe_wait
       _do_hash_task "$fpath" "$PER_FILE_ALGO" "$results_file" &
@@ -153,9 +226,15 @@ process_single_directory() {
   if [ "$DRY_RUN" -eq 0 ]; then
     _par_wait_all
     while IFS=$'\t' read -r rpath rhash; do
-      path_to_hash["$rpath"]="$rhash"
-      local id="${path_to_inode[$rpath]}"
-      [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
+      if [ "$USE_ASSOC" -eq 1 ]; then
+        path_to_hash["$rpath"]="$rhash"
+        local id="${path_to_inode[$rpath]}"
+        [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
+      else
+        map_set "$MAP_path_to_hash" "$rpath" "$rhash"
+        local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
+        [ -n "$id" ] && [ -n "$rhash" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
+      fi
       local bname; bname=$(basename "$rpath")
       if [ -n "$rhash" ]; then
         log "Hashed $bname -> ${rhash:0:16}... (truncated)"
@@ -168,19 +247,37 @@ process_single_directory() {
 
   # Write outputs
   if [ "$DRY_RUN" -eq 0 ]; then
-    for fpath in "${files[@]}"; do
-      local fname h meta_line
-      fname=$(basename "$fpath")
-      h="${path_to_hash[$fpath]}"
-      meta_line="${path_to_meta[$fpath]}"$'\t'"$h"
-      printf '%s  %s\n' "$h" "$fname" >> "$tmp_sum"
-      printf '%s\n' "$meta_line" >> "$tmp_meta"
-    done
+    if [ "$USE_ASSOC" -eq 1 ]; then
+      for fpath in "${files[@]}"; do
+        local fname h meta_line
+        fname=$(basename "$fpath")
+        h="${path_to_hash[$fpath]}"
+        meta_line="${path_to_meta[$fpath]}"$'\t'"$h"
+        printf '%s  %s\n' "$h" "$fname" >> "$tmp_sum"
+        printf '%s\n' "$meta_line" >> "$tmp_meta"
+      done
+    else
+      for fpath in "${files[@]}"; do
+        local fname h meta_line
+        fname=$(basename "$fpath")
+        h="$(map_get "$MAP_path_to_hash" "$fpath")"
+        meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"$h"
+        printf '%s  %s\n' "$h" "$fname" >> "$tmp_sum"
+        printf '%s\n' "$meta_line" >> "$tmp_meta"
+      done
+      # cleanup temp maps
+      rm -f "$MAP_path_to_hash" "$MAP_path_to_inode" "$MAP_path_to_meta" 2>/dev/null || true
+    fi
 
     local lockfile="${metaf}${LOCK_SUFFIX}"
     with_lock "$lockfile" write_meta "$metaf" "$(cat "$tmp_meta")"
     mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
     log "Wrote $sumf and $metaf"
+  fi
+
+  # cleanup temp maps for old meta caches if used
+  if [ "$USE_ASSOC" -eq 0 ]; then
+    rm -f "$MAP_old_path_by_inode" "$MAP_old_mtime" "$MAP_old_size" "$MAP_old_hash" "$MAP_inode_hash_cache" 2>/dev/null || true
   fi
 
   log "Finished directory: $d"
@@ -218,10 +315,20 @@ process_directories() {
       if verify_meta_sig "$metaf"; then
         read_meta "$metaf"
         local changed=0
-        for p in "${!meta_mtime[@]}"; do
-          if [ ! -e "$d/$p" ]; then changed=1; break; fi
-          if [ "$(get_mtime "$d/$p")" != "${meta_mtime[$p]}" ] || [ "$(get_size "$d/$p")" != "${meta_size[$p]}" ]; then changed=1; break; fi
-        done
+        # For Bash < 4, re-read meta file directly to determine changes
+        if [ "$USE_ASSOC" -eq 1 ]; then
+          for p in "${!meta_mtime[@]}"; do
+            if [ ! -e "$d/$p" ]; then changed=1; break; fi
+            if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]}" ]; then changed=1; break; fi
+          done
+        else
+          while IFS=$'\t' read -r path inode dev mtime size hash; do
+            [ -z "$path" ] && continue
+            case "$path" in \#meta|\#sig|\#run) continue ;; esac
+            if [ ! -e "$d/$path" ]; then changed=1; break; fi
+            if [ "$(stat_field "$d/$path" mtime)" != "$mtime" ] || [ "$(stat_field "$d/$path" size)" != "$size" ]; then changed=1; break; fi
+          done < "$metaf"
+        fi
         if [ "$changed" -eq 0 ]; then
           log "Skipping $d (manifest indicates up-to-date)"
           count_skipped=$((count_skipped+1))

@@ -1,11 +1,14 @@
 # meta.sh
+#
 # Meta manifest handling: read/write, signature verification, and locking.
-# 2.2 adds audit trail #run lines appended to meta on write.
+# 2.2 added audit trail #run lines appended to meta on write.
+# 2.4 keeps behavior intact and adds no new changes here beyond stat_field usage in readers.
 
 META_HEADER="#meta"; META_VER="v1"
 
 read_meta() {
   local meta="$1"
+  # Prefer associative arrays, but allow fallback behavior in process.sh when Bash < 4
   declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode
   meta_hash_by_path=(); meta_mtime=(); meta_size=(); meta_inode_dev=(); meta_path_by_inode=()
   [ -f "$meta" ] || return 0
