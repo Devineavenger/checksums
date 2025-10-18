@@ -1,6 +1,6 @@
 # first_run.sh
 # First-run verification logic and md5 verification helper.
-# Unmodified behavior for 2.2, except counters and verify-only awareness.
+# Unmodified behavior relative to 2.2, except counters and verify-only awareness remain.
 
 verify_md5_file() {
   local dir="$1" sumf="$dir/$MD5_FILENAME"

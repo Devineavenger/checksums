@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# checksums.sh - v2.2.0
+# checksums.sh - v2.3.1
+#
 # Modular checksum manager with parallel + inode incremental hashing
-# Adds: summary report, structured logs, log rotation (2.1)
-# Adds: verification-only mode (-V) and audit trail with run ID (2.2)
+#
+# v2.1: Added summary report, structured logs, log rotation
+# v2.2: Added verification-only mode (-V) and audit trail with run ID
+# v2.3: Added config file support, skip/include patterns, non-interactive modes, 2-log rotation
+# v2.3.1: Extended config support with --config FILE and default <BASE_NAME>.conf
 
 set -o pipefail
 shopt -s nullglob
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.2.0")"
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.3.1")"
 ME="$(basename "$0")"
 
-# === Defaults (can be overridden by CLI options) ===
+# === Defaults (can be overridden by config file or CLI) ===
 BASE_NAME="#####checksums#####"   # Base name for generated files (.md5, .meta, .log)
 PER_FILE_ALGO="md5"               # Algorithm for per-file checksums: "md5" (default) or "sha256"
 META_SIG_ALGO="sha256"            # Algorithm for meta signature: "sha256" (default), "md5", or "none"
@@ -19,13 +23,15 @@ LOG_BASE=""                       # Base name for run logs; defaults to BASE_NAM
 DRY_RUN=0                         # If 1, simulate actions without writing files (-n)
 DEBUG=0                           # Debug verbosity level (-d, repeatable)
 VERBOSE=0                         # Verbose logging (-v)
-YES=0                             # Auto-confirm prompts (-y)
+YES=0                             # Auto-confirm prompts (-y or --assume-yes)
+ASSUME_NO=0                       # Auto-decline prompts (--assume-no)
 FORCE_REBUILD=0                   # Force rebuild of checksums, ignoring manifests (-r)
 FIRST_RUN=0                       # First-run verification mode (-F)
 FIRST_RUN_CHOICE="prompt"         # Action on mismatch in first-run: "skip", "overwrite", or "prompt" (-C)
 PARALLEL_JOBS=1                   # Number of parallel hashing jobs (-p N)
 LOG_FORMAT="text"                 # Log output format: "text" (default), "json", or "csv" (-o)
 VERIFY_ONLY=0                     # Verification-only audit mode (-V); no writes, just checks
+CONFIG_FILE=""                    # 2.3.1: explicit config file path (--config FILE)
 
 # === Filenames (set later based on BASE_NAME/LOG_BASE) ===
 MD5_FILENAME=""                   # Will become "<BASE_NAME>.md5"
@@ -57,10 +63,10 @@ count_skipped=0                   # Directories skipped (up-to-date)
 count_overwritten=0               # Directories overwritten/rebuilt
 count_errors=0                    # Errors encountered
 
-# run ID for audit trail
+# === Run ID for audit trail (2.2+) ===
 RUN_ID=$(uuidgen 2>/dev/null || date +%s$$)
 
-# Source libraries
+# === Source libraries ===
 for lib in "$BASE_DIR/lib/"*.sh; do
   . "$lib"
 done
@@ -83,24 +89,51 @@ run_checksums() {
   cd - >/dev/null 2>&1 || true
   [ "$TARGET_DIR" = "/" ] && fatal "Refusing to run on system root"
 
+  # === Config file support (2.3.1 extended) ===
+  # Priority:
+  #   1. --config FILE if provided
+  #   2. Default: <BASE_NAME>.conf in target root (e.g., #####checksums#####.conf)
+  if [ -n "$CONFIG_FILE" ]; then
+    if [ -f "$CONFIG_FILE" ]; then
+      log "Loading config from explicit file $CONFIG_FILE"
+      # shellcheck source=/dev/null
+      . "$CONFIG_FILE"
+    else
+      fatal "Config file specified but not found: $CONFIG_FILE"
+    fi
+  else
+    DEFAULT_CONF="$TARGET_DIR/${BASE_NAME}.conf"
+    if [ -f "$DEFAULT_CONF" ]; then
+      log "Loading config from default $DEFAULT_CONF"
+      # shellcheck source=/dev/null
+      . "$DEFAULT_CONF"
+    fi
+  fi
+
   log "Starting run on $TARGET_DIR"
   log "Run ID: $RUN_ID"
   log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
 
-  if [ "$YES" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+  # === Prompt handling with assume-yes/no ===
+  if [ "$YES" -eq 0 ] && [ "$ASSUME_NO" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
     printf 'About to process directories under %s. Continue? [y/N]: ' "$TARGET_DIR"
     if ! IFS= read -r ans; then exit 1; fi
     case "$ans" in [Yy]*) ;; *) log "Aborted by user"; exit 0 ;; esac
+  elif [ "$ASSUME_NO" -eq 1 ]; then
+    log "Aborted by assume-no mode"
+    exit 0
   fi
 
+  # === First-run verification step (optional) ===
   if [ "$FIRST_RUN" -eq 1 ]; then
     first_run_verify "$TARGET_DIR"
   fi
 
+  # === Normal processing ===
   process_directories "$TARGET_DIR"
   cleanup_leftover_locks "$TARGET_DIR"
 
-  # summary
+  # === Central summary report ===
   log "Summary:"
   log "  Verified:    $count_verified"
   log "  Skipped:     $count_skipped"

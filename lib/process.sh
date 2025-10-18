@@ -1,12 +1,13 @@
 # process.sh
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
+# 2.3 continues honoring config-based patterns and non-interactive behavior.
 
 process_single_directory() {
   local d="$1"
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
-  # Prepare per-directory log: rotate (2.1) and add audit run header (2.2)
+  # Prepare per-directory log: rotate (2.1, now keep only 2) and add audit run header (2.2)
   LOG_FILEPATH="$logf"
   if [ "$DRY_RUN" -eq 0 ]; then
     rotate_log "$LOG_FILEPATH"
@@ -38,7 +39,7 @@ process_single_directory() {
 
   # Verification-only mode: do not write, only check md5 and meta
   if [ "$VERIFY_ONLY" -eq 1 ]; then
-    local vmd5=2 vmeta=0
+    local vmd5=2
     vmd5=$(verify_md5_file "$d"); # 0 ok, 1 mismatch, 2 missing
     if [ "$vmd5" -eq 0 ]; then
       log "Verify-only: MD5 OK for $d"

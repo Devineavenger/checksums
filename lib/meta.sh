@@ -50,7 +50,7 @@ write_meta() {
   # Audit trail (2.2): record run id
   printf '#run\t%s\t%s\n' "$RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$tmp"
   # Append signature as final line unless disabled
-  if [ "$META_SIG_ALGO" != "none" ]; then
+  if [ "$META_SIG_ALGO" != "none" ] && [ -s "$tmp" ]; then
     if [ "$META_SIG_ALGO" = "sha256" ]; then
       if command -v sha256sum >/dev/null 2>&1; then sig=$(sha256sum <"$tmp" | awk '{print $1}')
       else sig=$(shasum -a 256 <"$tmp" | awk '{print $1}'); fi

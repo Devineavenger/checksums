@@ -1,5 +1,6 @@
 # fs.sh
 # Filesystem helpers: exclusions, discovery, cleanup, and simple counts.
+# 2.3 adds INCLUDE_PATTERNS and EXCLUDE_PATTERNS support (shell glob patterns).
 
 _safe_name(){ local n="$1"; [ -n "$n" ] || printf '%s' '__DO_NOT_MATCH__'; }
 
@@ -10,11 +11,39 @@ build_exclusions() {
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
 }
 
+# Arrays of include/exclude patterns (glob or regex-like via [[ ]]); default empty.
+# These can be set via .checksums.conf or exported before running.
+: "${INCLUDE_PATTERNS[@]:=}"
+: "${EXCLUDE_PATTERNS[@]:=}"
+
 find_file_expr() {
   local d="$1"
+  # Base find with built-in exclusions and generated filenames
   find "$d" -maxdepth 1 -type f \
     ! -name '.DS_Store' ! -name '._*' \
-    ! -name "$MD5_EXCL" ! -name "$META_EXCL" ! -name "$LOG_EXCL" ! -name "$LOCK_EXCL" -print0
+    ! -name "$MD5_EXCL" ! -name "$META_EXCL" ! -name "$LOG_EXCL" ! -name "$LOCK_EXCL" \
+    -print0 | while IFS= read -r -d '' f; do
+      local fname; fname=$(basename "$f")
+      local skip=0
+
+      # Apply exclude patterns first
+      if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+        for pat in "${EXCLUDE_PATTERNS[@]}"; do
+          [[ "$fname" == $pat ]] && skip=1 && break
+        done
+      fi
+
+      # Apply include patterns only if any are defined
+      if [ "$skip" -eq 0 ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+        local match=0
+        for pat in "${INCLUDE_PATTERNS[@]}"; do
+          [[ "$fname" == $pat ]] && match=1 && break
+        done
+        [ "$match" -eq 0 ] && skip=1
+      fi
+
+      [ "$skip" -eq 0 ] && printf '%s\0' "$f"
+    done
 }
 
 cleanup_leftover_locks() {
