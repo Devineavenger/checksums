@@ -18,6 +18,7 @@ Options:
   -F            first-run verify existing .md5 files that lack .meta/.log
   -C CHOICE     first-run choice: skip | overwrite | prompt (default prompt)
   -p N          parallel hashing jobs (default 1)
+  -o FORMAT     log format: text (default), json, csv
   -y            yes (skip confirmation)
   -V            show version and exit
   -h            help

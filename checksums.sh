@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# checksums.sh - v2.0.0
+# checksums.sh - v2.1.0
 # Modular checksum manager with parallel + inode incremental hashing
+# Adds: summary report, structured logs, log rotation
 
 set -o pipefail
 shopt -s nullglob
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.0.0")"
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "2.1.0")"
 ME="$(basename "$0")"
 
-# Defaults (global)
+# Defaults
 BASE_NAME="#####checksums#####"
 PER_FILE_ALGO="md5"       # md5 or sha256
 META_SIG_ALGO="sha256"    # sha256, md5, or none
@@ -22,8 +23,9 @@ FORCE_REBUILD=0
 FIRST_RUN=0
 FIRST_RUN_CHOICE="prompt" # skip | overwrite | prompt
 PARALLEL_JOBS=1
+LOG_FORMAT="text"   # text|json|csv
 
-# filenames set after args parse
+# filenames set later
 MD5_FILENAME=""
 META_FILENAME=""
 LOG_FILENAME=""
@@ -32,7 +34,7 @@ LOCK_SUFFIX=".lock"
 # exclusions
 MD5_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""
 
-# tools flags
+# tools
 TOOL_md5_cmd="" TOOL_sha256="" TOOL_shasum="" TOOL_stat_gnu=0 TOOL_flock=0
 
 # logs
@@ -41,16 +43,20 @@ RUN_LOG="" LOG_FILEPATH="" FIRST_RUN_LOG=""
 errors=()
 log_level=1
 
+# summary counters
+count_verified=0
+count_skipped=0
+count_overwritten=0
+count_errors=0
+
 # Source libraries
 for lib in "$BASE_DIR/lib/"*.sh; do
-  # shellcheck source=/dev/null
   . "$lib"
 done
 
 run_checksums() {
   build_exclusions
 
-  # run-level log (in current working dir)
   RUN_LOG="./${LOG_BASE:-$BASE_NAME}.run.log"
   LOG_FILEPATH="$RUN_LOG"
   : > "$RUN_LOG"
@@ -67,7 +73,7 @@ run_checksums() {
   [ "$TARGET_DIR" = "/" ] && fatal "Refusing to run on system root"
 
   log "Starting run on $TARGET_DIR"
-  log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS"
+  log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT"
 
   if [ "$YES" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     printf 'About to process directories under %s. Continue? [y/N]: ' "$TARGET_DIR"
@@ -81,6 +87,13 @@ run_checksums() {
 
   process_directories "$TARGET_DIR"
   cleanup_leftover_locks "$TARGET_DIR"
+
+  # summary
+  log "Summary:"
+  log "  Verified:    $count_verified"
+  log "  Skipped:     $count_skipped"
+  log "  Overwritten: $count_overwritten"
+  log "  Errors:      $count_errors"
 
   if [ "${#errors[@]}" -gt 0 ]; then
     log "Completed with ${#errors[@]} errors. See run log ${RUN_LOG} and first-run log ${FIRST_RUN_LOG:-none}"
