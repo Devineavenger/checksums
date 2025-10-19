@@ -1,6 +1,6 @@
-# Version: 2.5.19
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
+# Version: 2.5.20
 # checksums.sh
 #
 # Modular checksum manager with parallel + inode incremental hashing
