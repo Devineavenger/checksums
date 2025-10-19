@@ -15,8 +15,8 @@ build_exclusions() {
 
 # Arrays of include/exclude patterns (glob or regex-like via [[ ]]); default empty.
 # These can be set via .checksums.conf or exported before running.
-: "${INCLUDE_PATTERNS[@]:=}"
-: "${EXCLUDE_PATTERNS[@]:=}"
+declare -a INCLUDE_PATTERNS=()
+declare -a EXCLUDE_PATTERNS=()
 
 find_file_expr() {
   local d="$1"
