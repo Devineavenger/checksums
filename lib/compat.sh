@@ -6,6 +6,7 @@
 # Associative arrays are used when available; otherwise, we emulate maps with text files.
 # This preserves behavior while ensuring portability to older macOS (Bash 3.2).
 
+# shellcheck disable=SC2034
 USE_ASSOC=1   # 1 = use associative arrays, 0 = fallback text maps
 
 check_bash_version() {

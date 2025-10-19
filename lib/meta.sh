@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # meta.sh
 #
 # Meta manifest handling: read/write, signature verification, and locking.
@@ -71,6 +72,7 @@ write_meta() {
 with_lock() {
   # Use flock if available; no persistent lockfiles.
   local lockfile="$1"; shift
+  # shellcheck disable=SC2154
   if [ "$TOOL_flock" -eq 1 ]; then
     mkdir -p "$(dirname "$lockfile")" 2>/dev/null || true
     : > "$lockfile" 2>/dev/null || true

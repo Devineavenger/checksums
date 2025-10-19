@@ -35,10 +35,10 @@ detect_stat() {
 stat_field() {
   local file="$1" field="$2"
   case "$field" in
-    inode) stat $STAT_INODE -- "$file" 2>/dev/null ;;
-    dev)   stat $STAT_DEV   -- "$file" 2>/dev/null ;;
-    mtime) stat $STAT_MTIME -- "$file" 2>/dev/null ;;
-    size)  stat $STAT_SIZE  -- "$file" 2>/dev/null ;;
+    inode) stat "$STAT_INODE" -- "$file" 2>/dev/null ;;
+    dev)   stat "$STAT_DEV"   -- "$file" 2>/dev/null ;;
+    mtime) stat "$STAT_MTIME" -- "$file" 2>/dev/null ;;
+    size)  stat "$STAT_SIZE"  -- "$file" 2>/dev/null ;;
     *) echo "unknown field '$field'" >&2; return 1 ;;
   esac
 }

@@ -75,7 +75,12 @@ rotate_log() {
     local ts; ts=$(date +"%Y%m%d-%H%M%S")
     mv "$logfile" "${logfile}.${ts}"
     # Keep only last 2 rotated logs
-    ls -1t "${logfile}".* 2>/dev/null | tail -n +3 | xargs -r rm -f --
+#    ls -1t "${logfile}".* 2>/dev/null | tail -n +3 | xargs -r rm -f --
+  find . -maxdepth 1 -name "${logfile}.*" -type f -printf '%T@ %p\n' \
+    | sort -nr \
+    | tail -n +3 \
+    | cut -d' ' -f2- \
+    | xargs -r rm -f --
   fi
 }
 

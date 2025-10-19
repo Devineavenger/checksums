@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # process.sh
 #
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).
@@ -292,7 +293,8 @@ process_directories() {
   while IFS= read -r -d '' dd; do all_dirs+=("$dd"); done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
 
   for d in "${all_dirs[@]}"; do
-    local base_name=$(basename "$d")
+    local base_name
+    base_name=$(basename "$d")
     case "$base_name" in .*) dbg "Skipping hidden $d"; skipped+=("$d"); continue ;; esac
     local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME"
 
