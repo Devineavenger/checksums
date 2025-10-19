@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # usage.sh
 # Prints CLI usage, kept aligned with previous versions, expanded for 2.1/2.2/2.3 features.
 # v2.3.1 adds --config FILE and default <BASE_NAME>.conf loading.

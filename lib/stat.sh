@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # stat.sh
 #
 # Cross‑platform stat abstraction.

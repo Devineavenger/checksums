@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # meta.sh
 #
 # Meta manifest handling: read/write, signature verification, and locking.

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # first_run.sh
 # First-run verification logic and md5 verification helper.
 # Unmodified behavior relative to 2.2, except counters and verify-only awareness remain.

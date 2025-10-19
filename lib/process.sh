@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # process.sh
 #
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).

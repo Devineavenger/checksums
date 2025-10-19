@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # compat.sh
 #
 # Shell compatibility helpers.

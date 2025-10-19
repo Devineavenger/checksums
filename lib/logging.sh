@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # logging.sh
 #
 # Provides logging utilities for the checksums tool.

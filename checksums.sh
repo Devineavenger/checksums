@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# checksums.sh - v2.4.0
+# shellcheck disable=SC2034
+# checksums.sh
 #
 # Modular checksum manager with parallel + inode incremental hashing
 #
@@ -9,7 +10,7 @@
 # v2.3.1: --config FILE option and default <BASE_NAME>.conf
 # v2.4: cross-platform stat abstraction, Bash 3.2 fallback for associative arrays
 
-set -o pipefail
+set -euo pipefail
 shopt -s nullglob
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +70,7 @@ RUN_ID=$(uuidgen 2>/dev/null || date +%s$$)
 
 # === Source libraries ===
 for lib in "$BASE_DIR/lib/"*.sh; do
+  # shellcheck source=/dev/null
   . "$lib"
 done
 
