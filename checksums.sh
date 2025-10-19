@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 2.12.4 2.12.3
+# Version: 2.12.4 2.12.4 2.12.3
 #
 # checksums.sh
 #
