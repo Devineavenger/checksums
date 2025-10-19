@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 2.5.23
-
-
-
+# Version: 2.5.24
 
 # checksums.sh
 #
@@ -74,10 +71,28 @@ count_errors=0                    # Errors encountered
 RUN_ID=$(uuidgen 2>/dev/null || date +%s$$)
 
 # === Source libraries ===
-for lib in "$BASE_DIR/lib/"*.sh; do
-  # shellcheck source=/dev/null
-  . "$lib"
+CANDIDATES=(
+  "$BASE_DIR/lib"
+  "/usr/local/share/checksums/lib"
+  "/usr/share/checksums/lib"
+)
+
+sourced_any=0
+for d in "${CANDIDATES[@]}"; do
+  if [ -d "$d" ]; then
+    for lib in "$d"/*.sh; do
+      [ -f "$lib" ] && . "$lib"
+    done
+    sourced_any=1
+    break
+  fi
 done
+
+if [ "$sourced_any" -eq 0 ]; then
+  echo "FATAL: no library files found; expected under one of:" >&2
+  printf '  %s\n' "${CANDIDATES[@]}" >&2
+  exit 2
+fi
 
 run_checksums() {
   build_exclusions

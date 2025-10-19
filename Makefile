@@ -1,10 +1,11 @@
-PREFIX        ?= /usr/local
-BINDIR        ?= $(PREFIX)/bin
-LIBDIR        ?= $(PREFIX)/share/checksums
+PREFIX		?= /usr/local
+BINDIR		?= $(PREFIX)/bin
+SHAREDIR	  ?= $(PREFIX)/share/checksums
+LIBDIR		?= $(SHAREDIR)/lib
 MAIN_SCRIPT   := checksums.sh
 VERSION_FILE  := VERSION
 
-.PHONY: all install uninstall user-install uninstall-user \
+.PHONY: all install uninstall user-install user-uninstall \
 	test lint ci version dist release changelog changelog-draft \
 	clean check help
 
@@ -15,16 +16,16 @@ install:
 	install -d $(DESTDIR)$(BINDIR)
 	install -d $(DESTDIR)$(LIBDIR)
 	install -m 0755 $(MAIN_SCRIPT) $(DESTDIR)$(BINDIR)/checksums
-	install -m 0644 lib/*.sh $(DESTDIR)$(LIBDIR)
+	install -m 0644 lib/*.sh $(DESTDIR)$(LIBDIR)/
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/checksums
-	rm -rf $(DESTDIR)$(LIBDIR)
+	rm -rf $(DESTDIR)$(SHAREDIR)
 
 user-install:
 	./install.sh
 
-uninstall-user:
+user-uninstall:
 	./uninstall.sh
 
 test:
@@ -103,18 +104,18 @@ check: lint test changelog
 
 help:
 	@echo "Available targets:"
-	@echo "  make install         - Install checksums (developer style, quiet)"
-	@echo "  make uninstall       - Uninstall checksums (developer style)"
-	@echo "  make user-install    - Run friendly ./install.sh script"
-	@echo "  make uninstall-user  - Run friendly ./uninstall.sh script"
-	@echo "  make test            - Run unit tests (Bats)"
-	@echo "  make lint            - Run shellcheck linting"
-	@echo "  make ci              - Run lint + test (local CI check)"
-	@echo "  make check           - Run lint + test + changelog preview"
-	@echo "  make version         - Print current tool version"
-	@echo "  make dist            - Build a versioned tarball in ./dist/"
-	@echo "  make release NEW_VER=x.y.z - Run ./release.sh with given version"
-	@echo "  make changelog       - Preview changelog entries since last tag"
-	@echo "  make changelog-draft - Insert draft changelog into CHANGELOG.md"
-	@echo "  make clean           - Remove dist/ and temp files"
-	@echo "  make help            - Show this help message"
+	@echo "  make install				- Install checksums (developer style, quiet)"
+	@echo "  make uninstall				- Uninstall checksums (developer style)"
+	@echo "  make user-install			- Run friendly ./install.sh script"
+	@echo "  make user-uninstall		- Run friendly ./uninstall.sh script"
+	@echo "  make test					- Run unit tests (Bats)"
+	@echo "  make lint					- Run shellcheck linting"
+	@echo "  make ci					- Run lint + test (local CI check)"
+	@echo "  make check					- Run lint + test + changelog preview"
+	@echo "  make version				- Print current tool version"
+	@echo "  make dist					- Build a versioned tarball in ./dist/"
+	@echo "  make release NEW_VER=x.y.z	- Run ./release.sh with given version"
+	@echo "  make changelog				- Preview changelog entries since last tag"
+	@echo "  make changelog-draft		- Insert draft changelog into CHANGELOG.md"
+	@echo "  make clean					- Remove dist/ and temp files"
+	@echo "  make help					- Show this help message"
