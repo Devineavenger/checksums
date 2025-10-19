@@ -39,25 +39,21 @@ if [ -f checksums.sh ]; then
   NEW_LINE="# Version: ${NEW_VER}"
   awk -v new="$NEW_LINE" '
     BEGIN { inserted=0 }
-    # collect lines but skip any existing Version line
+    # skip any existing Version line
     $0 ~ /^# Version:/ { next }
     {
       lines[NR] = $0
       n = NR
     }
     END {
-      # ensure array has at least 2 lines before inserting at line 3
       if (n < 2) {
         for (i = n+1; i <= 2; i++) lines[i] = ""
         n = 2
       }
-      # print lines up to line 2 (or fewer if file shorter)
       for (i = 1; i <= 2 && i <= n; i++) {
         print lines[i]
       }
-      # insert the Version line as line 3
       print new
-      # print the rest starting from original line 3 (which is now at index 3 before insertion)
       for (i = 3; i <= n; i++) {
         print lines[i]
       }
@@ -68,6 +64,8 @@ fi
 
 # Step 3: promote [Unreleased] in CHANGELOG.md and reinsert a fresh one
 DATE=$(date +"%Y-%m-%d")
+
+# Match the Unreleased heading on a single line; avoid multi-line regex
 if [ -f CHANGELOG.md ] && grep -q '^## 
 
 \[Unreleased\]
@@ -107,8 +105,11 @@ else
 fi
 git add CHANGELOG.md
 
-# Step 4: commit and tag locally
-# Stage all changes (include any other modified files)
+# Step 4: build dist tarball BEFORE committing so artifacts are included
+echo "==> Building dist tarball"
+make dist
+
+# Step 5: commit and tag locally (include all changes)
 git add -A
 
 # Ensure commit author is set
@@ -128,8 +129,7 @@ if git rev-parse "refs/tags/v${NEW_VER}" >/dev/null 2>&1; then
 fi
 git tag -a "v${NEW_VER}" -m "Release v${NEW_VER}"
 
-
-# Step 4.5: determine branch to push from (handle detached HEAD)
+# Step 5.5: determine branch to push from (handle detached HEAD)
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 # On detached HEAD this returns "HEAD"
 if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
@@ -139,15 +139,10 @@ if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   CURRENT_BRANCH="$RELEASE_BRANCH"
 fi
 
-# Step 5: push commit and tag to origin
+# Step 6: push commit and tag to origin
 echo "==> Pushing commit and tag to origin (branch: $CURRENT_BRANCH)"
-# Push branch
 git push origin "$CURRENT_BRANCH"
-# Push tag
 git push origin "v${NEW_VER}"
-
-# Step 6: build dist tarball
-make dist
 
 # Step 7: generate grouped changelog notes for GitHub release
 echo "==> Generating grouped changelog notes"
@@ -184,16 +179,13 @@ GHTOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 if [ -n "$GHTOKEN" ]; then
   echo "==> Creating GitHub release via REST API"
 
-  # infer owner/repo from origin URL
   ORIGIN_URL="$(git remote get-url origin)"
-  # support git@github.com:owner/repo.git and https://github.com/owner/repo.git
   if echo "$ORIGIN_URL" | grep -q ':'; then
     REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
   else
     REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*github.com[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
   fi
 
-  # construct JSON payload safely (escape quotes)
   NOTES="$(printf "%b\n" "$CHANGELOG" | sed 's/"/\\"/g')"
   PRERELEASE_JSON=false
   DRAFT_JSON=false
@@ -210,7 +202,6 @@ if [ -n "$GHTOKEN" ]; then
 }
 EOF
 
-  # call API
   HTTP_STATUS="$(curl -s -o /tmp/gh_release_response.json -w "%{http_code}" -X POST "https://api.github.com/repos/${REPO}/releases" \
     -H "Authorization: token ${GHTOKEN}" \
     -H "Content-Type: application/json" \
@@ -218,9 +209,7 @@ EOF
 
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
     echo "==> GitHub release created successfully"
-    # optionally attach artifact if present
     if [ -f "dist/checksums-${NEW_VER}.tar.gz" ]; then
-      # parse upload_url from response
       UPLOAD_URL="$(jq -r '.upload_url' /tmp/gh_release_response.json | sed -e 's/{?name,label}//')"
       if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
         echo "==> Uploading dist/checksums-${NEW_VER}.tar.gz"
