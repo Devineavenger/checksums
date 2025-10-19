@@ -22,14 +22,12 @@ jobs:
       - name: Capture changelog preview
         id: changelog
         run: |
-          {
-            echo 'PREVIEW<<EOF'
-            make changelog
-            echo EOF
-          } >> "$GITHUB_ENV"
-          
-      - name: Debug PREVIEW
-        run: echo "$PREVIEW"
+          preview="$(make changelog)"
+          # escape special characters for GitHub Actions
+          preview="${preview//'%'/'%25'}"
+          preview="${preview//$'\n'/'%0A'}"
+          preview="${preview//$'\r'/'%0D'}"
+          echo "preview=$preview" >> "$GITHUB_OUTPUT"
 
       - name: Comment changelog on PR
         if: github.event_name == 'pull_request'
@@ -38,7 +36,7 @@ jobs:
           header: changelog-preview
           message: |
             ### 📜 Changelog Preview
-            ${{ env.PREVIEW }}
+            ${{ steps.changelog.outputs.preview }}
 
   changelog-draft:
     if: github.event_name == 'pull_request'
