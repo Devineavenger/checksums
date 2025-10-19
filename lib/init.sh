@@ -26,7 +26,7 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Version: 3.2.0
 # Ensure the VERSION file exists at: $BASE_DIR/VERSION (e.g., /usr/local/share/checksums/VERSION)
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.0")""
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.0")"""
 
 # Executable name for usage output
 ME="$(basename "$0")"
