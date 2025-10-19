@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
+#
 # first_run.sh
 #
 # First-run verification logic and md5 verification helper.
-# Unmodified behavior relative to 2.2, except counters and verify-only awareness remain.
+# Modified to make first-run verification non-destructive:
+# - It only verifies and records directories that should be overwritten.
+# - Actual overwrites are scheduled in the global array first_run_overwrite
+#   and must be executed later (after user confirmation) by the orchestrator.
+#
+# Behavior preserved:
+# - Verification logs and FIRST_RUN_LOG entries remain unchanged.
+# - In verify-only or dry-run modes, no overwrites are performed; entries are logged/scheduled only.
+#
+# vX.Y (custom): first-run is read-only and schedules overwrites instead of running them immediately.
+
+# Ensure the scheduled-overwrite array exists (global)
+first_run_overwrite=()
 
 verify_md5_file() {
   local dir="$1"
@@ -71,7 +84,8 @@ first_run_verify() {
     return 0
   fi
 
-  FIRST_RUN_LOG="${TARGET_DIR%/}/first_run.log"
+  # FIRST_RUN_LOG was previously a separate file; keep existing behavior (detailed trace file).
+  FIRST_RUN_LOG="${TARGET_DIR%/}/${LOG_BASE:-$BASE_NAME}.run.log"
   : > "$FIRST_RUN_LOG"
   log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
   first_run_log "First-run start: base=$base  files: ${#targets[@]}"
@@ -83,11 +97,16 @@ first_run_verify() {
       first_run_log "Verified OK: $d"
       log "Verified OK: $d"
       count_verified=$((count_verified+1))
-      # On success, create meta/log using normal processing (unless dry-run or verify-only)
+      # On success, previously we created meta/log using normal processing.
+      # Now we schedule creation via the normal processing flow rather than executing it here.
       if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
         first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
       else
-        process_single_directory "$d"
+        # Schedule this directory for normal processing (if desired).
+        # Historically we called process_single_directory here; now we simply schedule it
+        # so the orchestrator can decide when to run it.
+        first_run_log "SCHEDULED: would create meta/log for $d"
+        first_run_overwrite+=("$d")
       fi
       continue
     fi
@@ -104,20 +123,21 @@ first_run_verify() {
         continue
         ;;
       overwrite)
-        # In verify-only mode, we cannot overwrite; record the intent but skip the write.
+        # Previously we would immediately overwrite. Now schedule overwrite instead.
         if [ "$VERIFY_ONLY" -eq 1 ]; then
           first_run_log "CHOICE overwrite suppressed in verify-only for $d"
           record_error "First-run: overwrite requested but skipped (verify-only) for $d"
           continue
         fi
-        first_run_log "CHOICE overwrite: recomputing checksums for $d"
-        log "Auto-overwrite: recomputing for $d"
+        first_run_log "CHOICE overwrite: scheduling recomputation for $d"
+        log "Scheduled auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
           first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
           log "DRYRUN: would overwrite $d/$MD5_FILENAME"
         else
-          process_single_directory "$d"
-          first_run_log "OVERWRITE completed for $d"
+          # Schedule the overwrite; the orchestrator will perform it after confirmation
+          first_run_overwrite+=("$d")
+          first_run_log "SCHEDULED OVERWRITE for $d"
           count_overwritten=$((count_overwritten+1))
         fi
         continue
@@ -142,8 +162,9 @@ first_run_verify() {
               if [ "$DRY_RUN" -eq 1 ]; then
                 first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
               else
-                process_single_directory "$d"
-                first_run_log "OVERWRITE completed for $d"
+                # Schedule the overwrite for later execution by the orchestrator
+                first_run_overwrite+=("$d")
+                first_run_log "SCHEDULED OVERWRITE for $d"
                 count_overwritten=$((count_overwritten+1))
               fi
               break

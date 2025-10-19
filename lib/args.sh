@@ -24,8 +24,8 @@ parse_args() {
       m) META_SIG_ALGO=$OPTARG ;;            # sha256, md5, or none
       l) LOG_BASE=$OPTARG ;;                 # base name for per-dir logs
       n) DRY_RUN=1 ;;                        # dry run (no writes)
-      d) ((DEBUG++)) ;;                      # debug (repeatable)
-      v) ((VERBOSE++)) ;;                    # verbose
+      d) DEBUG=$((DEBUG+1)) ;;               # debug (repeatable)
+      v) VERBOSE=$((VERBOSE+1)) ;;           # verbose
       r) FORCE_REBUILD=1 ;;                  # force rebuild ignoring manifests
       F) FIRST_RUN=1 ;;                      # first-run verification
       C) FIRST_RUN_CHOICE=$OPTARG ;;         # skip|overwrite|prompt

@@ -6,6 +6,14 @@
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
 # v2.4: switched from get_inode/get_dev/get_mtime/get_size to stat_field (unified abstraction).
 # v2.4: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available.
+# v2.6: fixes
+#   - Signature stability: pass meta lines to write_meta as individual args (not one giant string).
+#   - Syntax: fix mismatched braces in DRY_RUN block.
+#   - Robustness: initialize arrays in process_directories to avoid unbound variable errors.
+#
+# v2.7 (custom):
+#   - Side-effect-free planning function for pre-summary.
+#   - No skip logging in the decision loop (skip logs happen after confirmation in run_checksums).
 
 process_single_directory() {
   local d="$1"
@@ -31,13 +39,11 @@ process_single_directory() {
   fi
 
   # If meta exists, verify signature; otherwise ignore/force rebuild
-  if [ -f "$metaf" ]; then
-    if ! verify_meta_sig "$metaf"; then
-      record_error "Meta signature invalid for $metaf; ignoring meta and forcing rebuild"
-      # In verify-only mode, we don't delete or rewrite; just record error and continue
-      if [ "$VERIFY_ONLY" -eq 0 ]; then
-        rm -f -- "$metaf" 2>/dev/null || record_error "Could not remove invalid meta $metaf"
-      fi
+  if [ -f "$metaf" ] && ! verify_meta_sig "$metaf"; then
+    record_error "Meta signature invalid for $metaf; ignoring meta and forcing rebuild"
+    # In verify-only mode, we don't delete or rewrite; just record error and continue
+    if [ "$VERIFY_ONLY" -eq 0 ]; then
+      rm -f -- "$metaf" 2>/dev/null || record_error "Could not remove invalid meta $metaf"
     fi
   fi
 
@@ -74,6 +80,7 @@ process_single_directory() {
 
   local tmp_sum="${sumf}.tmp" tmp_meta="${metaf}.tmp"
   local -a files
+  # Collect candidate files (NUL-delimited), sort for stable order
   while IFS= read -r -d '' f; do files+=("$f"); done < <(find_file_expr "$d" | LC_ALL=C sort -z)
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -256,7 +263,8 @@ process_single_directory() {
         fname=$(basename "$fpath")
         h="${path_to_hash[$fpath]}"
         meta_line="${path_to_meta[$fpath]}"$'\t'"$h"
-        printf '%s  %s\n' "$h" "$fname" >> "$tmp_sum"
+        # Write filename with leading ./ to match standard md5sum format
+        printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
       done
     else
@@ -265,7 +273,8 @@ process_single_directory() {
         fname=$(basename "$fpath")
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
         meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"$h"
-        printf '%s  %s\n' "$h" "$fname" >> "$tmp_sum"
+        # Write filename with leading ./ to match standard md5sum format
+        printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
       done
       # cleanup temp maps
@@ -273,7 +282,15 @@ process_single_directory() {
     fi
 
     local lockfile="${metaf}${LOCK_SUFFIX}"
-    with_lock "$lockfile" write_meta "$metaf" "$(cat "$tmp_meta")"
+
+    # IMPORTANT: preserve line boundaries when passing meta entries to write_meta.
+    # Read tmp_meta into an array and expand as separate arguments.
+    local -a meta_lines=()
+    while IFS= read -r line; do
+      meta_lines+=("$line")
+    done < "$tmp_meta"
+
+    with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
     mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
     log "Wrote $sumf and $metaf"
   fi
@@ -287,39 +304,53 @@ process_single_directory() {
   LOG_FILEPATH=""
 }
 
-process_directories() {
+# Decide to_process and skipped without any side effects (no logging, no dir_log_skip).
+# Emits two temp files containing NUL-delimited directory paths.
+decide_directories_plan() {
   local base="$1"
-  cleanup_leftover_locks "$base"
-  local -a all_dirs to_process skipped
-  while IFS= read -r -d '' dd; do all_dirs+=("$dd"); done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
+  local plan_to_process_file="$2"
+  local plan_skipped_file="$3"
 
-  for d in "${all_dirs[@]}"; do
-    local base_name
+  : > "$plan_to_process_file"
+  : > "$plan_skipped_file"
+
+  # Collect all directories under base (sorted, NUL-delimited)
+  while IFS= read -r -d '' d; do
+    local base_name sumf metaf
     base_name=$(basename "$d")
-    case "$base_name" in .*) dbg "Skipping hidden $d"; skipped+=("$d"); continue ;; esac
-    local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME"
+    sumf="$d/$MD5_FILENAME"
+    metaf="$d/$META_FILENAME"
 
-    # Verify-only mode: we process every directory (but without writes) in process_single_directory
+    # Skip hidden folders
+    case "$base_name" in
+      .*) printf '%s\0' "$d" >> "$plan_skipped_file"; continue ;;
+    esac
+
+    # In verify-only, we process all (execution will avoid writes later)
     if [ "$VERIFY_ONLY" -eq 1 ]; then
-      to_process+=("$d")
+      printf '%s\0' "$d" >> "$plan_to_process_file"
       continue
     fi
 
     if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
       # If any file newer than sumfile, we need to process
-      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c 'test "{}" -nt "'"$sumf"'" && printf "%s\n" "{}" && exit 0' 2>/dev/null | grep -q .; then
-        dbg "Newer file detected in $d -> will process"; to_process+=("$d"); continue
+      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c 'test "{}" -nt "'"$sumf"'" && exit 0' 2>/dev/null; then
+        printf '%s\0' "$d" >> "$plan_to_process_file"
+        continue
       fi
+
       local fcount sumlines
       fcount=$(count_files "$d")
       sumlines=$(wc -l <"$sumf" 2>/dev/null || echo 0)
-      if [ "$fcount" -ne "$sumlines" ]; then dbg "Count mismatch in $d -> will process"; to_process+=("$d"); continue; fi
+      if [ "$fcount" -ne "$sumlines" ]; then
+        printf '%s\0' "$d" >> "$plan_to_process_file"
+        continue
+      fi
 
-      # Use meta to quickly determine unchanged directories
+      # Use meta to determine unchanged directories quickly
       if verify_meta_sig "$metaf"; then
         read_meta "$metaf"
         local changed=0
-        # For Bash < 4, re-read meta file directly to determine changes
         if [ "$USE_ASSOC" -eq 1 ]; then
           for p in "${!meta_mtime[@]}"; do
             if [ ! -e "$d/$p" ]; then changed=1; break; fi
@@ -334,18 +365,14 @@ process_directories() {
           done < "$metaf"
         fi
         if [ "$changed" -eq 0 ]; then
-          log "Skipping $d (manifest indicates up-to-date)"
-          count_skipped=$((count_skipped+1))
-          skipped+=("$d")
+          printf '%s\0' "$d" >> "$plan_skipped_file"
           continue
         fi
       fi
-      to_process+=("$d")
-    else
-      to_process+=("$d")
-    fi
-  done
 
-  log "Directories to process: ${#to_process[@]}"
-  for d in "${to_process[@]}"; do process_single_directory "$d"; done
+      printf '%s\0' "$d" >> "$plan_to_process_file"
+    else
+      printf '%s\0' "$d" >> "$plan_to_process_file"
+    fi
+  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
 }
