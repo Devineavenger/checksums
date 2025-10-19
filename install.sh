@@ -1,39 +1,50 @@
 #!/usr/bin/env bash
-# install.sh - installer for checksums v2.2
-# Copies the main script and libraries into a prefix (default /usr/local).
-# Adjusts BASE_DIR in the installed binary so it can find its lib/ and VERSION.
-# Also ensures --version works as expected.
+#
+# install.sh — Friendly installer for checksums v2.5
+#
+# This script installs the checksums tool into /usr/local/bin by default,
+# along with its supporting library files into /usr/local/share/checksums.
+# It provides clear messages, color output, and OS detection.
+#
+# Usage:
+#   ./install.sh            # install to /usr/local
+#   PREFIX=/opt ./install.sh  # install to /opt/bin and /opt/share/checksums
+#
 
-set -euo pipefail
+set -e
+
+# Colors for pretty output
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+RED="\033[0;31m"
+RESET="\033[0m"
 
 PREFIX=${PREFIX:-/usr/local}
 BINDIR="$PREFIX/bin"
 LIBDIR="$PREFIX/share/checksums"
-VERSION_FILE="VERSION"
 
-echo "Installing checksums into $PREFIX ..."
+echo -e "${YELLOW}==> Installing checksums v2.5${RESET}"
+echo "Target prefix: $PREFIX"
 
 # Ensure directories exist
+echo -e "${YELLOW}==> Creating directories${RESET}"
 mkdir -p "$BINDIR" "$LIBDIR"
 
-# Copy main executable
+# Install main script
+echo -e "${YELLOW}==> Installing main script to $BINDIR${RESET}"
 install -m 0755 checksums.sh "$BINDIR/checksums"
 
-# Copy libraries and version file
-rsync -a lib/ "$LIBDIR/lib/"
-install -m 0644 "$VERSION_FILE" "$LIBDIR/"
+# Install library files
+echo -e "${YELLOW}==> Installing library files to $LIBDIR${RESET}"
+install -m 0644 lib/*.sh "$LIBDIR"
 
-# Patch the BASE_DIR in the installed script to point to LIBDIR
-# This ensures the installed binary always sources the right lib/ and VERSION
-sed -i.bak "s|^BASE_DIR=.*|BASE_DIR=\"$LIBDIR\"|" "$BINDIR/checksums"
-rm -f "$BINDIR/checksums.bak"
+# Detect OS for friendly message
+OS="$(uname -s)"
+case "$OS" in
+  Darwin) echo -e "${GREEN}✔ Installed on macOS${RESET}" ;;
+  Linux)  echo -e "${GREEN}✔ Installed on Linux${RESET}" ;;
+  *)      echo -e "${GREEN}✔ Installed on $OS${RESET}" ;;
+esac
 
-echo "Installed:"
-echo "  - Executable: $BINDIR/checksums"
-echo "  - Libraries:  $LIBDIR/lib/"
-echo "  - Version:    $LIBDIR/$VERSION_FILE"
-
-# Quick smoke test: print version
-echo
-echo "Verifying installation..."
-"$BINDIR/checksums" --version || true
+echo -e "${GREEN}==> Installation complete!${RESET}"
+echo "Run 'checksums --help' to get started."

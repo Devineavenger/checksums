@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Bats (for tests)
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck
+
+      - name: Run pre-flight checks
+        run: make check
+
+      - name: Capture changelog preview
+        id: changelog
+        run: |
+          echo "PREVIEW<<EOF" >> $GITHUB_ENV
+          make changelog >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Comment changelog on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: changelog-preview
+          message: |
+            ### 📜 Changelog Preview
+            ${{ env.PREVIEW }}
+
+  changelog-draft:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck
+
+      - name: Generate draft changelog
+        run: make changelog-draft
+
+      - name: Commit draft changelog
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update CHANGELOG.md with draft entries"
+          branch: ${{ github.head_ref }}

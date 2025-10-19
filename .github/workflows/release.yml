@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # triggers on tags like v2.6.0, v3.0.0-rc1, etc.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # important so git history & tags are available
+
+      - name: Set up dependencies
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make
+
+      - name: Extract version from tag
+        id: vars
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Run release script
+        run: ./release.sh ${{ steps.vars.outputs.version }}
+
+      - name: Push updated CHANGELOG.md and VERSION
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: finalize release v${{ steps.vars.outputs.version }}"
+          branch: main
+          file_pattern: CHANGELOG.md VERSION checksums.sh
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-${{ steps.vars.outputs.version }}
+          path: dist/checksums-${{ steps.vars.outputs.version }}.tar.gz
