@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# planner.sh
+# shellcheck source=lib/init.sh
+# shellcheck source=lib/meta.sh
+# shellcheck source=lib/stat.sh
+# shellcheck source=lib/fs.sh
+#
+# Planning functions: quick preview and full accurate planning.
+# Extracted from checksums.sh v2.12.5.
+#
+# ---------------------------------------------------------------------
+# Quick preview planner
+# Very fast, minimal I/O: enumerates directories, skips hidden ones,
+# but avoids heavy checks (no meta verification, no stat loops).
+# Used to present an immediate preview to the user before confirmation.
+# ---------------------------------------------------------------------
+
+decide_quick_plan() {
+  local base="$1" out_proc="$2" out_skipped="$3"
+  : > "$out_proc"
+  : > "$out_skipped"
+
+  while IFS= read -r -d '' d; do
+    local bn
+    bn=$(basename "$d")
+    # Hidden folders are considered skipped for preview
+    case "$bn" in
+      .*) printf '%s\0' "$d" >> "$out_skipped"; continue ;;
+    esac
+    # For quick preview we classify everything as to_process except hidden ones.
+    printf '%s\0' "$d" >> "$out_proc"
+  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
+}
+
+# ---------------------------------------------------------------------
+# Full planner (side-effect-free): accurate decisions, may be slow.
+# Builds NUL-delimited lists of to-process and skipped directories.
+# ---------------------------------------------------------------------
+
+decide_directories_plan() {
+  local base="$1"
+  local plan_to_process_file="$2"
+  local plan_skipped_file="$3"
+
+  : > "$plan_to_process_file"
+  : > "$plan_skipped_file"
+
+  # Collect all directories under base (sorted, NUL-delimited)
+  while IFS= read -r -d '' d; do
+    local base_name sumf metaf
+    base_name=$(basename "$d")
+    sumf="$d/$MD5_FILENAME"
+    metaf="$d/$META_FILENAME"
+
+    # Skip hidden folders
+    case "$base_name" in
+      .*) printf '%s\0' "$d" >> "$plan_skipped_file"; continue ;;
+    esac
+
+    # In verify-only, treat as processed (execution will avoid writes)
+    if [ "$VERIFY_ONLY" -eq 1 ]; then
+      printf '%s\0' "$d" >> "$plan_to_process_file"
+      continue
+    fi
+
+    if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
+      # If any file newer than sumfile, we need to process
+      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c 'test "{}" -nt "'"$sumf"'" && exit 0' 2>/dev/null; then
+        printf '%s\0' "$d" >> "$plan_to_process_file"
+        continue
+      fi
+
+      local fcount sumlines
+      fcount=$(count_files "$d")
+      sumlines=$(wc -l <"$sumf" 2>/dev/null || echo 0)
+      if [ "$fcount" -ne "$sumlines" ]; then
+        printf '%s\0' "$d" >> "$plan_to_process_file"
+        continue
+      fi
+
+      # Use meta to determine unchanged directories quickly
+      if verify_meta_sig "$metaf"; then
+        read_meta "$metaf"
+        local changed=0
+        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+          # Guard loop to avoid referencing undefined arrays; meta_mtime/meta_size are associative arrays when available
+          # shellcheck disable=SC2154  # meta_mtime/meta_size are defined in init.sh and populated by read_meta
+          if [ "${#meta_mtime[@]}" -gt 0 ]; then
+            for p in "${!meta_mtime[@]}"; do
+              if [ ! -e "$d/$p" ]; then changed=1; break; fi
+              if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]:-}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]:-}" ]; then changed=1; break; fi
+            done
+          fi
+        else
+          while IFS=$'\t' read -r path _inode _dev mtime size _hash; do
+            [ -z "$path" ] && continue
+            case "$path" in \#meta|\#sig|\#run) continue ;; esac
+            if [ ! -e "$d/$path" ]; then changed=1; break; fi
+            if [ "$(stat_field "$d/$path" mtime)" != "$mtime" ] || [ "$(stat_field "$d/$path" size)" != "$size" ]; then changed=1; break; fi
+          done < "$metaf"
+        fi
+        if [ "$changed" -eq 0 ]; then
+          printf '%s\0' "$d" >> "$plan_skipped_file"
+          continue
+        fi
+      fi
+
+      printf '%s\0' "$d" >> "$plan_to_process_file"
+    else
+      printf '%s\0' "$d" >> "$plan_to_process_file"
+    fi
+  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
+}

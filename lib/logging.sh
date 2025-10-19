@@ -1,32 +1,21 @@
 #!/usr/bin/env bash
 # logging.sh
 #
-# Provides logging utilities for the checksums tool.
-# Supports multiple formats (text, JSON, CSV), error recording,
-# per-run and per-directory logs, rotation with pruning, and audit trail headers.
+# Centralized logging utilities used by the tool.
 #
-# v2.1: Added structured logs (JSON/CSV) and rotation.
-# v2.2: Added audit trail run ID headers.
-# v2.3: Rotation kept only 2 old logs (instead of 5).
-# v2.6: Unified verbosity handling via log_level (0–3).
-# v2.7: Rotation hardening (basename-only, prune always, keep 3).
-# v2.8: Explicit logging when FIRST_RUN=1 (console+dir logs).
-# v2.9: dir_log_append helper for lightweight per-directory notes (append-only).
-# v2.11 (custom): Harden rotate_log() prune to only delete regular rotated files.
-# v2.12 (custom): Guard FIRST_RUN header to avoid duplicate first-run entries.
+# Capabilities:
+#  - numeric verbosity levels (0 ERROR, 1 INFO, 2 VERBOSE, 3 DEBUG)
+#  - console output formats: text (default), json, csv
+#  - per-run and per-dir log file writing; rotation handled in rotate_log
+#  - recording and aggregating errors for a final summary
+#
+# Implementation notes:
+#  - _global_log manages both console output (subject to LOG_FORMAT) and
+#    optional file output if LOG_FILEPATH is set.
+#  - Wrappers log/vlog/dbg/fatal provide convenient level-specific calls.
 
-CSV_HEADER_PRINTED=0   # Tracks whether CSV header has been printed for CSV console output
-
-# Guard so FIRST_RUN header is emitted to FIRST_RUN_LOG only once per run
-FIRST_RUN_LOGGED=0
-
-# --------------------------------------------------------------------
-# Logging levels (numeric):
-#   0 = ERROR   (always shown to stderr in text mode)
-#   1 = INFO    (default level, normal messages)
-#   2 = VERBOSE (shown when -v is passed)
-#   3 = DEBUG   (shown when -d is passed)
-# --------------------------------------------------------------------
+CSV_HEADER_PRINTED=0   # track CSV header printed to console output
+FIRST_RUN_LOGGED=0     # avoid writing FIRST_RUN header more than once per run
 
 _global_log() {
   local level="$1"; shift
@@ -64,35 +53,35 @@ _global_log() {
     esac
   fi
 
+  # Append to log file if set. We intentionally write a compact, human-readable form.
   if [ -n "${LOG_FILEPATH:-}" ]; then
     printf '%s [%d] %s\n' "$ts" "$level" "$msg" >> "$LOG_FILEPATH"
   fi
 }
 
-# Wrappers
+# Convenience wrappers for common log levels
 log()    { _global_log 1 "$*"; }
 vlog()   { _global_log 2 "$*"; }
 dbg()    { _global_log 3 "$*"; }
 fatal()  { _global_log 0 "$*"; exit 1; }
 
 record_error() {
+  # Add an error to the in-memory errors array and increment the error counter.
   errors+=("$*")
   count_errors=$((count_errors+1))
   _global_log 0 "$*"
 }
 
-# --------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------
-
+# first_run_log writes detailed first-run traces into the FIRST_RUN_LOG file.
 first_run_log() {
   local msg="$*"
   local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   [ -n "${FIRST_RUN_LOG:-}" ] && printf '%s %s\n' "$ts" "$msg" >> "$FIRST_RUN_LOG"
 }
 
-# Append-only helper (used for verify-only traces etc.)
 dir_log_append() {
+  # Lightweight append-only helper for directory-level notes. Ensures a run header
+  # exists in the file and then appends the message.
   local dir="$1"; shift
   local msg="$*"
   local logfile="$dir/$LOG_FILENAME"
@@ -103,8 +92,9 @@ dir_log_append() {
   printf '%s %s\n' "$ts" "$msg" >> "$logfile"
 }
 
-# Full skip helper: rotate, truncate, header, then write context + skip line
 dir_log_skip() {
+  # When a directory is determined to be up-to-date, rotate/truncate its log
+  # and write a short skip notice so operators can see which directories were skipped.
   local dir="$1"
   local sumf="$dir/$MD5_FILENAME"
   local metaf="$dir/$META_FILENAME"
@@ -123,6 +113,8 @@ dir_log_skip() {
 }
 
 rotate_log() {
+  # Rotate the given logfile by moving it to <logfile>.<timestamp>.
+  # Then prune older rotated files, keeping only the newest two rotated files.
   local logfile="$1"
   local dir base ts
   dir=$(dirname -- "$logfile")
@@ -136,17 +128,16 @@ rotate_log() {
 
   (
     cd -- "$dir" || exit 0
-    # Hardened prune: only consider regular files matching "$base.*"; keep newest two; delete older.
+    # Preferred path: use find -printf to produce sortable timestamps when available.
     if find . -maxdepth 1 -type f -name "$base.*" -printf "%T@ %p\n" >/dev/null 2>&1; then
       find . -maxdepth 1 -type f -name "$base.*" -printf "%T@ %p\n" 2>/dev/null \
         | LC_ALL=C sort -r -n \
         | awk 'NR>=3 {print $2}' \
         | xargs -r -- rm -f --
     else
-      # Portable fallback without -printf: use find + stat to build sortable list safely
-    find . -maxdepth 1 -type f -name "$base.*" 2>/dev/null \
+      # Portable fallback when -printf isn't available: use stat to build sortable pairs.
+      find . -maxdepth 1 -type f -name "$base.*" 2>/dev/null \
       | while IFS= read -r f; do
-          # fallback: use file modification time via stat if available; print "<mtime> <file>"
           if stat --version >/dev/null 2>&1; then
             printf '%s\t%s\n' "$(stat -c %Y -- "$f" 2>/dev/null)" "$f"
           else
@@ -160,11 +151,12 @@ rotate_log() {
 }
 
 log_run_header() {
+  # Write an audit header into logfile with run id and optional FIRST_RUN marker.
   local logfile="$1"
   local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   printf '#run\t%s\t%s\n' "${RUN_ID:-unknown}" "$ts" >> "$logfile"
 
-  # Emit FIRST_RUN header and record into FIRST_RUN_LOG only once per run.
+  # Emit FIRST_RUN header once per run if requested.
   if [ "${FIRST_RUN:-0}" -eq 1 ] && [ "${FIRST_RUN_LOGGED:-0}" -eq 0 ]; then
     printf '#first_run\t%s\n' "$ts" >> "$logfile"
     _global_log 1 "FIRST_RUN=1: initializing fresh manifests"

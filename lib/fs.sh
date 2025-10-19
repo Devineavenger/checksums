@@ -3,52 +3,49 @@
 #
 # Filesystem helpers: exclusions, discovery, cleanup, and simple counts.
 #
-# v2.3: Added INCLUDE_PATTERNS and EXCLUDE_PATTERNS support (shell glob patterns).
-# v2.6: Hardened exclusions:
-#       - Exclude the main .log file
-#       - Exclude rotated logs like "<BASE>.log.YYYYMMDD-HHMMSS"
-#       - Exclude run logs "*.run.log"
-#       - Use basenames only to avoid find(1) warnings
+# Responsibilities:
+#  - build_exclusions: create safe basename-only exclusion values
+#  - find_file_expr: enumerate candidate files for checksumming with built-in
+#    and configurable exclusions; emits NUL-delimited results for safe parsing
+#  - cleanup_leftover_locks: remove stale lock files left by earlier runs
+#  - count_files: quick count of candidate files in a directory
+#
+# Implementation notes:
+#  - All comparisons are done on basenames where possible to avoid find(1) warnings
+#  - We intentionally emit NUL-delimited paths so filenames with newlines are handled
+#  - INCLUDE_PATTERNS and EXCLUDE_PATTERNS accept shell globs and are applied
+#    using [[ .. == pattern ]] so they support basic globbing semantics
 
-# --------------------------------------------------------------------
-# _safe_name STRING
-# Returns STRING if non-empty, otherwise a dummy pattern that will
-# never match. Prevents accidental empty -name "" in find.
-# --------------------------------------------------------------------
 _safe_name() {
+  # Return a safe non-matching name if input empty to prevent accidental
+  # -name "" constructs in find which can produce warnings or unintended matches.
   local n="$1"
   [ -n "$n" ] && printf '%s' "$n" || printf '%s' '__DO_NOT_MATCH__'
 }
 
-# --------------------------------------------------------------------
-# build_exclusions
-# Sets up exclusion variables for generated files so they are not
-# included in checksum manifests.
-# Must be called after parse_args has set MD5_FILENAME, META_FILENAME,
-# LOG_FILENAME, LOG_BASE, etc.
-# --------------------------------------------------------------------
 build_exclusions() {
-  # Always strip directory components so we only compare basenames
+  # Strip directory components so only basenames are compared in find expressions.
+  # This mirrors original behavior which avoided full-path matches for rotated logs.
   MD5_EXCL=$(_safe_name "$(basename "$MD5_FILENAME")")
   META_EXCL=$(_safe_name "$(basename "$META_FILENAME")")
   LOG_EXCL=$(_safe_name "$(basename "$LOG_FILENAME")")
   ALT_LOG_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.log")"
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
+  # Note: we intentionally don't export these; modules run in same shell so globals suffice.
 }
 
-# --------------------------------------------------------------------
-# Arrays of include/exclude patterns (glob or regex-like via [[ ]]).
-# These can be set via config file or environment before running.
-# --------------------------------------------------------------------
+# Default pattern arrays exist in defaults.sh but we also declare here for safety.
 declare -a INCLUDE_PATTERNS=()
 declare -a EXCLUDE_PATTERNS=()
 
-# --------------------------------------------------------------------
-# find_file_expr DIR
-# Emits (NUL-delimited) the list of files in DIR that should be
-# checksummed, applying built-in exclusions and user patterns.
-# --------------------------------------------------------------------
 find_file_expr() {
+  # Emit NUL-delimited list of regular files in the provided directory that are
+  # candidates for inclusion in the per-directory checksum manifest.
+  # Exclusions applied:
+  #  - common OS metadata files (.DS_Store, Apple resource forks)
+  #  - tool-generated artifacts like .md5/.meta/.log and rotated logs
+  #  - user-supplied EXCLUDE_PATTERNS (applied to the basename)
+  #  - if INCLUDE_PATTERNS is non-empty, only matching basenames are allowed
   local d="$1"
   find "$d" -maxdepth 1 -type f \
     ! -name '.DS_Store' ! -name '._*' \
@@ -63,7 +60,7 @@ find_file_expr() {
       local fname; fname=$(basename "$f")
       local skip=0
 
-      # Apply exclude patterns first
+      # Apply exclude patterns first; these are shell globs evaluated with [[ .. == pattern ]]
       if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
         for pat in "${EXCLUDE_PATTERNS[@]}"; do
           # shellcheck disable=SC2053
@@ -71,7 +68,7 @@ find_file_expr() {
         done
       fi
 
-      # Apply include patterns only if any are defined
+      # If include patterns are defined, require a match (after exclusions)
       if [ "$skip" -eq 0 ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
         local match=0
         for pat in "${INCLUDE_PATTERNS[@]}"; do
@@ -81,16 +78,15 @@ find_file_expr() {
         [ "$match" -eq 0 ] && skip=1
       fi
 
-      # Emit file if not skipped
+      # Emit file path only if it survives all filters
       [ "$skip" -eq 0 ] && printf '%s\0' "$f"
     done
 }
 
-# --------------------------------------------------------------------
-# cleanup_leftover_locks DIR
-# Removes stale .meta.lock files (empty or older than 1 day).
-# --------------------------------------------------------------------
 cleanup_leftover_locks() {
+  # Removes stale .meta.lock or similarly suffixed lock files that are either
+  # empty or older than one day (mtime +0). This is a best-effort cleanup:
+  # don't fail the run if removal fails.
   local base_dir="$1"
   find "$base_dir" -type f -name "*${LOCK_SUFFIX}" -print0 2>/dev/null \
     | while IFS= read -r -d '' lf; do
@@ -103,10 +99,8 @@ cleanup_leftover_locks() {
       done
 }
 
-# --------------------------------------------------------------------
-# count_files DIR
-# Returns the number of candidate files in DIR.
-# --------------------------------------------------------------------
 count_files() {
+  # Count number of candidate files returned by find_file_expr.
+  # We count NUL separators because find_file_expr emits NUL-delimited entries.
   find_file_expr "$1" | tr -cd '\0' | wc -c
 }
