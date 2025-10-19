@@ -8,38 +8,51 @@ verify_md5_file() {
   local sumf="$dir/$MD5_FILENAME"
   [ -f "$sumf" ] || return 2
   dbg "Verifying $sumf"
+
   if command -v md5sum >/dev/null 2>&1; then
+    # Try GNU md5sum check first
     if md5sum --check --status "$sumf" >/dev/null 2>&1; then
       return 0
-    else
-      if [ -n "$FIRST_RUN_LOG" ]; then
-        printf '---- md5sum --check output for %s ----\n' "$sumf" >> "$FIRST_RUN_LOG"
-        md5sum --check "$sumf" >> "$FIRST_RUN_LOG" 2>&1 || true
-        printf '---- end md5sum output for %s ----\n\n' "$sumf" >> "$FIRST_RUN_LOG"
-      fi
-      return 1
     fi
+    # If that fails, fall back to parsing manually (handles BSD format too)
+  fi
+
+  local missing=0 bad=0 expected fname actual
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+
+    case "$entry" in
+      MD5*\=*)  # BSD/macOS format: MD5 (filename) = hash
+        fname=$(printf '%s' "$entry" | sed -E 's/^MD5 \((.*)\) = .*/\1/')
+        expected=$(printf '%s' "$entry" | awk '{print $NF}')
+        ;;
+      *)        # Assume GNU format: hash␣␣filename
+        expected=$(printf '%s' "$entry" | awk '{print $1}')
+        fname=$(printf '%s' "$entry" | awk '{$1=""; sub(/^ +/,""); print}')
+        ;;
+    esac
+
+    local fpath="$dir/$fname"
+    if [ ! -e "$fpath" ]; then
+      missing=1
+      [ -n "$FIRST_RUN_LOG" ] && printf 'MISSING: %s\n' "$fpath" >> "$FIRST_RUN_LOG"
+      continue
+    fi
+
+    actual=$(file_hash "$fpath" "md5")
+    if [ "$actual" != "$expected" ]; then
+      bad=1
+      [ -n "$FIRST_RUN_LOG" ] && \
+        printf 'MISMATCH %s: expected %s actual %s\n' "$fname" "$expected" "$actual" >> "$FIRST_RUN_LOG"
+    fi
+  done < "$sumf"
+
+  if [ "$missing" -eq 0 ] && [ "$bad" -eq 0 ]; then
+    return 0
+  elif [ "$missing" -ne 0 ]; then
+    return 2
   else
-    # emulate when md5sum not available (macOS md5)
-    local missing=0 bad=0 expected fname actual
-    while IFS= read -r entry; do
-      [ -z "$entry" ] && continue
-      expected=$(printf '%s' "$entry" | awk '{print $1}')
-      fname=$(printf '%s' "$entry" | awk '{$1=""; sub(/^ +/,""); print}')
-      local fpath="$dir/$fname"
-      if [ ! -e "$fpath" ]; then
-        missing=1
-        [ -n "$FIRST_RUN_LOG" ] && printf 'MISSING: %s\n' "$fpath" >> "$FIRST_RUN_LOG"
-        continue
-      fi
-      actual=$(file_hash "$fpath" "md5")
-      if [ "$actual" != "$expected" ]; then
-        bad=1
-        [ -n "$FIRST_RUN_LOG" ] && printf 'MISMATCH %s: expected %s actual %s\n' "$fname" "$expected" "$actual" >> "$FIRST_RUN_LOG"
-      fi
-    done < "$sumf"
-    [ "$missing" -eq 0 ] && [ "$bad" -eq 0 ]
-    return $(( missing || bad ))
+    return 1
   fi
 }
 

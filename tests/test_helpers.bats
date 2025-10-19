@@ -30,7 +30,35 @@ teardown() {
 @test "verify_md5_file returns 0 for valid file" {
   # Create a .md5 file
   md5=$(file_hash "$TMPDIR/file.txt" md5)
+  echo "$md5 file.txt" > "$TMPDIR/#####checksums#####.md5"
+  run verify_md5_file "$TMPDIR" 
+  [ "$status" -eq 0 ]
+}
+
+@test "verify_md5_file returns 1 for mismatch" {
+  md5=$(file_hash "$TMPDIR/file.txt" md5)
   echo "$md5  file.txt" > "$TMPDIR/#####checksums#####.md5"
+  # Corrupt the file
+  echo "different content" > "$TMPDIR/file.txt"
+
+  run verify_md5_file "$TMPDIR"
+  [ "$status" -eq 1 ]
+}
+
+@test "verify_md5_file returns 2 for missing checksum file" {
+  # Remove any existing .md5 file
+  rm -f "$TMPDIR/#####checksums#####.md5"
+
+  run verify_md5_file "$TMPDIR"
+  [ "$status" -eq 2 ]
+}
+
+@test "verify_md5_file handles BSD/macOS style checksum file" {
+  md5=$(file_hash "$TMPDIR/file.txt" md5)
+  # BSD format: MD5 (filename) = hash
+  echo "MD5 (file.txt) = $md5" > "$TMPDIR/#####checksums#####.md5"
+
   run verify_md5_file "$TMPDIR"
   [ "$status" -eq 0 ]
 }
+
