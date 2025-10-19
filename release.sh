@@ -7,19 +7,20 @@
 #
 # This script:
 #   1. Updates the VERSION file
-#   2. Updates the version header in checksums.sh
-#   3. Updates the version header AND fallback in lib/init.sh
+#   2. Updates the version header in checksums.sh (if present)
+#   3. Updates the version header and fallback in lib/init.sh (safely)
 #   4. Promotes the [Unreleased] section in CHANGELOG.md
 #   5. Builds the dist tarball
 #   6. Commits and tags the release
 #   7. Pushes branch and tag to origin
 #   8. Optionally creates a GitHub Release via API and uploads the tarball
 #
-# Notes on init.sh update:
-#   - It updates the header line starting with "# Version:" to the new version.
-#   - It also updates the fallback echo in: VER="$(cat "$BASE_DIR/VERSION" ... || echo "X.Y.Z")"
-#     so that if VERSION is missing, the fallback matches the new release.
-
+# Safety notes:
+#   - lib/init.sh is edited with targeted sed replacements that only change
+#     the header and the numeric fallback inside the VER= line, preserving quoting.
+#   - A shell syntax check (bash -n) runs after edits; if it fails, changes are rolled back.
+#   - The script creates .bak backups before in-place edits.
+#
 set -euo pipefail
 
 NEW_VER="${1:-}"
@@ -46,48 +47,56 @@ fi
 echo "==> Releasing version $NEW_VER"
 
 # Step 1: update VERSION file
-echo "$NEW_VER" > VERSION
+printf '%s\n' "$NEW_VER" > VERSION
 git add VERSION
 
 # Step 2: update version string in checksums.sh header (if present)
 if [ -f checksums.sh ]; then
+  echo "==> Updating checksums.sh header to ${NEW_VER}"
   if grep -q '^# Version:' checksums.sh; then
     sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" checksums.sh
     rm -f checksums.sh.bak
   else
-    awk -v new="# Version: ${NEW_VER}" 'NR==2{print;print new;next}1' \
-      checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
+    awk -v new="# Version: ${NEW_VER}" 'NR==1{print;print new;next}1' checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
   fi
   git add checksums.sh
 fi
 
-# Step 3: update version header AND fallback in lib/init.sh
+# Step 3: safely update lib/init.sh header and VER fallback
 if [ -f lib/init.sh ]; then
-  echo "==> Updating lib/init.sh version header and fallback"
+  echo "==> Updating lib/init.sh header and VER fallback to ${NEW_VER}"
   cp lib/init.sh lib/init.sh.bak
 
-  # Update "# Version: ..." header
+  # 3a: update or insert header line "# Version: X.Y.Z"
   if grep -q '^# Version:' lib/init.sh; then
-    sed 's/^# Version:.*/# Version: '"${NEW_VER}"'/' lib/init.sh.bak > lib/init.sh.tmp.header || true
+    sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" lib/init.sh
   else
-    # Insert header after the shebang line if missing
-    awk -v new="# Version: ${NEW_VER}" 'NR==1{print;print new;next}1' lib/init.sh.bak > lib/init.sh.tmp.header
+    # Insert header after shebang (line 1)
+    awk -v v="${NEW_VER}" 'NR==1{print; print "# Version: " v; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
-  # Update VER fallback: VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "X.Y.Z")"
-  # Replace the string inside echo "..." with NEW_VER, preserving the rest
-  awk -v ver="${NEW_VER}" '
-    {
-      if ($0 ~ /VER=.*echo[[:space:]]*\"[^\"]*\"[[:space:]]*\)/) {
-        # Replace only the fallback number inside the echo "..."
-        gsub(/VER=.*echo[[:space:]]*\"[0-9]+\.[0-9]+\.[0-9]+\"[[:space:]]*\)/,
-             "VER=\"$(cat \"$BASE_DIR/VERSION\" 2>/dev/null || echo \"" ver "\")\"")
-      }
-      print
-    }
-  ' lib/init.sh.tmp.header > lib/init.sh
+  # 3b: replace only the numeric fallback inside the VER=... echo fallback
+  # Matches the numeric x.y.z inside the echo "..." and leaves quoting intact.
+  # If multiple matches exist, this replaces the first occurrence.
+  if grep -q 'VER=.*echo' lib/init.sh; then
+    sed -i.bak -E '0,/VER=.*echo/{
+      s@(VER=.*echo[[:space:]]*")[0-9]+\.[0-9]+\.[0-9]+(".*)@\1'"${NEW_VER}"'\2@
+    }' lib/init.sh
+  else
+    # If no VER line with echo fallback found, append a safe fallback replacement near top.
+    # This is conservative: do not attempt complex rewrites.
+    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"$(cat \"$BASE_DIR/VERSION\" 2>/dev/null || echo \"" v "\")\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+  fi
 
-  rm -f lib/init.sh.bak lib/init.sh.tmp.header
+  # 3c: validate syntax; roll back on failure
+  if ! bash -n lib/init.sh; then
+    echo "ERROR: lib/init.sh has syntax errors after edit; restoring backup"
+    mv lib/init.sh.bak lib/init.sh
+    rm -f lib/init.sh.bak
+    exit 1
+  fi
+
+  rm -f lib/init.sh.bak
   git add lib/init.sh
 else
   echo "==> lib/init.sh not found; skipping init version update"
@@ -101,14 +110,9 @@ if [ -f CHANGELOG.md ] && grep -q '^##
 \[Unreleased\]
 
 ' CHANGELOG.md 2>/dev/null; then
-  echo "==> Promoting [Unreleased] to v$NEW_VER and reinserting new [Unreleased]"
+  echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
   awk -v ver="$NEW_VER" -v date="$DATE" '
-    BEGIN { inserted_top = 0; promoted = 0 }
-    NR == 1 && inserted_top == 0 {
-      print "## [Unreleased]"
-      print ""
-      inserted_top = 1
-    }
+    BEGIN { promoted = 0 }
     promoted == 0 && index($0, "## [Unreleased]") == 1 {
       print "## v" ver " - " date
       promoted = 1
@@ -117,11 +121,11 @@ if [ -f CHANGELOG.md ] && grep -q '^##
     { print }
   ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
 else
-  echo "==> No [Unreleased] section found, creating new entry"
+  echo "==> No [Unreleased] section found, creating new entries"
   {
     echo "## [Unreleased]"
     echo ""
-    echo "## v$NEW_VER - $DATE"
+    echo "## v${NEW_VER} - ${DATE}"
     echo ""
     git log --pretty=format:"* %s" --no-merges
     echo ""
@@ -159,14 +163,14 @@ git tag -a "v${NEW_VER}" -m "Release v${NEW_VER}"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   RELEASE_BRANCH="release/v${NEW_VER}"
-  echo "==> Detached HEAD detected; creating branch $RELEASE_BRANCH from current commit"
-  git checkout -b "$RELEASE_BRANCH"
-  CURRENT_BRANCH="$RELEASE_BRANCH"
+  echo "==> Detached HEAD detected; creating branch ${RELEASE_BRANCH} from current commit"
+  git checkout -b "${RELEASE_BRANCH}"
+  CURRENT_BRANCH="${RELEASE_BRANCH}"
 fi
 
 # Step 7: push commit and tag to origin
-echo "==> Pushing commit and tag to origin (branch: $CURRENT_BRANCH)"
-git push origin "$CURRENT_BRANCH"
+echo "==> Pushing commit and tag to origin (branch: ${CURRENT_BRANCH})"
+git push origin "${CURRENT_BRANCH}"
 git push origin "v${NEW_VER}"
 
 # Step 8: generate grouped changelog notes for GitHub release
@@ -177,7 +181,7 @@ add_section() {
   local type="$1"
   local title="$2"
   local entries
-  entries=$(git log "$LAST_TAG"..HEAD --grep="^$type" --pretty=format:"* %s" --no-merges || true)
+  entries=$(git log "${LAST_TAG}"..HEAD --grep="^${type}" --pretty=format:"* %s" --no-merges || true)
   if [ -n "$entries" ]; then
     CHANGELOG="${CHANGELOG}\n### ${title}\n${entries}\n"
   fi
@@ -196,7 +200,7 @@ add_section "refactor:" "Refactoring"
 add_section "test:" "Tests"
 
 if [ -z "$CHANGELOG" ]; then
-  CHANGELOG=$(git log "$LAST_TAG"..HEAD --pretty=format:"* %s" --no-merges)
+  CHANGELOG=$(git log "${LAST_TAG}"..HEAD --pretty=format:"* %s" --no-merges)
 fi
 
 # Step 9: create GitHub release via REST API if token present and upload artifact
@@ -256,8 +260,8 @@ EOF
   fi
 else
   echo "==> No GH_TOKEN/GITHUB_TOKEN provided; skipping API release step"
-  echo "Changelog for v$NEW_VER:"
+  echo "Changelog for v${NEW_VER}:"
   printf "%b\n" "$CHANGELOG"
 fi
 
-echo "✅ Release $NEW_VER complete"
+echo "✅ Release ${NEW_VER} complete"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.2.1
+# Version: 3.2.2
 #
 # init.sh
 #
@@ -24,10 +24,9 @@ shopt -s nullglob
 # This works both for local checkout (./lib) and system installs (/usr/local/share/checksums/lib).
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Version: 3.2.1
 # Ensure the VERSION file exists at: $BASE_DIR/VERSION (e.g., /usr/local/share/checksums/VERSION)
-# Version: 3.2.1
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.1")""
+# Version: 3.2.2
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.2")"
 
 
 # Executable name for usage output
