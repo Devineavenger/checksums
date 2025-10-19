@@ -23,10 +23,13 @@ jobs:
         id: changelog
         run: |
           {
-            echo "PREVIEW<<EOF"
+            echo 'PREVIEW<<EOF'
             make changelog
             echo EOF
           } >> "$GITHUB_ENV"
+          
+      - name: Debug PREVIEW
+        run: echo "$PREVIEW"
 
       - name: Comment changelog on PR
         if: github.event_name == 'pull_request'
