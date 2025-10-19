@@ -143,13 +143,18 @@ rotate_log() {
         | awk 'NR>=3 {print $2}' \
         | xargs -r -- rm -f --
     else
-      # Portable fallback without -printf
-      # List matching files sorted by time; remove beyond top 2. Guard with -f.
-      ls -1t -- "$base".* 2>/dev/null \
-        | awk 'NR>=3' \
-        | while IFS= read -r f; do
-            [ -f "$f" ] && rm -f -- "$f"
-          done
+      # Portable fallback without -printf: use find + stat to build sortable list safely
+    find . -maxdepth 1 -type f -name "$base.*" 2>/dev/null \
+      | while IFS= read -r f; do
+          # fallback: use file modification time via stat if available; print "<mtime> <file>"
+          if stat --version >/dev/null 2>&1; then
+            printf '%s\t%s\n' "$(stat -c %Y -- "$f" 2>/dev/null)" "$f"
+          else
+            printf '%s\t%s\n' "$(stat -f %m -- "$f" 2>/dev/null)" "$f"
+          fi
+      done | LC_ALL=C sort -r -n | awk -F'\t' 'NR>=3 {print $2}' | while IFS= read -r f; do
+          [ -f "$f" ] && rm -f -- "$f"
+        done
     fi
   )
 }

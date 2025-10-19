@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 2.12.0
+# Version: 2.12.1
 
 #
 # checksums.sh
@@ -85,6 +85,7 @@ CANDIDATES=(
 )
 
 sourced_any=0
+# shellcheck source=/dev/null
 for d in "${CANDIDATES[@]}"; do
   if [ -d "$d" ]; then
     for lib in "$d"/*.sh; do
@@ -99,6 +100,19 @@ if [ "$sourced_any" -eq 0 ]; then
   echo "FATAL: no library files found; expected under one of:" >&2
   printf '  %s\n' "${CANDIDATES[@]}" >&2
   exit 2
+fi
+
+# Ensure meta_* arrays exist to satisfy ShellCheck (they are populated by read_meta when present)
+# Declaration is idempotent in Bash >=4; in older shells the 'declare -gA' will fail silently due to set -e,
+# so we protect with a subshell check.
+if (true >/dev/null 2>&1); then
+  # shellcheck disable=SC2154,SC2034
+  declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode 2>/dev/null || true
+  meta_hash_by_path=${meta_hash_by_path:-}
+  meta_mtime=${meta_mtime:-}
+  meta_size=${meta_size:-}
+  meta_inode_dev=${meta_inode_dev:-}
+  meta_path_by_inode=${meta_path_by_inode:-}
 fi
 
 # ---------------------------------------------------------------------
@@ -173,11 +187,14 @@ decide_directories_plan() {
       if verify_meta_sig "$metaf"; then
         read_meta "$metaf"
         local changed=0
-        if [ "$USE_ASSOC" -eq 1 ]; then
-          for p in "${!meta_mtime[@]}"; do
-            if [ ! -e "$d/$p" ]; then changed=1; break; fi
-            if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]}" ]; then changed=1; break; fi
-          done
+        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+          # Guard loop to avoid referencing undefined arrays
+          if [ "${#meta_mtime[@]}" -gt 0 ]; then
+            for p in "${!meta_mtime[@]}"; do
+              if [ ! -e "$d/$p" ]; then changed=1; break; fi
+              if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]:-}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]:-}" ]; then changed=1; break; fi
+            done
+          fi
         else
           while IFS=$'\t' read -r path inode dev mtime size hash; do
             [ -z "$path" ] && continue
@@ -289,13 +306,16 @@ process_single_directory() {
   fi
 
   if [ "$USE_ASSOC" -eq 1 ]; then
-    for p in "${!meta_inode_dev[@]}"; do
-      old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
-      old_mtime["$p"]="${meta_mtime[$p]}"
-      old_size["$p"]="${meta_size[$p]}"
-      old_hash["$p"]="${meta_hash_by_path[$p]}"
-      inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]}"
-    done
+    # Guard loop to avoid referencing undefined arrays
+    if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
+      for p in "${!meta_inode_dev[@]}"; do
+        old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
+        old_mtime["$p"]="${meta_mtime[$p]:-}"
+        old_size["$p"]="${meta_size[$p]:-}"
+        old_hash["$p"]="${meta_hash_by_path[$p]:-}"
+        inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]:-}"
+      done
+    fi
   else
     if [ -f "$metaf" ]; then
       while IFS=$'\t' read -r path inode dev mtime size hash; do
@@ -336,7 +356,7 @@ process_single_directory() {
       if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
         if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
           local oldp="${old_path_by_inode[$inode_dev]}"
-          if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
+          if [ "${old_mtime[$oldp]:-}" = "$mtime" ] && [ "${old_size[$oldp]:-}" = "$size" ]; then
             h="${inode_hash_cache[$inode_dev]}"; reuse=1
             log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
           fi
@@ -355,8 +375,8 @@ process_single_directory() {
 
     if [ "$reuse" -eq 0 ]; then
       if [ "$USE_ASSOC" -eq 1 ]; then
-        if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
-          h="${meta_hash_by_path[$fname]}"; reuse=1
+        if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]:-}" = "$size" ]; then
+          h="${meta_hash_by_path[$fname]:-}"; reuse=1
           inode_hash_cache["$inode_dev"]="$h"
           log "Reusing hash for unchanged file $fname"
         fi
