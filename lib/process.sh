@@ -98,6 +98,7 @@ process_single_directory() {
 
   # Transfer meta data to our caches (associative or text maps)
   if [ "$USE_ASSOC" -eq 1 ]; then
+    # shellcheck disable=SC2154    # meta_* arrays are populated by read_meta in lib/meta.sh
     for p in "${!meta_inode_dev[@]}"; do
       old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
       old_mtime["$p"]="${meta_mtime[$p]}"

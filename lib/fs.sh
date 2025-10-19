@@ -30,6 +30,7 @@ find_file_expr() {
       # Apply exclude patterns first
       if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
         for pat in "${EXCLUDE_PATTERNS[@]}"; do
+		  # shellcheck disable=SC2053
           [[ "$fname" == $pat ]] && skip=1 && break
         done
       fi
@@ -38,6 +39,7 @@ find_file_expr() {
       if [ "$skip" -eq 0 ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
         local match=0
         for pat in "${INCLUDE_PATTERNS[@]}"; do
+		  # shellcheck disable=SC2053
           [[ "$fname" == $pat ]] && match=1 && break
         done
         [ "$match" -eq 0 ] && skip=1
