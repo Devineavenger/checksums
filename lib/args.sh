@@ -7,6 +7,7 @@
 # v2.2: -V verify-only
 # v2.3: assume-yes/no and config patterns
 # v2.3.1: --config FILE option and default <BASE_NAME>.conf
+# v3.0: SKIP_EMPTY and NO_ROOT_SIDEFILES options supported via CLI/config
 
 parse_args() {
   LOG_BASE=""
@@ -49,10 +50,17 @@ parse_args() {
             ;;
           config)
             # --config FILE: grab the next positional argument as the file path
-            # Using ${!OPTIND} to reference the argument at index OPTIND.
             CONFIG_FILE="${!OPTIND}"
             # Advance OPTIND past the consumed argument
             OPTIND=$((OPTIND + 1))
+            ;;
+          skip-empty)
+            SKIP_EMPTY=1
+            ;;
+          allow-root-sidefiles)
+            # Affirmative flag: allow per-directory sidecar files in the root.
+            # Default behavior keeps root clean (NO_ROOT_SIDEFILES=1).
+            NO_ROOT_SIDEFILES=0
             ;;
           *)
             usage

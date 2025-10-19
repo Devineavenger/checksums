@@ -3,6 +3,7 @@
 # shellcheck source=lib/init.sh
 # shellcheck source=lib/logging.sh
 # shellcheck source=lib/process.sh
+# shellcheck disable=SC2034,SC2154
 #
 # Orchestrator: planning (quick preview), prompt, accurate planning,
 # then skip logging and execution. first_run_verify is called after
@@ -20,12 +21,10 @@ run_checksums() {
   build_exclusions
 
   RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
-  # shellcheck disable=SC2034  # used in logging.sh
   LOG_FILEPATH="$RUN_LOG"
   : > "$RUN_LOG"
 
   [ "$DEBUG" -gt 0 ] && log_level=3
-  # shellcheck disable=SC2034  # used in logging.sh
   [ "$VERBOSE" -gt 0 ] && [ "$DEBUG" -eq 0 ] && log_level=2
 
   detect_tools
@@ -118,18 +117,16 @@ run_checksums() {
   fi
 
   # ----------------------------
-  # Now run first-run verification (if requested) after confirmation
-  # first_run_verify will only schedule overwrites in first_run_overwrite
-  # -----------------------------------------------------------------
+  # First-run verification (post confirmation)
+  # ----------------------------
   if [ "$FIRST_RUN" -eq 1 ]; then
     first_run_verify "$TARGET_DIR"
   fi
 
-  # If first_run_verify scheduled overwrites, perform them now (user already confirmed)
+  # Perform scheduled overwrites now
   if [ "${#first_run_overwrite[@]}" -gt 0 ]; then
     log "First-run: performing ${#first_run_overwrite[@]} scheduled overwrite(s)"
     for d in "${first_run_overwrite[@]}"; do
-      # Safety: only run overwrite if directory still exists
       if [ -d "$d" ]; then
         process_single_directory "$d"
         count_overwritten=$((count_overwritten+1))
@@ -138,7 +135,6 @@ run_checksums() {
         record_error "First-run scheduled overwrite target missing: $d"
       fi
     done
-    # Clear the schedule after execution
     first_run_overwrite=()
   fi
 
@@ -154,8 +150,17 @@ run_checksums() {
   while IFS= read -r -d '' d; do plan_to_process+=("$d"); done < "$plan_to_process_file"
   while IFS= read -r -d '' d; do plan_skipped+=("$d"); done < "$plan_skipped_file"
 
-  # Emit skip logs now (rotation + header) for skipped directories
+  # Emit skip logs now (rotation + header) for skipped directories,
+  # but honor NO_ROOT_SIDEFILES and SKIP_EMPTY so root and empty/container-only dirs stay untouched.
   for d in "${plan_skipped[@]}"; do
+    if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "${TARGET_DIR%/}" ]; then
+      count_skipped=$((count_skipped+1))
+      continue
+    fi
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+      count_skipped=$((count_skipped+1))
+      continue
+    fi
     dir_log_skip "$d"
     count_skipped=$((count_skipped+1))
   done
@@ -173,15 +178,12 @@ run_checksums() {
 
   # === Central summary report ===
   log "Summary:"
-  # shellcheck disable=SC2154  # defined in init.sh
   log "  Verified:    $count_verified"
   log "  Processed:   $count_processed"
   log "  Skipped:     $count_skipped"
   log "  Overwritten: $count_overwritten"
-  # shellcheck disable=SC2154  # defined in init.sh
   log "  Errors:      $count_errors"
 
-  # shellcheck disable=SC2154  # defined in init.sh
   if [ "${#errors[@]}" -gt 0 ]; then
     log "Completed with ${#errors[@]} errors. See run log ${RUN_LOG} and first-run log ${FIRST_RUN_LOG:-none}"
     for e in "${errors[@]}"; do _global_log 0 "ERR: $e"; done

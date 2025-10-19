@@ -27,10 +27,26 @@ decide_quick_plan() {
     case "$bn" in
       .*) printf '%s\0' "$d" >> "$out_skipped"; continue ;;
     esac
-    # For quick preview we classify everything as to_process except hidden ones.
+
+    # When NO_ROOT_SIDEFILES is set, do not include the base directory in preview-to-process
+    if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "$base" ]; then
+      printf '%s\0' "$d" >> "$out_skipped"
+      continue
+    fi
+
+    # Optional: align preview with SKIP_EMPTY behavior
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+      if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+        printf '%s\0' "$d" >> "$out_skipped"
+        continue
+      fi
+    fi
+
+    # For quick preview we classify everything else as to_process
     printf '%s\0' "$d" >> "$out_proc"
   done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
 }
+
 
 # ---------------------------------------------------------------------
 # Full planner (side-effect-free): accurate decisions, may be slow.
@@ -57,10 +73,26 @@ decide_directories_plan() {
       .*) printf '%s\0' "$d" >> "$plan_skipped_file"; continue ;;
     esac
 
+    # When NO_ROOT_SIDEFILES is set, never schedule the base directory itself
+    if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "$base" ]; then
+      printf '%s\0' "$d" >> "$plan_skipped_file"
+      continue
+    fi
+
     # In verify-only, treat as processed (execution will avoid writes)
     if [ "$VERIFY_ONLY" -eq 1 ]; then
       printf '%s\0' "$d" >> "$plan_to_process_file"
       continue
+    fi
+
+    # If SKIP_EMPTY is enabled, quickly check for any regular files anywhere under d.
+    # This avoids scheduling directories that contain only subdirectories (no files)
+    # and prevents creation of .meta/.log/.md5 sidecar files for those folders.
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+      if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+        printf '%s\0' "$d" >> "$plan_skipped_file"
+        continue
+      fi
     fi
 
     if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
@@ -83,8 +115,7 @@ decide_directories_plan() {
         read_meta "$metaf"
         local changed=0
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          # Guard loop to avoid referencing undefined arrays; meta_mtime/meta_size are associative arrays when available
-          # shellcheck disable=SC2154  # meta_mtime/meta_size are defined in init.sh and populated by read_meta
+          # shellcheck disable=SC2154  # meta_mtime/meta_size defined in init.sh and populated by read_meta
           if [ "${#meta_mtime[@]}" -gt 0 ]; then
             for p in "${!meta_mtime[@]}"; do
               if [ ! -e "$d/$p" ]; then changed=1; break; fi
@@ -92,6 +123,7 @@ decide_directories_plan() {
             done
           fi
         else
+          # legacy meta format: path<TAB>inode<TAB>dev<TAB>mtime<TAB>size<TAB>hash
           while IFS=$'\t' read -r path _inode _dev mtime size _hash; do
             [ -z "$path" ] && continue
             case "$path" in \#meta|\#sig|\#run) continue ;; esac

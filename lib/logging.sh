@@ -86,6 +86,17 @@ dir_log_append() {
   local msg="$*"
   local logfile="$dir/$LOG_FILENAME"
   local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  # Honor NO_ROOT_SIDEFILES: do not create logs for the root directory
+  if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$dir" = "${TARGET_DIR%/}" ]; then
+    return 0
+  fi
+
+  # Honor SKIP_EMPTY: do not create logs for directories with no files anywhere in subtree.
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+    return 0
+  fi
+
   if [ ! -f "$logfile" ] || [ ! -s "$logfile" ]; then
     printf '#run\t%s\t%s\n' "${RUN_ID:-unknown}" "$ts" >> "$logfile"
   fi
@@ -95,11 +106,22 @@ dir_log_append() {
 dir_log_skip() {
   # When a directory is determined to be up-to-date, rotate/truncate its log
   # and write a short skip notice so operators can see which directories were skipped.
+  # Honor SKIP_EMPTY and NO_ROOT_SIDEFILES to avoid creating logs for those cases.
   local dir="$1"
   local sumf="$dir/$MD5_FILENAME"
   local metaf="$dir/$META_FILENAME"
   local logfile="$dir/$LOG_FILENAME"
   local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  # Avoid creating logs in root when NO_ROOT_SIDEFILES=1
+  if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$dir" = "${TARGET_DIR%/}" ]; then
+    return 0
+  fi
+
+  # Avoid creating logs for directories with no files anywhere when SKIP_EMPTY=1
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+    return 0
+  fi
 
   rotate_log "$logfile"
   : > "$logfile"
@@ -151,7 +173,7 @@ rotate_log() {
 }
 
 log_run_header() {
-  # Write an audit header into logfile with run id and optional FIRST_RUN marker.
+  # Write an audit header into logfile with run id and timestamp.
   local logfile="$1"
   local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   printf '#run\t%s\t%s\n' "${RUN_ID:-unknown}" "$ts" >> "$logfile"

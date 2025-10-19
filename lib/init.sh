@@ -18,14 +18,13 @@
 # v2.9 (custom): added quick preview planner to show immediate list before heavy checks.
 # v2.10 (custom): defer first_run_verify until after preview and user confirmation.
 # v2.11 (custom): first_run_verify is non-destructive and schedules overwrites; orchestrator performs them.
+# v3.0 (custom): skip empty directories, root sidefile protection, planner/processor/logging updated.
 #
-# Notes:
-# - This variant preserves comments and diagnostic guidance for maintainers.
-# - It declares associative meta_* arrays only when supported by the running shell,
-#   avoiding any assignments that would convert arrays to strings (prevents SC2178).
-# - All other behavior is preserved from your prior version: quick preview, full plan,
-#   first-run scheduling, safe writes with locking, and md5sum-style "./filename" output.
-
+# New configuration (v3.0):
+# - SKIP_EMPTY (default 1) — directories containing zero regular files are skipped during planning and processing.
+# - NO_ROOT_SIDEFILES (default 1) — the root TARGET_DIR will not receive per-directory sidecar files (.md5/.meta/.log).
+#   Only the run-level log remains in root. Use --allow-root-sidefiles to opt-in to sidefiles in root.
+#
 set -euo pipefail
 shopt -s nullglob
 
@@ -52,10 +51,20 @@ LOG_FORMAT="text"                 # Log output format: "text" (default), "json",
 VERIFY_ONLY=0                     # Verification-only audit mode (-V); no writes, just checks
 CONFIG_FILE=""                    # explicit config file path (--config FILE)
 
-# === Filenames (set later based on BASE_NAME/LOG_BASE) ===
-MD5_FILENAME=""                   # Will become "<BASE_NAME>.md5"
-META_FILENAME=""                  # Will become "<BASE_NAME>.meta"
-LOG_FILENAME=""                   # Will become "<LOG_BASE>.log"
+# === New: Skip empty directories flag (v3.0) ===
+SKIP_EMPTY=1
+
+# === New: Prevent sidecar files in root (v3.0+) ===
+# Default set to 1: the base TARGET_DIR will not get .md5/.meta/.log.
+# Only the run-level log (<LOG_BASE>.run.log) will be created in root.
+NO_ROOT_SIDEFILES=1
+
+# === Filenames derived from base names (set once globally) ===
+MD5_FILENAME="${BASE_NAME}.md5"
+META_FILENAME="${BASE_NAME}.meta"
+LOG_FILENAME="${LOG_BASE:-$BASE_NAME}.log"
+
+# === Filenames (secondary) ===
 LOCK_SUFFIX=".lock"               # Suffix for transient lock files
 
 # === Exclusions (patterns to skip when scanning a directory) ===
@@ -68,33 +77,28 @@ TOOL_shasum=""                    # Command for shasum -a 256
 TOOL_stat_gnu=0                   # retained for compatibility with older modules (not used in 2.4)
 TOOL_flock=0                      # 1 if flock is available, else 0
 
-# === Logging state ===
-RUN_LOG=""                        # Path to run-level log
-LOG_FILEPATH=""                   # Current log file being written
-FIRST_RUN_LOG=""                  # Path to first-run verification log
+# === Logging state (globals; declared for shellcheck visibility) ===
+declare -g RUN_LOG=""             # Path to run-level log
+declare -g LOG_FILEPATH=""        # Current log file being written
+declare -g FIRST_RUN_LOG=""       # Path to first-run verification log
 
-errors=()                         # Array of error messages collected during run
-log_level=1                       # Default log verbosity level
+# === Errors and log level (globals; declared for shellcheck visibility) ===
+declare -ga errors=()             # Array of error messages collected during run
+declare -g log_level=1            # Default log verbosity level
 
-# === Summary counters (for central report) ===
-count_verified=0                  # Directories verified OK
-count_processed=0                 # Directories processed (had processing run)
-count_skipped=0                   # Directories skipped (up-to-date)
-count_overwritten=0               # Directories overwritten/rebuilt
-count_errors=0                    # Errors encountered
+# === Summary counters (globals; declared for shellcheck visibility) ===
+declare -g count_verified=0       # Directories verified OK
+declare -g count_processed=0      # Directories processed (had processing run)
+declare -g count_skipped=0        # Directories skipped (up-to-date)
+declare -g count_overwritten=0    # Directories overwritten/rebuilt
+declare -g count_errors=0         # Errors encountered
 
 # === Run ID for audit trail (2.2+) ===
 RUN_ID=$(uuidgen 2>/dev/null || date +%s$$)
 
 # Ensure associative meta_* arrays are declared only when supported.
-# We avoid assigning empty strings to these names (that would convert arrays to scalars).
-# When Bash supports associative arrays we declare empty global associative arrays so
-# subsequent references like "${meta_mtime[$k]:-}" are safe and ShellCheck stops warning.
 if declare -p -A >/dev/null 2>&1; then
   # shellcheck disable=SC2154,SC2034
   declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode 2>/dev/null || true
-  # Initialize as empty associative arrays (no string assignment)
-  if declare -p -A >/dev/null 2>&1; then
-    declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
-  fi
+  declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
 fi

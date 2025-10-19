@@ -3,6 +3,7 @@
 #
 # Prints CLI usage, kept aligned with previous versions, expanded for 2.1/2.2/2.3 features.
 # v2.3.1 adds --config FILE and default <BASE_NAME>.conf loading.
+# v3.0 adds --skip-empty and --allow-root-sidefiles options.
 
 usage() {
   cat <<EOF
@@ -28,6 +29,10 @@ Options:
   --assume-yes    assume "yes" for all prompts (non-interactive)
   --assume-no     assume "no" for all prompts (non-interactive)
   --config FILE   load configuration from FILE (overrides default)
+  --skip-empty    treat directories with no files anywhere under them as skipped (default)
+  --allow-root-sidefiles
+                  allow per-directory sidecar files (.md5/.meta/.log) to be created in the root DIRECTORY.
+                  By default the tool keeps the root clean; pass this flag to permit sidecar artifacts in root.
   --version       show version and exit
   -h              help
 
@@ -45,5 +50,6 @@ Patterns:
 Examples:
   $ME -a sha256 -o json --assume-yes /data/project
   $ME --config /data/project/custom.conf -V /data/project
+  $ME --allow-root-sidefiles /data/project   # permit per-dir artifacts in the project root
 EOF
 }

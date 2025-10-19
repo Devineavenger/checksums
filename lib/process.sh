@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 # process.sh
+# shellcheck source=lib/init.sh
+# shellcheck source=lib/logging.sh
+# shellcheck source=lib/hash.sh
 #
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
@@ -14,9 +17,30 @@
 # v2.7 (custom):
 #   - Side-effect-free planning function for pre-summary.
 #   - No skip logging in the decision loop (skip logs happen after confirmation in run_checksums).
+#
+# v3.0 (custom):
+#   - Honor SKIP_EMPTY (default 1) to avoid creating .meta/.log/.md5 for empty or container-only directories.
+#   - Early-return in process_single_directory before any per-directory side effects when skipping.
+#   - Block side-effects in root when NO_ROOT_SIDEFILES=1.
 
 process_single_directory() {
   local d="$1"
+
+  # Absolute root guard: if NO_ROOT_SIDEFILES=1 and d is the run TARGET_DIR, do nothing.
+  if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$d" = "${TARGET_DIR%/}" ]; then
+    return 0
+  fi
+
+  # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
+  # This must happen before any filename derivation, logging, or side effects.
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+    if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+      # Do not set LOG_FILEPATH, do not touch any files
+      return 0
+    fi
+  fi
+
+  # Only derive filenames after we know the dir should be processed
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
   # Prepare per-directory log: rotate (2.1, keep only 2 in 2.3) and add audit run header (2.2)
@@ -95,7 +119,7 @@ process_single_directory() {
   declare -A old_path_by_inode old_mtime old_size old_hash
   declare -A inode_hash_cache  # inode:dev -> hash
   local MAP_old_path_by_inode MAP_old_mtime MAP_old_size MAP_old_hash MAP_inode_hash_cache
-  if [ "$USE_ASSOC" -eq 0 ]; then
+  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     MAP_old_path_by_inode="$(mktemp)"; : > "$MAP_old_path_by_inode"
     MAP_old_mtime="$(mktemp)"; : > "$MAP_old_mtime"
     MAP_old_size="$(mktemp)"; : > "$MAP_old_size"
@@ -104,7 +128,7 @@ process_single_directory() {
   fi
 
   # Transfer meta data to our caches (associative or text maps)
-  if [ "$USE_ASSOC" -eq 1 ]; then
+  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
     # shellcheck disable=SC2154    # meta_* arrays are populated by read_meta in lib/meta.sh
     for p in "${!meta_inode_dev[@]}"; do
       old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
@@ -140,7 +164,7 @@ process_single_directory() {
   declare -A path_to_inode # path -> inode:dev
   declare -A path_to_meta  # path -> "fname<TAB>inode<TAB>dev<TAB>mtime<TAB>size"
   local MAP_path_to_hash MAP_path_to_inode MAP_path_to_meta
-  if [ "$USE_ASSOC" -eq 0 ]; then
+  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     MAP_path_to_hash="$(mktemp)"; : > "$MAP_path_to_hash"
     MAP_path_to_inode="$(mktemp)"; : > "$MAP_path_to_inode"
     MAP_path_to_meta="$(mktemp)"; : > "$MAP_path_to_meta"
@@ -156,7 +180,7 @@ process_single_directory() {
     reuse=0; h=""
 
     # Strong incremental by inode (renames and hardlinks)
-    if [ "$USE_ASSOC" -eq 1 ]; then
+    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
         if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
           local oldp="${old_path_by_inode[$inode_dev]}"
@@ -179,7 +203,7 @@ process_single_directory() {
 
     # Fallback: reuse by same path if unchanged
     if [ "$reuse" -eq 0 ]; then
-      if [ "$USE_ASSOC" -eq 1 ]; then
+      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
           h="${meta_hash_by_path[$fname]}"; reuse=1
           inode_hash_cache["$inode_dev"]="$h"
@@ -200,7 +224,7 @@ process_single_directory() {
     fi
 
     # Record inode, meta tuple, and hash (assoc vs text)
-    if [ "$USE_ASSOC" -eq 1 ]; then
+    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       path_to_inode["$fpath"]="$inode_dev"
       path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
     else
@@ -209,7 +233,7 @@ process_single_directory() {
     fi
 
     if [ "$reuse" -eq 1 ]; then
-      if [ "$USE_ASSOC" -eq 1 ]; then
+      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]="$h"
       else
         map_set "$MAP_path_to_hash" "$fpath" "$h"
@@ -219,7 +243,7 @@ process_single_directory() {
 
     if [ "$DRY_RUN" -eq 1 ]; then
       log "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
-      if [ "$USE_ASSOC" -eq 1 ]; then
+      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]=""
       else
         map_set "$MAP_path_to_hash" "$fpath" ""
@@ -236,7 +260,7 @@ process_single_directory() {
   if [ "$DRY_RUN" -eq 0 ]; then
     _par_wait_all
     while IFS=$'\t' read -r rpath rhash; do
-      if [ "$USE_ASSOC" -eq 1 ]; then
+      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$rpath"]="$rhash"
         local id="${path_to_inode[$rpath]}"
         [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
@@ -257,7 +281,7 @@ process_single_directory() {
 
   # Write outputs
   if [ "$DRY_RUN" -eq 0 ]; then
-    if [ "$USE_ASSOC" -eq 1 ]; then
+    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       for fpath in "${files[@]}"; do
         local fname h meta_line
         fname=$(basename "$fpath")
@@ -296,7 +320,7 @@ process_single_directory() {
   fi
 
   # cleanup temp maps for old meta caches if used
-  if [ "$USE_ASSOC" -eq 0 ]; then
+  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     rm -f "$MAP_old_path_by_inode" "$MAP_old_mtime" "$MAP_old_size" "$MAP_old_hash" "$MAP_inode_hash_cache" 2>/dev/null || true
   fi
 
@@ -304,75 +328,4 @@ process_single_directory() {
   LOG_FILEPATH=""
 }
 
-# Decide to_process and skipped without any side effects (no logging, no dir_log_skip).
-# Emits two temp files containing NUL-delimited directory paths.
-decide_directories_plan() {
-  local base="$1"
-  local plan_to_process_file="$2"
-  local plan_skipped_file="$3"
-
-  : > "$plan_to_process_file"
-  : > "$plan_skipped_file"
-
-  # Collect all directories under base (sorted, NUL-delimited)
-  while IFS= read -r -d '' d; do
-    local base_name sumf metaf
-    base_name=$(basename "$d")
-    sumf="$d/$MD5_FILENAME"
-    metaf="$d/$META_FILENAME"
-
-    # Skip hidden folders
-    case "$base_name" in
-      .*) printf '%s\0' "$d" >> "$plan_skipped_file"; continue ;;
-    esac
-
-    # In verify-only, we process all (execution will avoid writes later)
-    if [ "$VERIFY_ONLY" -eq 1 ]; then
-      printf '%s\0' "$d" >> "$plan_to_process_file"
-      continue
-    fi
-
-    if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
-      # If any file newer than sumfile, we need to process
-      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c 'test "{}" -nt "'"$sumf"'" && exit 0' 2>/dev/null; then
-        printf '%s\0' "$d" >> "$plan_to_process_file"
-        continue
-      fi
-
-      local fcount sumlines
-      fcount=$(count_files "$d")
-      sumlines=$(wc -l <"$sumf" 2>/dev/null || echo 0)
-      if [ "$fcount" -ne "$sumlines" ]; then
-        printf '%s\0' "$d" >> "$plan_to_process_file"
-        continue
-      fi
-
-      # Use meta to determine unchanged directories quickly
-      if verify_meta_sig "$metaf"; then
-        read_meta "$metaf"
-        local changed=0
-        if [ "$USE_ASSOC" -eq 1 ]; then
-          for p in "${!meta_mtime[@]}"; do
-            if [ ! -e "$d/$p" ]; then changed=1; break; fi
-            if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]}" ]; then changed=1; break; fi
-          done
-        else
-          while IFS=$'\t' read -r path inode dev mtime size hash; do
-            [ -z "$path" ] && continue
-            case "$path" in \#meta|\#sig|\#run) continue ;; esac
-            if [ ! -e "$d/$path" ]; then changed=1; break; fi
-            if [ "$(stat_field "$d/$path" mtime)" != "$mtime" ] || [ "$(stat_field "$d/$path" size)" != "$size" ]; then changed=1; break; fi
-          done < "$metaf"
-        fi
-        if [ "$changed" -eq 0 ]; then
-          printf '%s\0' "$d" >> "$plan_skipped_file"
-          continue
-        fi
-      fi
-
-      printf '%s\0' "$d" >> "$plan_to_process_file"
-    else
-      printf '%s\0' "$d" >> "$plan_to_process_file"
-    fi
-  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
-}
+# Note: decide_directories_plan intentionally lives in lib/planner.sh
