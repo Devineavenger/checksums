@@ -8,11 +8,17 @@
 # This script:
 #   1. Updates the VERSION file
 #   2. Updates the version header in checksums.sh
-#   3. Promotes the [Unreleased] section in CHANGELOG.md
-#   4. Builds the dist tarball
-#   5. Commits and tags the release
-#   6. Pushes branch and tag to origin
-#   7. Optionally creates a GitHub Release via API and uploads the tarball
+#   3. Updates the version header AND fallback in lib/init.sh
+#   4. Promotes the [Unreleased] section in CHANGELOG.md
+#   5. Builds the dist tarball
+#   6. Commits and tags the release
+#   7. Pushes branch and tag to origin
+#   8. Optionally creates a GitHub Release via API and uploads the tarball
+#
+# Notes on init.sh update:
+#   - It updates the header line starting with "# Version:" to the new version.
+#   - It also updates the fallback echo in: VER="$(cat "$BASE_DIR/VERSION" ... || echo "X.Y.Z")"
+#     so that if VERSION is missing, the fallback matches the new release.
 
 set -euo pipefail
 
@@ -43,21 +49,51 @@ echo "==> Releasing version $NEW_VER"
 echo "$NEW_VER" > VERSION
 git add VERSION
 
-# Step 2: update version string in checksums.sh header
+# Step 2: update version string in checksums.sh header (if present)
 if [ -f checksums.sh ]; then
   if grep -q '^# Version:' checksums.sh; then
-    # Replace the existing version line in place (portable sed)
     sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" checksums.sh
     rm -f checksums.sh.bak
   else
-    # If no version line exists, insert after line 2
     awk -v new="# Version: ${NEW_VER}" 'NR==2{print;print new;next}1' \
       checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
   fi
   git add checksums.sh
 fi
 
-# Step 3: promote [Unreleased] in CHANGELOG.md and reinsert a fresh one
+# Step 3: update version header AND fallback in lib/init.sh
+if [ -f lib/init.sh ]; then
+  echo "==> Updating lib/init.sh version header and fallback"
+  cp lib/init.sh lib/init.sh.bak
+
+  # Update "# Version: ..." header
+  if grep -q '^# Version:' lib/init.sh; then
+    sed 's/^# Version:.*/# Version: '"${NEW_VER}"'/' lib/init.sh.bak > lib/init.sh.tmp.header || true
+  else
+    # Insert header after the shebang line if missing
+    awk -v new="# Version: ${NEW_VER}" 'NR==1{print;print new;next}1' lib/init.sh.bak > lib/init.sh.tmp.header
+  fi
+
+  # Update VER fallback: VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "X.Y.Z")"
+  # Replace the string inside echo "..." with NEW_VER, preserving the rest
+  awk -v ver="${NEW_VER}" '
+    {
+      if ($0 ~ /VER=.*echo[[:space:]]*\"[^\"]*\"[[:space:]]*\)/) {
+        # Replace only the fallback number inside the echo "..."
+        gsub(/VER=.*echo[[:space:]]*\"[0-9]+\.[0-9]+\.[0-9]+\"[[:space:]]*\)/,
+             "VER=\"$(cat \"$BASE_DIR/VERSION\" 2>/dev/null || echo \"" ver "\")\"")
+      }
+      print
+    }
+  ' lib/init.sh.tmp.header > lib/init.sh
+
+  rm -f lib/init.sh.bak lib/init.sh.tmp.header
+  git add lib/init.sh
+else
+  echo "==> lib/init.sh not found; skipping init version update"
+fi
+
+# Step 4: promote [Unreleased] in CHANGELOG.md and reinsert a fresh one
 DATE=$(date +"%Y-%m-%d")
 
 if [ -f CHANGELOG.md ] && grep -q '^## 
@@ -95,11 +131,11 @@ else
 fi
 git add CHANGELOG.md
 
-# Step 4: build dist tarball BEFORE committing so artifacts are included
+# Step 5: build dist tarball BEFORE committing so artifacts are included
 echo "==> Building dist tarball"
 make dist
 
-# Step 5: commit and tag locally (include all changes)
+# Step 6: commit and tag locally (include all changes)
 git add -A
 
 # Ensure commit author is set
@@ -119,7 +155,7 @@ if git rev-parse "refs/tags/v${NEW_VER}" >/dev/null 2>&1; then
 fi
 git tag -a "v${NEW_VER}" -m "Release v${NEW_VER}"
 
-# Step 5.5: determine branch to push from (handle detached HEAD)
+# Step 6.5: determine branch to push from (handle detached HEAD)
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   RELEASE_BRANCH="release/v${NEW_VER}"
@@ -128,12 +164,12 @@ if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   CURRENT_BRANCH="$RELEASE_BRANCH"
 fi
 
-# Step 6: push commit and tag to origin
+# Step 7: push commit and tag to origin
 echo "==> Pushing commit and tag to origin (branch: $CURRENT_BRANCH)"
 git push origin "$CURRENT_BRANCH"
 git push origin "v${NEW_VER}"
 
-# Step 7: generate grouped changelog notes for GitHub release
+# Step 8: generate grouped changelog notes for GitHub release
 echo "==> Generating grouped changelog notes"
 CHANGELOG=""
 
@@ -149,7 +185,7 @@ add_section() {
 
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 if [ -z "$LAST_TAG" ]; then
-  LAST_TAG=$(git rev-list --max-parents=0 HEAD) # first commit
+  LAST_TAG=$(git rev-list --max-parents=0 HEAD)
 fi
 
 add_section "feat:" "Features"
@@ -163,7 +199,7 @@ if [ -z "$CHANGELOG" ]; then
   CHANGELOG=$(git log "$LAST_TAG"..HEAD --pretty=format:"* %s" --no-merges)
 fi
 
-# Step 8: create GitHub release via REST API if token present and upload artifact
+# Step 9: create GitHub release via REST API if token present and upload artifact
 GHTOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 if [ -n "$GHTOKEN" ]; then
   echo "==> Creating GitHub release via REST API"
@@ -198,7 +234,6 @@ EOF
 
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
     echo "==> GitHub release created successfully"
-    # Upload built tarball if present
     if [ -f "dist/checksums-${NEW_VER}.tar.gz" ]; then
       UPLOAD_URL="$(jq -r '.upload_url' /tmp/gh_release_response.json | sed -e 's/{?name,label}//')"
       if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
