@@ -21,7 +21,7 @@ jobs:
 
       - name: Capture changelog preview
         id: changelog
-      - run: |
+        run: |
           {
             echo "PREVIEW<<EOF"
             make changelog
