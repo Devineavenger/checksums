@@ -5,6 +5,14 @@
 # Usage:
 #   ./release.sh <version> [--prerelease] [--draft]
 #
+# This script:
+#   1. Updates the VERSION file
+#   2. Updates the version header in checksums.sh
+#   3. Promotes the [Unreleased] section in CHANGELOG.md
+#   4. Builds the dist tarball
+#   5. Commits and tags the release
+#   6. Pushes branch and tag to origin
+#   7. Optionally creates a GitHub Release via API and uploads the tarball
 
 set -euo pipefail
 
@@ -14,6 +22,7 @@ shift || true
 PRERELEASE_FLAG=""
 DRAFT_FLAG=""
 
+# Parse optional flags
 while [ $# -gt 0 ]; do
   case "$1" in
     --prerelease) PRERELEASE_FLAG="true" ;;
@@ -34,50 +43,30 @@ echo "==> Releasing version $NEW_VER"
 echo "$NEW_VER" > VERSION
 git add VERSION
 
-# Step 2: update version string in checksums.sh header (place on line 3)
+# Step 2: update version string in checksums.sh header (replace existing line or insert after line 2)
 if [ -f checksums.sh ]; then
-  NEW_LINE="# Version: ${NEW_VER}"
-  awk -v new="$NEW_LINE" '
-    BEGIN { inserted=0 }
-    # skip any existing Version line
-    $0 ~ /^# Version:/ { next }
-    {
-      lines[NR] = $0
-      n = NR
-    }
-    END {
-      if (n < 2) {
-        for (i = n+1; i <= 2; i++) lines[i] = ""
-        n = 2
-      }
-      for (i = 1; i <= 2 && i <= n; i++) {
-        print lines[i]
-      }
-      print new
-      for (i = 3; i <= n; i++) {
-        print lines[i]
-      }
-    }
-  ' checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
+  if grep -q '^# Version:' checksums.sh; then
+    # Replace the first matching line without inserting new lines
+    sed -i.bak -E "0,/^# Version:/s//\# Version: ${NEW_VER}/" checksums.sh
+    rm -f checksums.sh.bak
+  else
+    # If no version line exists, insert after line 2
+    awk -v new="# Version: ${NEW_VER}" 'NR==2{print;print new;next}1' checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
+  fi
   git add checksums.sh
 fi
 
 # Step 3: promote [Unreleased] in CHANGELOG.md and reinsert a fresh one
 DATE=$(date +"%Y-%m-%d")
 
-# Match the Unreleased heading on a single line; avoid multi-line regex
 if [ -f CHANGELOG.md ] && grep -q '^## 
 
 \[Unreleased\]
 
 ' CHANGELOG.md 2>/dev/null; then
   echo "==> Promoting [Unreleased] to v$NEW_VER and reinserting new [Unreleased]"
-
   awk -v ver="$NEW_VER" -v date="$DATE" '
-    BEGIN {
-      inserted_top = 0
-      promoted = 0
-    }
+    BEGIN { inserted_top = 0; promoted = 0 }
     NR == 1 && inserted_top == 0 {
       print "## [Unreleased]"
       print ""
@@ -131,7 +120,6 @@ git tag -a "v${NEW_VER}" -m "Release v${NEW_VER}"
 
 # Step 5.5: determine branch to push from (handle detached HEAD)
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
-# On detached HEAD this returns "HEAD"
 if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   RELEASE_BRANCH="release/v${NEW_VER}"
   echo "==> Detached HEAD detected; creating branch $RELEASE_BRANCH from current commit"
@@ -174,7 +162,7 @@ if [ -z "$CHANGELOG" ]; then
   CHANGELOG=$(git log "$LAST_TAG"..HEAD --pretty=format:"* %s" --no-merges)
 fi
 
-# Step 8: create GitHub release via REST API if token present (GH_TOKEN or GITHUB_TOKEN)
+# Step 8: create GitHub release via REST API if token present and upload artifact
 GHTOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 if [ -n "$GHTOKEN" ]; then
   echo "==> Creating GitHub release via REST API"
@@ -209,7 +197,9 @@ EOF
 
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
     echo "==> GitHub release created successfully"
+    # Upload built tarball if present
     if [ -f "dist/checksums-${NEW_VER}.tar.gz" ]; then
+      # upload_url includes a template; strip "{?name,label}"
       UPLOAD_URL="$(jq -r '.upload_url' /tmp/gh_release_response.json | sed -e 's/{?name,label}//')"
       if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
         echo "==> Uploading dist/checksums-${NEW_VER}.tar.gz"
@@ -218,7 +208,11 @@ EOF
           -H "Content-Type: application/gzip" \
           --data-binary @"dist/checksums-${NEW_VER}.tar.gz" \
           && echo "==> Artifact uploaded"
+      else
+        echo "==> No valid upload_url in API response; skipping asset upload"
       fi
+    else
+      echo "==> dist/checksums-${NEW_VER}.tar.gz not found; skipping asset upload"
     fi
   else
     echo "==> GitHub release creation failed (status: $HTTP_STATUS); response saved to /tmp/gh_release_response.json"
