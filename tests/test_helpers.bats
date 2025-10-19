@@ -31,6 +31,7 @@ teardown() {
   # Create a .md5 file
   md5=$(file_hash "$TMPDIR/file.txt" md5)
   echo "$md5 file.txt" > "$TMPDIR/#####checksums#####.md5"
+
   run verify_md5_file "$TMPDIR" 
   [ "$status" -eq 0 ]
 }

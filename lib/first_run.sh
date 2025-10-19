@@ -22,7 +22,7 @@ verify_md5_file() {
     [ -z "$entry" ] && continue
 
     case "$entry" in
-      MD5*\=*)  # BSD/macOS format: MD5 (filename) = hash
+      MD5*=*)  # BSD/macOS format: MD5 (filename) = hash
         fname=$(printf '%s' "$entry" | sed -E 's/^MD5 \((.*)\) = .*/\1/')
         expected=$(printf '%s' "$entry" | awk '{print $NF}')
         ;;
