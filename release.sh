@@ -43,15 +43,16 @@ echo "==> Releasing version $NEW_VER"
 echo "$NEW_VER" > VERSION
 git add VERSION
 
-# Step 2: update version string in checksums.sh header (replace existing line or insert after line 2)
+# Step 2: update version string in checksums.sh header
 if [ -f checksums.sh ]; then
   if grep -q '^# Version:' checksums.sh; then
-    # Replace the first matching line without inserting new lines
-    sed -i.bak -E "0,/^# Version:/s//\# Version: ${NEW_VER}/" checksums.sh
+    # Replace the existing version line in place (portable sed)
+    sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" checksums.sh
     rm -f checksums.sh.bak
   else
     # If no version line exists, insert after line 2
-    awk -v new="# Version: ${NEW_VER}" 'NR==2{print;print new;next}1' checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
+    awk -v new="# Version: ${NEW_VER}" 'NR==2{print;print new;next}1' \
+      checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
   fi
   git add checksums.sh
 fi
@@ -199,7 +200,6 @@ EOF
     echo "==> GitHub release created successfully"
     # Upload built tarball if present
     if [ -f "dist/checksums-${NEW_VER}.tar.gz" ]; then
-      # upload_url includes a template; strip "{?name,label}"
       UPLOAD_URL="$(jq -r '.upload_url' /tmp/gh_release_response.json | sed -e 's/{?name,label}//')"
       if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
         echo "==> Uploading dist/checksums-${NEW_VER}.tar.gz"
