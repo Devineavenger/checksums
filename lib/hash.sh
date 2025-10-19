@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # hash.sh
+#
 # Hashing helpers + portable parallel job control without wait -n.
 
 file_hash() {

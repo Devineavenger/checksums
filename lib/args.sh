@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 # args.sh
-
+#
 # Argument parsing and normalization, preserving original semantics where possible.
 # v2.1: structured logs and rotation
 # v2.2: -V verify-only

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # fs.sh
+#
 # Filesystem helpers: exclusions, discovery, cleanup, and simple counts.
 # 2.3 adds INCLUDE_PATTERNS and EXCLUDE_PATTERNS support (shell glob patterns).
 

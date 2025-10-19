@@ -1,9 +1,12 @@
 name: Release
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
-      - 'v*'   # triggers on tags like v2.6.0, v3.0.0-rc1, etc.
+      - 'v*'
 
 jobs:
   release:
@@ -13,10 +16,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # important so git history & tags are available
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up dependencies
-        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make
+        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make git
 
       - name: Extract version from tag
         id: vars
@@ -27,12 +31,34 @@ jobs:
       - name: Run release script
         run: ./release.sh ${{ steps.vars.outputs.version }}
 
-      - name: Push updated CHANGELOG.md and VERSION
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: finalize release v${{ steps.vars.outputs.version }}"
-          branch: main
-          file_pattern: CHANGELOG.md VERSION checksums.sh
+      - name: Create release branch from current HEAD
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="release/v${{ steps.vars.outputs.version }}"
+          # create branch from current HEAD (where release.sh ran and made changes)
+          git checkout -b "$BRANCH" || git checkout "$BRANCH"
+          git add CHANGELOG.md VERSION checksums.sh || true
+          git commit -m "chore(release): v${{ steps.vars.outputs.version }}" || echo "Nothing to commit on release branch"
+          git push --set-upstream origin "$BRANCH"
+
+      - name: Merge release branch into main and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="release/v${{ steps.vars.outputs.version }}"
+          git fetch origin main:main
+          git checkout main
+          git pull origin main
+          # Try fast-forward merge, otherwise create merge commit
+          if git merge --ff-only "$BRANCH"; then
+            echo "Fast-forwarded main to $BRANCH"
+          else
+            git merge --no-ff "$BRANCH" -m "chore: merge $BRANCH into main"
+          fi
+          git push origin main
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4

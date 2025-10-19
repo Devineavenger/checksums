@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # tools.sh
+#
 # Tool detection and preflight checks; preserves original hints and messaging.
 
 detect_tools() {
