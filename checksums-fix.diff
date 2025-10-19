@@ -1,0 +1,20 @@
+--- checksums.sh.orig
++++ checksums.sh
+@@
+-  meta_hash_by_path=${meta_hash_by_path:-}
+-  meta_mtime=${meta_mtime:-}
+-  meta_size=${meta_size:-}
+-  meta_inode_dev=${meta_inode_dev:-}
+-  meta_path_by_inode=${meta_path_by_inode:-}
++  if declare -p -A >/dev/null 2>&1; then
++    declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
++  fi
+@@
+-          if [ "${#meta_mtime[@]:-0}" -gt 0 ]; then
++          if [ "${#meta_mtime[@]}" -gt 0 ]; then
+@@
+-    if [ "${#meta_inode_dev[@]:-0}" -gt 0 ]; then
++    if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
+@@
+-  if [ "${#first_run_overwrite[@]:-0}" -gt 0 ]; then
++  if [ "${#first_run_overwrite[@]}" -gt 0 ]; then

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 2.12.2
-
+# Version: 2.5.25
 #
 # checksums.sh
 #
@@ -118,9 +117,11 @@ if declare -p -A >/dev/null 2>&1; then
   # shellcheck disable=SC2154,SC2034
   declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode 2>/dev/null || true
   # Initialize as empty associative arrays (no string assignment)
-  if declare -p -A >/dev/null 2>&1; then
-    declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
-  fi
+  meta_hash_by_path=()
+  meta_mtime=()
+  meta_size=()
+  meta_inode_dev=()
+  meta_path_by_inode=()
 fi
 
 # ---------------------------------------------------------------------
@@ -613,7 +614,7 @@ run_checksums() {
   fi
 
   # If first_run_verify scheduled overwrites, perform them now (user already confirmed)
-  if [ "${#first_run_overwrite[@]}" -gt 0 ]; then
+  if [ "${#first_run_overwrite[@]:-0}" -gt 0 ]; then
     log "First-run: performing ${#first_run_overwrite[@]} scheduled overwrite(s)"
     for d in "${first_run_overwrite[@]}"; do
       # Safety: only run overwrite if directory still exists
