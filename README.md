@@ -1,7 +1,7 @@
 # checksums
 
-[![CI](https://github.com/yourname/checksums/actions/workflows/ci.yml/badge.svg)](https://github.com/yourname/checksums/actions/workflows/ci.yml)
-[![Release](https://github.com/yourname/checksums/actions/workflows/release.yml/badge.svg)](https://github.com/yourname/checksums/actions/workflows/release.yml)
+[![CI](https://github.com/Devineavenger/checksums/actions/workflows/ci.yml/badge.svg)](https://github.com/Devineavenger/checksums/actions/workflows/ci.yml)
+[![Release](https://github.com/Devineavenger/checksums/actions/workflows/release.yml/badge.svg)](https://github.com/Devineavenger/checksums/actions/workflows/release.yml)
 
 A lightweight shell utility for generating and verifying file checksums, with a fully automated developer workflow:
 

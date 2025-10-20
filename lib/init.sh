@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.2.3
+# Version: 3.2.4
 #
 # init.sh
 #
@@ -25,8 +25,8 @@ shopt -s nullglob
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Ensure the VERSION file exists at: $BASE_DIR/VERSION (e.g., /usr/local/share/checksums/VERSION)
-# Version: 3.2.3
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.3")"
+# Version: 3.2.4
+VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.2.4")"
 
 
 # Executable name for usage output
