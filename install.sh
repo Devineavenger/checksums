@@ -9,6 +9,15 @@
 
 set -e
 
+# Read version from VERSION file or fall back to a default
+if [ -r VERSION ]; then
+  VERSION="$(<VERSION)"
+  VERSION="${VERSION##*[[:space:]]}"   # trim trailing newline/space
+else
+  VERSION="v3.x"
+fi
+
+
 GREEN="\033[0;32m"
 YELLOW="\033[1;33m"
 RED="\033[0;31m"
@@ -19,7 +28,7 @@ BINDIR="$PREFIX/bin"
 SHAREDIR="$PREFIX/share/checksums"
 LIBSUBDIR="$SHAREDIR/lib"
 
-echo -e "${YELLOW}==> Installing checksums v2.5${RESET}"
+echo -e "${YELLOW}==> Installing checksums ${VERSION}${RESET}"
 echo "Target prefix: $PREFIX"
 
 # Ensure writable or warn
