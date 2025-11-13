@@ -12,6 +12,14 @@
 
 set -e
 
+# Read version from VERSION file or fall back to a default
+if [ -r VERSION ]; then
+  VERSION="$(<VERSION)"
+  VERSION="${VERSION##*[[:space:]]}"   # trim trailing newline/space
+else
+  VERSION="v3.x"
+fi
+
 # Colors for pretty output
 GREEN="\033[0;32m"
 YELLOW="\033[1;33m"
@@ -22,7 +30,7 @@ PREFIX=${PREFIX:-/usr/local}
 BINDIR="$PREFIX/bin"
 LIBDIR="$PREFIX/share/checksums"
 
-echo -e "${YELLOW}==> Uninstalling checksums v2.5${RESET}"
+echo -e "${YELLOW}==> Uninstalling checksums ${VERSION}${RESET}"
 echo "Target prefix: $PREFIX"
 
 # Remove main script
