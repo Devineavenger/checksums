@@ -75,24 +75,41 @@ if [ -f lib/init.sh ]; then
     awk -v v="${NEW_VER}" 'NR==1{print; print "# Version: " v; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
-  # 3b: replace the literal numeric fallback in the final printf fallback line
-  # Matches a line like: printf '%s' "3.3.1"
-  # and replaces the quoted version with the new version.
-  #
-  # We only replace the first matching printf fallback occurrence.
-  if grep -q "printf '%s' \"[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+\"" lib/init.sh; then
-    sed -i.bak -E "0,/(printf '%s' \")([0-9]+\.[0-9]+\.[0-9]+)(\"\\))/{
-      s//\1${NEW_VER}\3/
-    }" lib/init.sh
+  # 3b: reliably replace the final printf fallback line:
+  #    printf '%s' "3.3.1"
+  # with the new version. Update only the first matching occurrence.
+  echo "==> Patching lib/init.sh printf fallback to ${NEW_VER}"
+  cp lib/init.sh lib/init.sh.bak
+
+  # Use awk to replace the first matching printf '%s' "x.y.z" line.
+  # This is portable and avoids sed dialect issues.
+  awk -v new="${NEW_VER}" '
+    BEGIN { replaced = 0 }
+    {
+      if (!replaced) {
+        # match lines containing: printf '%s' "digits.digits.digits" (allow surrounding spaces)
+        if ($0 ~ /printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/) {
+          # perform replacement preserving leading/trailing text
+          sub(/printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/,
+              "printf '\''%s'\'' \"" new "\"")
+          replaced = 1
+        }
+      }
+      print
+    }
+    END {
+      # exit code nonzero if nothing was replaced (so caller can handle fallback)
+      if (replaced == 0) exit 2
+    }
+  ' lib/init.sh > lib/init.sh.tmp 2>/dev/null || awk_exit=$? || true
+
+  if [ "${awk_exit:-0}" -eq 0 ]; then
+    mv lib/init.sh.tmp lib/init.sh
   else
-    # If no printf fallback found, append a conservative fallback near the top.
-    # This is conservative: do not attempt complex rewrites.
-    awk -v v="${NEW_VER}" 'NR==1{
-      print;
-      print "# (Inserted VER fallback)";
-      print "VER=\"$(cat \\\"$BASE_DIR/VERSION\\\" 2>/dev/null || echo \"" v "\")\"";
-      next
-    }1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+    # No printf fallback found; restore temp file away and insert a conservative fallback near top.
+    rm -f lib/init.sh.tmp
+    echo "==> No printf fallback line found; inserting conservative VER fallback near top"
+    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"$(cat \\\"$BASE_DIR/VERSION\\\" 2>/dev/null || echo \"" v "\")\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
   # 3c: validate syntax; roll back on failure
