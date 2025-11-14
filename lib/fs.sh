@@ -29,12 +29,18 @@ build_exclusions() {
   MD5_EXCL=$(_safe_name "$(basename "$MD5_FILENAME")")
   META_EXCL=$(_safe_name "$(basename "$META_FILENAME")")
   LOG_EXCL=$(_safe_name "$(basename "$LOG_FILENAME")")
+  RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.run.log")"
+  FIRST_RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")"
   ALT_LOG_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.log")"
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
+
+  # after computing MD5_EXCL, META_EXCL, LOG_EXCL, RUN_BASENAME, FIRST_RUN_BASENAME, ALT_LOG_EXCL, LOCK_EXCL
+  # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.
+  EXCLUDE_PATTERNS+=("$MD5_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "$ALT_LOG_EXCL" "$LOCK_EXCL")
 }
 
-# Default pattern arrays exist in defaults.sh but we also declare here for safety.
+# Default pattern arrays exist in args.sh but we also declare here for safety.
 declare -a INCLUDE_PATTERNS=()
 declare -a EXCLUDE_PATTERNS=()
 
@@ -54,7 +60,8 @@ find_file_expr() {
     ! -name "$LOG_EXCL" \
     ! -name "$ALT_LOG_EXCL" \
     ! -name "$LOCK_EXCL" \
-    ! -name '*.run.log' \
+	! -name "$RUN_EXCL" \
+    ! -name "$FIRST_RUN_EXCL" \
     ! -name "${ALT_LOG_EXCL}.*" \
     -print0 | while IFS= read -r -d '' f; do
       local fname; fname=$(basename "$f")

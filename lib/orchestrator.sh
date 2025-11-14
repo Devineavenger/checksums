@@ -5,17 +5,41 @@
 # shellcheck source=lib/process.sh
 # shellcheck disable=SC2034,SC2154
 #
-# Orchestrator: planning (quick preview), prompt, accurate planning,
-# then skip logging and execution. first_run_verify is called after
-# confirmation. Any scheduled overwrites from first_run_verify are
-# executed by the orchestrator now.
-# Extracted (verbatim behavior) from checksums.sh v2.12.5.
+# Orchestrator: top-level run orchestration for checksums tool.
 #
-# Notes:
-# - All behavior is preserved: quick preview, prompt, first-run scheduling,
-#   accurate planning, dir skip logging, processing, cleanup, and summary.
-# - This file assumes the rest of the modules (fs.sh, tools.sh, stat.sh, logging.sh,
-#   meta.sh, process.sh, compat.sh, first_run.sh, args.sh, usage.sh) are already sourced.
+# Responsibilities:
+#  - Build exclusion lists used by discovery helpers
+#  - Set up run-level logging and runtime flags
+#  - Detect required external tools and platform stat flavour
+#  - Present a quick preview to the user and prompt for confirmation
+#  - Run first-run verification (when requested) and collect scheduled overwrites
+#  - Perform accurate planning (which directories truly need processing)
+#  - Emit skip logs for directories determined to be up-to-date
+#  - Execute per-directory processing (process_single_directory) for planned directories
+#  - Perform scheduled first-run overwrites after first-run verification
+#  - Clean up leftover lockfiles and emit a final summary
+#
+# Implementation notes and rationale:
+#  - Quick preview is intentionally lightweight and forgiving; it enumerates
+#    directories without heavy disk I/O so the prompt can be shown quickly.
+#  - Accurate planning is slower but avoids unnecessary work: it verifies meta
+#    signatures, compares mtimes/sizes, and counts files vs manifest lines.
+#  - Skip logging (dir_log_skip) rotates/truncates per-directory logs for
+#    directories that will be skipped. We avoid clobbering logs for directories
+#    that we know will be processed later (first-run scheduled overwrites or
+#    those in plan_to_process or those already processed).
+#  - To avoid confusing logs (and subtle races), we evaluate directory existence
+#    once into a variable (exists_yesno) and use that value both for the human
+#    oriented ORCH log line and for the conditional that decides whether to
+#    call process_single_directory. This keeps the log truthful and in sync
+#    with the actual control flow.
+#
+# Assumptions:
+#  - The other modules (fs.sh, tools.sh, stat.sh, logging.sh, meta.sh, process.sh,
+#    compat.sh, first_run.sh, args.sh, usage.sh) are already sourced by the
+#    top-level entrypoint before run_checksums is invoked.
+#  - Global variables such as TARGET_DIR, BASE_NAME, MD5_FILENAME, etc., are
+#    initialized by init.sh or via CLI/config handling performed earlier.
 
 run_checksums() {
   build_exclusions
@@ -123,14 +147,25 @@ run_checksums() {
     first_run_verify "$TARGET_DIR"
   fi
 
+  # track directories that have actually been processed during this run
+  local -a processed_dirs=()
+
   # Perform scheduled overwrites now
   if [ "${#first_run_overwrite[@]}" -gt 0 ]; then
     log "First-run: performing ${#first_run_overwrite[@]} scheduled overwrite(s)"
     for d in "${first_run_overwrite[@]}"; do
+      # Evaluate existence exactly once to avoid mismatched subshell checks or races
       if [ -d "$d" ]; then
+        exists_yesno=yes
+      else
+        exists_yesno=no
+      fi
+      log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
+      if [ "$exists_yesno" = yes ]; then
         process_single_directory "$d"
         count_overwritten=$((count_overwritten+1))
         count_processed=$((count_processed+1))
+        processed_dirs+=("$d")
       else
         record_error "First-run scheduled overwrite target missing: $d"
       fi
@@ -152,15 +187,30 @@ run_checksums() {
 
   # Emit skip logs now (rotation + header) for skipped directories,
   # but honor NO_ROOT_SIDEFILES and SKIP_EMPTY so root and empty/container-only dirs stay untouched.
+  # helper: test membership in an array
+  _in_array() {
+    local needle="$1"; shift
+    for e in "$@"; do [ "$e" = "$needle" ] && return 0; done
+    return 1
+  }
+
   for d in "${plan_skipped[@]}"; do
+    # still respect root/empty guards
     if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "${TARGET_DIR%/}" ]; then
-      count_skipped=$((count_skipped+1))
-      continue
+      count_skipped=$((count_skipped+1)); continue
     fi
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+      count_skipped=$((count_skipped+1)); continue
+    fi
+
+    # If this directory is scheduled for first-run overwrite, planned-to-process,
+    # or was already processed earlier in this run, do not write the skip block now.
+    if _in_array "$d" "${first_run_overwrite[@]:-}" || _in_array "$d" "${plan_to_process[@]:-}" || _in_array "$d" "${processed_dirs[@]:-}"; then
       count_skipped=$((count_skipped+1))
       continue
     fi
+
+    # Safe to write skip-log: not scheduled and not going to be processed
     dir_log_skip "$d"
     count_skipped=$((count_skipped+1))
   done
@@ -168,8 +218,20 @@ run_checksums() {
   # Process planned directories
   log "Directories to process: ${#plan_to_process[@]}"
   for d in "${plan_to_process[@]}"; do
-    process_single_directory "$d"
-    count_processed=$((count_processed+1))
+    # Evaluate existence once for logging and action
+    if [ -d "$d" ]; then
+      exists_yesno=yes
+    else
+      exists_yesno=no
+    fi
+    log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
+    if [ "$exists_yesno" = yes ]; then
+      process_single_directory "$d"
+      count_processed=$((count_processed+1))
+      processed_dirs+=("$d")
+    else
+      record_error "Planned processing target missing: $d"
+    fi
   done
 
   rm -f "$plan_to_process_file" "$plan_skipped_file"

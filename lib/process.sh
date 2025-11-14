@@ -5,7 +5,7 @@
 # shellcheck source=lib/logging.sh
 # shellcheck source=lib/hash.sh
 #
-# Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode (2.2).
+# Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode.
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
 # v2.4: switched from get_inode/get_dev/get_mtime/get_size to stat_field (unified abstraction).
 # v2.4: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available.
@@ -22,18 +22,51 @@
 #   - Honor SKIP_EMPTY (default 1) to avoid creating .meta/.log/.md5 for empty or container-only directories.
 #   - Early-return in process_single_directory before any per-directory side effects when skipping.
 #   - Block side-effects in root when NO_ROOT_SIDEFILES=1.
+#
+# Responsibilities:
+#  - Respect SKIP_EMPTY and NO_ROOT_SIDEFILES policies to avoid creating sidecar files
+#    in directories that should remain untouched (root or empty/container-only dirs).
+#  - Provide a defensive entry point so callers (orchestrator) can safely invoke the
+#    processor even when race conditions might remove directories between planning and execution.
+#  - Prepare per-directory log files (rotation + header), compute or reuse per-file hashes,
+#    write atomic manifests (.md5 and .meta) with signatures and run/audit trail, and collect
+#    per-run error counters and diagnostics.
+#
+# Design notes and rationale:
+#  - The function returns early without side effects when SKIP_EMPTY indicates the directory
+#    should be skipped; this prevents creating any .meta/.md5/.log files unnecessarily.
+#  - We expose LOG_FILEPATH as the current logfile so logging helpers write to the correct per-dir log.
+#  - Reuse heuristics use inode-aware caching to handle renames and hardlinks, and fall back to
+#    path-based reuse when associative arrays are not available.
+#  - All temporary artifacts are used in the local scope and cleaned up where appropriate.
+#
+# Backwards-compatibility:
+#  - Behavior mirrors the previous monolithic checksums.sh while adding safety guards and
+#    improved diagnostics to make race conditions and log mismatches easier to diagnose.
 
 process_single_directory() {
   local d="$1"
 
+  # Defensive check: if caller passed a non-existent path, bail out cleanly.
+  # This prevents the processor from creating logs or manifests for missing dirs
+  # when the orchestrator's plan becomes stale (e.g., race with external removal).
+  if [ ! -d "$d" ]; then
+    record_error "PROC: requested to process missing directory: $d"
+    return 1
+  fi
+
+  log "PROC: enter process_single_directory $d DRY_RUN=$DRY_RUN VERIFY_ONLY=$VERIFY_ONLY SKIP_EMPTY=${SKIP_EMPTY:-} NO_ROOT_SIDEFILES=${NO_ROOT_SIDEFILES:-}"
+
   # Absolute root guard: if NO_ROOT_SIDEFILES=1 and d is the run TARGET_DIR, do nothing.
+  # This preserves the invariant that the run root remains free of sidecar files unless
+  # the operator explicitly opts in via --allow-root-sidefiles (NO_ROOT_SIDEFILES=0).
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$d" = "${TARGET_DIR%/}" ]; then
     return 0
   fi
 
   # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
-  # This must happen before any filename derivation, logging, or side effects.
-  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+  # This must happen before any filename derivation, logging to per-dir logs, or side effects.
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
     if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
       # Do not set LOG_FILEPATH, do not touch any files
       return 0
@@ -43,8 +76,10 @@ process_single_directory() {
   # Only derive filenames after we know the dir should be processed
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
-  # Prepare per-directory log: rotate (2.1, keep only 2 in 2.3) and add audit run header (2.2)
+  # Prepare per-directory log: rotate and add audit run header.
+  # Setting LOG_FILEPATH ensures subsequent log() calls append to the per-dir logfile.
   LOG_FILEPATH="$logf"
+  log "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
   if [ "$DRY_RUN" -eq 0 ]; then
     rotate_log "$LOG_FILEPATH"
     : > "$LOG_FILEPATH"
@@ -54,7 +89,7 @@ process_single_directory() {
   log "Starting directory: $d"
   log "sumfile: $sumf  metafile: $metaf  logfile: $logf"
 
-  # remove stale legacy lock if found (safe)
+  # remove stale legacy lock if found (best-effort)
   if [ -f "${metaf}${LOCK_SUFFIX}" ]; then
     if [ ! -s "${metaf}${LOCK_SUFFIX}" ] || [ "$(find "${metaf}${LOCK_SUFFIX}" -mtime +0 -print 2>/dev/null)" ]; then
       dbg "Removing stale lock ${metaf}${LOCK_SUFFIX}"
@@ -62,7 +97,8 @@ process_single_directory() {
     fi
   fi
 
-  # If meta exists, verify signature; otherwise ignore/force rebuild
+  # If meta exists, verify signature; otherwise ignore/force rebuild.
+  # Invalid signatures are treated as if the meta is absent: we force rebuild.
   if [ -f "$metaf" ] && ! verify_meta_sig "$metaf"; then
     record_error "Meta signature invalid for $metaf; ignoring meta and forcing rebuild"
     # In verify-only mode, we don't delete or rewrite; just record error and continue
@@ -71,7 +107,7 @@ process_single_directory() {
     fi
   fi
 
-  # Verification-only mode: do not write, only check md5 and meta
+  # Verification-only mode: do not write; only check md5 and meta.
   if [ "$VERIFY_ONLY" -eq 1 ]; then
     local vmd5=2
     vmd5=$(verify_md5_file "$d")  # 0 ok, 1 mismatch, 2 missing
@@ -103,7 +139,7 @@ process_single_directory() {
   read_meta "$metaf"
 
   local tmp_sum="${sumf}.tmp" tmp_meta="${metaf}.tmp"
-  local -a files
+  local -a files=()
   # Collect candidate files (NUL-delimited), sort for stable order
   while IFS= read -r -d '' f; do files+=("$f"); done < <(find_file_expr "$d" | LC_ALL=C sort -z)
 
@@ -115,7 +151,7 @@ process_single_directory() {
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks)
-  # v2.4: dual approach depending on USE_ASSOC.
+  # dual approach depending on USE_ASSOC.
   declare -A old_path_by_inode old_mtime old_size old_hash
   declare -A inode_hash_cache  # inode:dev -> hash
   local MAP_old_path_by_inode MAP_old_mtime MAP_old_size MAP_old_hash MAP_inode_hash_cache
@@ -129,7 +165,7 @@ process_single_directory() {
 
   # Transfer meta data to our caches (associative or text maps)
   if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    # shellcheck disable=SC2154    # meta_* arrays are populated by read_meta in lib/meta.sh
+    # meta_* arrays are populated by read_meta in lib/meta.sh
     for p in "${!meta_inode_dev[@]}"; do
       old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
       old_mtime["$p"]="${meta_mtime[$p]}"

@@ -56,8 +56,9 @@ verify_md5_file() {
     actual=$(file_hash "$fpath" "md5")
     if [ "$actual" != "$expected" ]; then
       bad=1
+      # Write the full file path, expected hash, and actual hash for precise auditing.
       [ -n "$FIRST_RUN_LOG" ] && \
-        printf 'MISMATCH %s: expected %s actual %s\n' "$fname" "$expected" "$actual" >> "$FIRST_RUN_LOG"
+        printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >> "$FIRST_RUN_LOG"
     fi
   done < "$sumf"
 
@@ -74,9 +75,17 @@ first_run_verify() {
   local base="$1"
   local -a targets=()
 
+  # Collect directories that contain an .md5 and have at least one sidefile missing.
+  declare -A _fr_seen=()
   while IFS= read -r -d '' f; do
     local d; d=$(dirname "$f")
-    [ ! -f "$d/$META_FILENAME" ] && [ ! -f "$d/$LOG_FILENAME" ] && targets+=("$d")
+    # Select if either .meta OR .log is missing
+    if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
+      if [ -z "${_fr_seen[$d]:-}" ]; then
+        targets+=("$d")
+        _fr_seen["$d"]=1
+      fi
+    fi
   done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
 
   if [ "${#targets[@]}" -eq 0 ]; then
@@ -85,17 +94,17 @@ first_run_verify() {
   fi
 
   # FIRST_RUN_LOG was previously a separate file; keep existing behavior (detailed trace file).
-  FIRST_RUN_LOG="${TARGET_DIR%/}/${LOG_BASE:-$BASE_NAME}.run.log"
+  FIRST_RUN_LOG="${TARGET_DIR%/}/${LOG_BASE:-$BASE_NAME}.first-run.log"
   : > "$FIRST_RUN_LOG"
   log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
   first_run_log "First-run start: base=$base  files: ${#targets[@]}"
 
   for d in "${targets[@]}"; do
     first_run_log "Verifying directory: $d"
-    log "Verifying existing checksums in: $d"
+    dir_log_append "Verifying existing checksums in: $d"
     if verify_md5_file "$d"; then
       first_run_log "Verified OK: $d"
-      log "Verified OK: $d"
+      dir_log_append "Verified OK: $d"
       count_verified=$((count_verified+1))
       # On success, previously we created meta/log using normal processing.
       # Now we schedule creation via the normal processing flow rather than executing it here.
@@ -113,7 +122,7 @@ first_run_verify() {
 
     # mismatch detected
     first_run_log "Verification FAILED for $d"
-    log "Verification FAILED for $d"
+    dir_log_append "Verification FAILED for $d"
 
     # If FIRST_RUN_CHOICE non-interactive, obey it
     case "$FIRST_RUN_CHOICE" in
@@ -130,7 +139,7 @@ first_run_verify() {
           continue
         fi
         first_run_log "CHOICE overwrite: scheduling recomputation for $d"
-        log "Scheduled auto-overwrite: recomputing for $d"
+        dir_log_append "Scheduled auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
           first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
           log "DRYRUN: would overwrite $d/$MD5_FILENAME"
@@ -138,6 +147,7 @@ first_run_verify() {
           # Schedule the overwrite; the orchestrator will perform it after confirmation
           first_run_overwrite+=("$d")
           first_run_log "SCHEDULED OVERWRITE for $d"
+		  dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
           count_overwritten=$((count_overwritten+1))
         fi
         continue
