@@ -56,7 +56,6 @@ verify_md5_file() {
     actual=$(file_hash "$fpath" "md5")
     if [ "$actual" != "$expected" ]; then
       bad=1
-      # Write the full file path, expected hash, and actual hash for precise auditing.
       [ -n "$FIRST_RUN_LOG" ] && \
         printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >> "$FIRST_RUN_LOG"
     fi
@@ -93,7 +92,6 @@ first_run_verify() {
     return 0
   fi
 
-  # FIRST_RUN_LOG was previously a separate file; keep existing behavior (detailed trace file).
   FIRST_RUN_LOG="${TARGET_DIR%/}/${LOG_BASE:-$BASE_NAME}.first-run.log"
   : > "$FIRST_RUN_LOG"
   log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
@@ -106,14 +104,19 @@ first_run_verify() {
       first_run_log "Verified OK: $d"
       dir_log_append "Verified OK: $d"
       count_verified=$((count_verified+1))
-      # On success, previously we created meta/log using normal processing.
-      # Now we schedule creation via the normal processing flow rather than executing it here.
+
+      # Respect SKIP_EMPTY: do not schedule truly empty/container-only directories
+      if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+        if ! has_files "$d"; then
+          first_run_log "SKIPPED scheduling for empty directory: $d"
+          dir_log_append "$d" "SKIPPED scheduling (no user files)"
+          continue
+        fi
+      fi
+
       if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
         first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
       else
-        # Schedule this directory for normal processing (if desired).
-        # Historically we called process_single_directory here; now we simply schedule it
-        # so the orchestrator can decide when to run it.
         first_run_log "SCHEDULED: would create meta/log for $d"
         first_run_overwrite+=("$d")
       fi
@@ -124,7 +127,6 @@ first_run_verify() {
     first_run_log "Verification FAILED for $d"
     dir_log_append "Verification FAILED for $d"
 
-    # If FIRST_RUN_CHOICE non-interactive, obey it
     case "$FIRST_RUN_CHOICE" in
       skip)
         first_run_log "CHOICE skip: recorded mismatch for $d"
@@ -132,22 +134,31 @@ first_run_verify() {
         continue
         ;;
       overwrite)
-        # Previously we would immediately overwrite. Now schedule overwrite instead.
         if [ "$VERIFY_ONLY" -eq 1 ]; then
           first_run_log "CHOICE overwrite suppressed in verify-only for $d"
           record_error "First-run: overwrite requested but skipped (verify-only) for $d"
           continue
         fi
+
+        # Respect SKIP_EMPTY before scheduling overwrite
+        if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+          if ! has_files "$d"; then
+            first_run_log "SKIPPED scheduling overwrite for empty directory: $d"
+            dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
+            count_overwritten=$((count_overwritten+0))
+            continue
+          fi
+        fi
+
         first_run_log "CHOICE overwrite: scheduling recomputation for $d"
         dir_log_append "Scheduled auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
           first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
           log "DRYRUN: would overwrite $d/$MD5_FILENAME"
         else
-          # Schedule the overwrite; the orchestrator will perform it after confirmation
           first_run_overwrite+=("$d")
           first_run_log "SCHEDULED OVERWRITE for $d"
-		  dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
+          dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
           count_overwritten=$((count_overwritten+1))
         fi
         continue
@@ -168,11 +179,20 @@ first_run_verify() {
                 record_error "First-run: overwrite requested but skipped (verify-only) for $d"
                 break
               fi
+
+              # Respect SKIP_EMPTY before scheduling overwrite in interactive prompt
+              if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+                if ! has_files "$d"; then
+                  first_run_log "SKIPPED scheduling overwrite for empty directory (prompt): $d"
+                  dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
+                  break
+                fi
+              fi
+
               first_run_log "CHOICE overwrite for $d"
               if [ "$DRY_RUN" -eq 1 ]; then
                 first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
               else
-                # Schedule the overwrite for later execution by the orchestrator
                 first_run_overwrite+=("$d")
                 first_run_log "SCHEDULED OVERWRITE for $d"
                 count_overwritten=$((count_overwritten+1))
