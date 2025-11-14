@@ -199,7 +199,7 @@ run_checksums() {
     if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "${TARGET_DIR%/}" ]; then
       count_skipped=$((count_skipped+1)); continue
     fi
-    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$d"; then
       count_skipped=$((count_skipped+1)); continue
     fi
 

@@ -23,6 +23,24 @@ _safe_name() {
   [ -n "$n" ] && printf '%s' "$n" || printf '%s' '__DO_NOT_MATCH__'
 }
 
+# has_files DIR
+# Return success (0) if any regular file exists anywhere under DIR (recursively), otherwise return non-zero.
+# Portable: uses find -print0 and a fast read -d '' loop which works even with odd filenames.
+has_files() {
+  local d="$1" f
+  # Use find -type f -print0 and exit early on first file found.
+  if find "$d" -type f -print0 2>/dev/null | \
+     while IFS= read -r -d '' f; do
+       # Found a regular file; exit loop and return success.
+       printf '%s' "$f" >/dev/null
+       exit 0
+     done
+  then
+    return 0
+  fi
+  return 1
+}
+
 build_exclusions() {
   # Strip directory components so only basenames are compared in find expressions.
   # This mirrors original behavior which avoided full-path matches for rotated logs.

@@ -36,7 +36,7 @@ decide_quick_plan() {
 
     # Optional: align preview with SKIP_EMPTY behavior
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-      if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+      if ! has_files "$d"; then
         printf '%s\0' "$d" >> "$out_skipped"
         continue
       fi
@@ -89,7 +89,7 @@ decide_directories_plan() {
     # This avoids scheduling directories that contain only subdirectories (no files)
     # and prevents creation of .meta/.log/.md5 sidecar files for those folders.
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-      if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+      if ! has_files "$d"; then
         printf '%s\0' "$d" >> "$plan_skipped_file"
         continue
       fi

@@ -93,7 +93,7 @@ dir_log_append() {
   fi
 
   # Honor SKIP_EMPTY: do not create logs for directories with no files anywhere in subtree.
-  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+   if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$dir"; then
     return 0
   fi
 
@@ -119,7 +119,7 @@ dir_log_skip() {
   fi
 
   # Avoid creating logs for directories with no files anywhere when SKIP_EMPTY=1
-  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! find "$dir" -type f -print -quit 2>/dev/null | grep -q .; then
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$dir"; then
     return 0
   fi
 
@@ -135,30 +135,37 @@ dir_log_skip() {
 }
 
 rotate_log() {
-  # Rotate the given logfile by moving it to <logfile>.<timestamp>.
-  # Then prune older rotated files, keeping only the newest two rotated files.
+  # Rotate the given logfile by moving it to <logfile>.<timestamp>.log.
+  # Do NOT rotate when the logfile exists but appears to be a fresh file
+  # (no prior #run header). This avoids creating a rotated file on first write.
   local logfile="$1"
   local dir base ts
   dir=$(dirname -- "$logfile")
   base=$(basename -- "$logfile")
 
   if [ -f "$logfile" ] && [ -s "$logfile" ]; then
-    ts=$(date +"%Y%m%d-%H%M%S")
-    mv -- "$logfile" "$dir/$base.$ts" || return 1
-    log "Rotated $base -> $base.$ts"
+    # Only rotate if this file contains a prior run header; otherwise treat as new file
+    if grep -q '^#run' "$logfile" 2>/dev/null; then
+      ts=$(date +"%Y%m%d-%H%M%S")
+      mv -- "$logfile" "$dir/$base.$ts.log" || return 1
+      log "Rotated $base -> $base.$ts.log"
+    else
+      # File exists and is non-empty but lacks #run header: do not rotate (first-create scenario)
+      log "Not rotating $base (appears to be new; no prior #run header)"
+    fi
   fi
 
   (
     cd -- "$dir" || exit 0
     # Preferred path: use find -printf to produce sortable timestamps when available.
-    if find . -maxdepth 1 -type f -name "$base.*" -printf "%T@ %p\n" >/dev/null 2>&1; then
-      find . -maxdepth 1 -type f -name "$base.*" -printf "%T@ %p\n" 2>/dev/null \
+    if find . -maxdepth 1 -type f -name "$base.*.log" -printf "%T@ %p\n" >/dev/null 2>&1; then
+      find . -maxdepth 1 -type f -name "$base.*.log" -printf "%T@ %p\n" 2>/dev/null \
         | LC_ALL=C sort -r -n \
         | awk 'NR>=3 {print $2}' \
         | xargs -r -- rm -f --
     else
       # Portable fallback when -printf isn't available: use stat to build sortable pairs.
-      find . -maxdepth 1 -type f -name "$base.*" 2>/dev/null \
+      find . -maxdepth 1 -type f -name "$base.*.log" 2>/dev/null \
       | while IFS= read -r f; do
           if stat --version >/dev/null 2>&1; then
             printf '%s\t%s\n' "$(stat -c %Y -- "$f" 2>/dev/null)" "$f"

@@ -68,18 +68,23 @@ process_single_directory() {
   # Absolute root guard: if NO_ROOT_SIDEFILES=1 and d is the run TARGET_DIR, do nothing.
   # This preserves the invariant that the run root remains free of sidecar files unless
   # the operator explicitly opts in via --allow-root-sidefiles (NO_ROOT_SIDEFILES=0).
-  if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$d" = "${TARGET_DIR%/}" ]; then
-    return 0
+  if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ]; then
+    # Compare canonical absolute paths to avoid trailing-slash or symlink mismatches
+    if [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$(cd "${TARGET_DIR%/}" 2>/dev/null && pwd -P)" ]; then
+      return 0
+    fi
   fi
+
 
   # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
   # This must happen before any filename derivation, logging to per-dir logs, or side effects.
   if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
-    if ! find "$d" -type f -print -quit 2>/dev/null | grep -q .; then
+    if ! has_files "$d"; then
       # Do not set LOG_FILEPATH, do not touch any files
       return 0
     fi
   fi
+
 
   # Only derive filenames after we know the dir should be processed
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
