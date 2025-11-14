@@ -44,6 +44,14 @@
 #  - Behavior mirrors the previous monolithic checksums.sh while adding safety guards and
 #    improved diagnostics to make race conditions and log mismatches easier to diagnose.
 
+# Ensure associative meta arrays exist (no-op if already declared in init.sh).
+# Works in shells that support -A and is safe if arrays are already declared.
+if declare -p -A >/dev/null 2>&1; then
+  declare -gA meta_inode_dev meta_size meta_hash_by_path 2>/dev/null || true
+  # initialize to empty maps only if not already associative arrays
+  : "${meta_inode_dev:=}"  # no-op; keeps ShellCheck quiet about undefined vars
+fi
+
 process_single_directory() {
   local d="$1"
 
