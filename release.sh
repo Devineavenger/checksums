@@ -75,17 +75,24 @@ if [ -f lib/init.sh ]; then
     awk -v v="${NEW_VER}" 'NR==1{print; print "# Version: " v; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
-  # 3b: replace only the numeric fallback inside the VER=... echo fallback
-  # Matches the numeric x.y.z inside the echo "..." and leaves quoting intact.
-  # If multiple matches exist, this replaces the first occurrence.
-  if grep -q 'VER=.*echo' lib/init.sh; then
-    sed -i.bak -E '0,/VER=.*echo/{
-      s@(VER=.*echo[[:space:]]*")[0-9]+\.[0-9]+\.[0-9]+(".*)@\1'"${NEW_VER}"'\2@
-    }' lib/init.sh
+  # 3b: replace the literal numeric fallback in the final printf fallback line
+  # Matches a line like: printf '%s' "3.3.1"
+  # and replaces the quoted version with the new version.
+  #
+  # We only replace the first matching printf fallback occurrence.
+  if grep -q "printf '%s' \"[0-9]\\+\\.[0-9]\\+\\.[0-9]\\+\"" lib/init.sh; then
+    sed -i.bak -E "0,/(printf '%s' \")([0-9]+\.[0-9]+\.[0-9]+)(\"\\))/{
+      s//\1${NEW_VER}\3/
+    }" lib/init.sh
   else
-    # If no VER line with echo fallback found, append a safe fallback replacement near top.
+    # If no printf fallback found, append a conservative fallback near the top.
     # This is conservative: do not attempt complex rewrites.
-    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"$(cat \"$BASE_DIR/VERSION\" 2>/dev/null || echo \"" v "\")\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+    awk -v v="${NEW_VER}" 'NR==1{
+      print;
+      print "# (Inserted VER fallback)";
+      print "VER=\"$(cat \\\"$BASE_DIR/VERSION\\\" 2>/dev/null || echo \"" v "\")\"";
+      next
+    }1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
   # 3c: validate syntax; roll back on failure

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.3.2
+# Version: 3.3.4
 #
 # init.sh
 #
@@ -24,10 +24,64 @@ shopt -s nullglob
 # This works both for local checkout (./lib) and system installs (/usr/local/share/checksums/lib).
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Ensure the VERSION file exists at: $BASE_DIR/VERSION (e.g., /usr/local/share/checksums/VERSION)
-# Version: 3.3.2
-VER="$(cat "$BASE_DIR/VERSION" 2>/dev/null || echo "3.3.2")"
+# Determine version string (VER)
+# Lookup order (robust and mirrors uninstall.sh behavior):
+# 1) Prefer on-disk VERSION at $BASE_DIR/VERSION (installed package)
+# 2) Fallback: a "Version: X.Y.Z" comment in a nearby checksums.sh (source checkout)
+# 3) Fallback: a "Version: X.Y.Z" comment in the invoking wrapper (e.g., /usr/local/bin/checksums)
+# 4) Final fallback: the literal on this line (kept for safety)
+#
+# This makes the runtime behave sensibly whether run from a checkout or an installed prefix.
+determine_VER() {
+  local vfile verline caller candidate
 
+  # 1) Installed VERSION file (preferred)
+  vfile="$BASE_DIR/VERSION"
+  if [ -r "$vfile" ]; then
+    # read whole file, trim trailing whitespace/newline
+    local content
+    content="$(<"$vfile")"
+    # Trim trailing whitespace/newline
+    printf '%s' "${content%"${content##*[![:space:]]}"}"
+    return 0
+  fi
+
+  # 2) Look for Version: comment in a nearby checksums.sh (source checkout)
+  if [ -r "$BASE_DIR/../checksums.sh" ]; then
+    verline="$(sed -n '1,20p' "$BASE_DIR/../checksums.sh" 2>/dev/null | grep -i '^# *Version:' || true)"
+    if [ -n "$verline" ]; then
+      printf '%s' "$(echo "$verline" | sed -E 's/^# *Version:[[:space:]]*//I')"
+      return 0
+    fi
+  fi
+
+  # 3) Look for Version: comment in the invoking wrapper (if there is one)
+  # When init.sh is sourced from an installed wrapper, $0 will normally point at that wrapper.
+  # Fall back to common install location if $0 is not helpful.
+  caller="${0:-}"
+  if [ -n "$caller" ] && [ -r "$caller" ]; then
+    verline="$(sed -n '1,20p' "$caller" 2>/dev/null | grep -i '^# *Version:' || true)"
+    if [ -n "$verline" ]; then
+      printf '%s' "$(echo "$verline" | sed -E 's/^# *Version:[[:space:]]*//I')"
+      return 0
+    fi
+  fi
+
+  # 3b) Also try common installed wrapper path relative to typical prefix if above failed
+  if [ -r "/usr/local/bin/checksums" ]; then
+    verline="$(sed -n '1,20p' /usr/local/bin/checksums 2>/dev/null | grep -i '^# *Version:' || true)"
+    if [ -n "$verline" ]; then
+      printf '%s' "$(echo "$verline" | sed -E 's/^# *Version:[[:space:]]*//I')"
+      return 0
+    fi
+  fi
+
+  # 4) Final fallback: hard-coded literal (kept for compatibility)
+  printf '%s' "3.3.1"
+}
+
+# Populate VER using the robust lookup
+VER="$(determine_VER)"
 
 # Executable name for usage output
 ME="$(basename "$0")"
