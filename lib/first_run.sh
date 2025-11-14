@@ -99,10 +99,10 @@ first_run_verify() {
 
   for d in "${targets[@]}"; do
     first_run_log "Verifying directory: $d"
-    dir_log_append "Verifying existing checksums in: $d"
+    dir_log_append "$d" "Verifying existing checksums in: $d"
     if verify_md5_file "$d"; then
       first_run_log "Verified OK: $d"
-      dir_log_append "Verified OK: $d"
+      dir_log_append "$d" "Verified OK: $d"
       count_verified=$((count_verified+1))
 
       # Respect SKIP_EMPTY: do not schedule truly empty/container-only directories
@@ -131,7 +131,7 @@ first_run_verify() {
 
     # mismatch detected
     first_run_log "Verification FAILED for $d"
-    dir_log_append "Verification FAILED for $d"
+    dir_log_append "$d" "Verification FAILED for $d"
 
     case "$FIRST_RUN_CHOICE" in
       skip)
@@ -157,7 +157,7 @@ first_run_verify() {
         fi
 
         first_run_log "CHOICE overwrite: scheduling recomputation for $d"
-        dir_log_append "Scheduled auto-overwrite: recomputing for $d"
+        dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
           first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
           log "DRYRUN: would overwrite $d/$MD5_FILENAME"

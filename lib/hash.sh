@@ -51,9 +51,11 @@ _par_maybe_wait() {
 
 _par_wait_all() {
   # Wait for all outstanding workers to finish before proceeding.
-  for pid in "${pids[@]}"; do
-    wait "$pid" 2>/dev/null || true
-  done
+  if [ "${#pids[@]}" -gt 0 ]; then
+    for pid in "${pids[@]}"; do
+      [ -n "$pid" ] && wait "$pid" 2>/dev/null || true
+    done
+  fi
   pids=()
   pids_count=0
 }

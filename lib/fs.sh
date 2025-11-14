@@ -31,7 +31,8 @@ has_files() {
   # find only regular files; NUL-delimit to safely handle weird names
   # Exclude files whose basenames match MD5/META/LOG or their rotated variants.
   # Use a small loop to exit early on the first matching user file.
-  if find "$d" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
+  local found=1
+  while IFS= read -r -d '' f; do
     fname=$(basename "$f")
     # Skip our tool-generated files: exact base names and rotated variants.
     case "$fname" in
@@ -52,15 +53,13 @@ has_files() {
           done
           [ -z "$fname" ] && continue
         fi
-        # Found a non-tool regular file
-        printf '%s' "$f" >/dev/null
-        exit 0
+        # Found a non-tool regular file — stop right here, nubskull
+        found=0
+        break
         ;;
     esac
-  done; then
-    return 0
-  fi
-  return 1
+  done < <(find "$d" -type f -print0 2>/dev/null)
+  return "$found"
 }
 
 build_exclusions() {

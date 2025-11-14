@@ -21,7 +21,7 @@ for cand in "${CANDIDATES[@]}"; do
   if [ -d "$cand" ]; then
     for lib in "$cand"/*.sh; do
       case "$(basename "$lib")" in
-        init.sh|loader.sh) continue ;;  # skip self to prevent infinite loop
+        init.sh|loader.sh|checksums.sh) continue ;;  # skip self to prevent infinite loop
       esac
       [ -f "$lib" ] && . "$lib"
     done
