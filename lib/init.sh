@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.3.8
+# Version: 3.3.9
 #
 # init.sh
 #
@@ -42,7 +42,7 @@ determine_VER() {
     local content
     content="$(<"$vfile")"
     # Trim trailing whitespace/newline
-    printf '%s' "${content%"${content##*[![:space:]]}"}"
+    printf '%s' "${content%${content##*[![:space:]]}}"
     return 0
   fi
 
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.3.8"
+  printf '%s' "3.3.9"
 }
 
 # Populate VER using the robust lookup
@@ -155,4 +155,13 @@ if declare -p -A >/dev/null 2>&1; then
   # shellcheck disable=SC2154,SC2034
   declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode 2>/dev/null || true
   declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
+  # scheduled-first-run lookup (assoc)
+  declare -gA first_run_overwrite_set 2>/dev/null || true
+  declare -gA first_run_overwrite_set=()
+else
+  # fallback text-map file (created lazily)
+  MAP_first_run_overwrite=""
 fi
+
+# Ensure first_run_overwrite array exists for first_run.sh usage
+first_run_overwrite=()

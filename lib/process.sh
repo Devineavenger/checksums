@@ -75,16 +75,24 @@ process_single_directory() {
     fi
   fi
 
+  # If this directory is explicitly scheduled by first-run, do not let SKIP_EMPTY skip it.
+  local is_scheduled=0
+  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+    [ -n "${first_run_overwrite_set[$d]:-}" ] && is_scheduled=1
+  else
+    if [ -n "${MAP_first_run_overwrite:-}" ] && [ -f "$MAP_first_run_overwrite" ]; then
+      if map_get "$MAP_first_run_overwrite" "$d" >/dev/null 2>&1; then is_scheduled=1; fi
+    fi
+  fi
 
   # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
   # This must happen before any filename derivation, logging to per-dir logs, or side effects.
-  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+  if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ] && [ "$is_scheduled" -eq 0 ]; then
     if ! has_files "$d"; then
       # Do not set LOG_FILEPATH, do not touch any files
       return 0
     fi
   fi
-
 
   # Only derive filenames after we know the dir should be processed
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"

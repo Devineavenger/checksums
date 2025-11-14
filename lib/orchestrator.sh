@@ -144,7 +144,23 @@ run_checksums() {
   # First-run verification (post confirmation)
   # ----------------------------
   if [ "$FIRST_RUN" -eq 1 ]; then
+    # ensure MAP_first_run_overwrite exists for non-assoc fallback
+    if [ "${USE_ASSOC:-0}" -eq 0 ] && [ -z "${MAP_first_run_overwrite:-}" ]; then
+      MAP_first_run_overwrite="$(mktemp)"; : > "$MAP_first_run_overwrite"
+    fi
     first_run_verify "$TARGET_DIR"
+    # when first_run_verify schedules entries it appended to first_run_overwrite and also
+    # set the lookup (first_run_overwrite_set or MAP_first_run_overwrite). If not, ensure any
+    # array entries are reflected into the lookup so later stages consult it.
+    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+      for d in "${first_run_overwrite[@]:-}"; do
+        first_run_overwrite_set["$d"]=1
+      done
+    else
+      for d in "${first_run_overwrite[@]:-}"; do
+        map_set "$MAP_first_run_overwrite" "$d" "1"
+      done
+    fi
   fi
 
   # track directories that have actually been processed during this run
@@ -163,6 +179,12 @@ run_checksums() {
       log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
       if [ "$exists_yesno" = yes ]; then
         process_single_directory "$d"
+        # After processing, remove from the scheduled lookup so SKIP_EMPTY resumes normal behavior
+        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+          unset 'first_run_overwrite_set[$d]'
+        else
+          map_del "$MAP_first_run_overwrite" "$d"
+        fi
         count_overwritten=$((count_overwritten+1))
         count_processed=$((count_processed+1))
         processed_dirs+=("$d")

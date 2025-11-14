@@ -24,18 +24,40 @@ _safe_name() {
 }
 
 # has_files DIR
-# Return success (0) if any regular file exists anywhere under DIR (recursively), otherwise return non-zero.
-# Portable: uses find -print0 and a fast read -d '' loop which works even with odd filenames.
+# Return success (0) if any regular file exists anywhere under DIR that is NOT
+# a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
 has_files() {
-  local d="$1" f
-  # Use find -type f -print0 and exit early on first file found.
-  if find "$d" -type f -print0 2>/dev/null | \
-     while IFS= read -r -d '' f; do
-       # Found a regular file; exit loop and return success.
-       printf '%s' "$f" >/dev/null
-       exit 0
-     done
-  then
+  local d="$1" f fname
+  # find only regular files; NUL-delimit to safely handle weird names
+  # Exclude files whose basenames match MD5/META/LOG or their rotated variants.
+  # Use a small loop to exit early on the first matching user file.
+  if find "$d" -type f -print0 2>/dev/null | while IFS= read -r -d '' f; do
+    fname=$(basename "$f")
+    # Skip our tool-generated files: exact base names and rotated variants.
+    case "$fname" in
+      "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
+      # rotated logs: either base.<ts>.log or base.<ts>
+      "$LOG_BASE".*".log" | "$LOG_BASE".* ) continue ;;
+      # run-level and first-run logs
+      "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
+      # lock suffix
+      *"$LOCK_SUFFIX") continue ;;
+      # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
+      *)
+        if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+          local pat
+          for pat in "${EXCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            [[ "$fname" == $pat ]] && { fname=""; break; }
+          done
+          [ -z "$fname" ] && continue
+        fi
+        # Found a non-tool regular file
+        printf '%s' "$f" >/dev/null
+        exit 0
+        ;;
+    esac
+  done; then
     return 0
   fi
   return 1
