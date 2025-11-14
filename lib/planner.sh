@@ -34,6 +34,12 @@ decide_quick_plan() {
       continue
     fi
 
+    # Preview carve-out mirroring first-run: show md5-only dirs as 'to process'
+    if [ "${FIRST_RUN:-0}" -eq 1 ] && [ -f "$d/$MD5_FILENAME" ] \
+       && { [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; }; then
+      printf '%s\0' "$d" >> "$out_proc"; continue
+    fi
+
     # Optional: align preview with SKIP_EMPTY behavior using a cheap shallow test
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
       # Cheap shallow check for any regular file in the directory (fast preview)
@@ -84,6 +90,15 @@ decide_directories_plan() {
     if [ "$VERIFY_ONLY" -eq 1 ]; then
       printf '%s\0' "$d" >> "$plan_to_process_file"
       continue
+    fi
+
+    # First-run carve-out: If we are in FIRST_RUN and the directory has .md5
+    # but is missing .meta or .log, schedule processing even if no user files exist.
+    if [ "${FIRST_RUN:-0}" -eq 1 ]; then
+      if [ -f "$sumf" ] && { [ ! -f "$metaf" ] || [ ! -f "$d/$LOG_FILENAME" ]; }; then
+        printf '%s\0' "$d" >> "$plan_to_process_file"
+        continue
+      fi
     fi
 
     # If SKIP_EMPTY is enabled, quickly check for any regular files anywhere under d.

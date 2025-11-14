@@ -153,17 +153,27 @@ run_checksums() {
     # when first_run_verify schedules entries it appended to first_run_overwrite and also
     # set the lookup (first_run_overwrite_set or MAP_first_run_overwrite). If not, ensure any
     # array entries are reflected into the lookup so later stages consult it.
+    # Build a fast lookup for scheduled first-run overwrites (assoc-array or text-map fallback)
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+      # Ensure the associative array exists (safe to run repeatedly)
+      declare -gA first_run_overwrite_set 2>/dev/null || true
+      # Clear any previous contents without changing type
+      unset first_run_overwrite_set
+      declare -gA first_run_overwrite_set
       for d in "${first_run_overwrite[@]:-}"; do
-        first_run_overwrite_set["$d"]=1
+        [ -n "$d" ] && first_run_overwrite_set["$d"]=1
       done
     else
+      # Ensure the map file exists and is empty if not already set
+      if [ -z "${MAP_first_run_overwrite:-}" ]; then
+        MAP_first_run_overwrite="$(mktemp)" && : > "$MAP_first_run_overwrite"
+      fi
       for d in "${first_run_overwrite[@]:-}"; do
         map_set "$MAP_first_run_overwrite" "$d" "1"
       done
     fi
   fi
-
+  
   # track directories that have actually been processed during this run
   local -a processed_dirs=()
 
@@ -181,10 +191,14 @@ run_checksums() {
       if [ "$exists_yesno" = yes ]; then
         process_single_directory "$d"
         # After processing, remove from the scheduled lookup so SKIP_EMPTY resumes normal behavior
-        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          unset 'first_run_overwrite_set[$d]'
-        else
-          map_del "$MAP_first_run_overwrite" "$d"
+        if [ -n "$d" ]; then
+          if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+            log "DEBUG: removing scheduled overwrite entry for d='$d'"
+            unset "first_run_overwrite_set[$d]"
+          else
+		    log "DEBUG: post-process cleanup for d='${d}' USE_ASSOC=${USE_ASSOC}"
+            map_del "$MAP_first_run_overwrite" "$d"
+          fi
         fi
         count_overwritten=$((count_overwritten+1))
         count_processed=$((count_processed+1))

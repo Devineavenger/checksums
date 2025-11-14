@@ -108,10 +108,16 @@ first_run_verify() {
       # Respect SKIP_EMPTY: do not schedule truly empty/container-only directories
       if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
         if ! has_files "$d"; then
-          first_run_log "SKIPPED scheduling for empty directory: $d"
-          dir_log_append "$d" "SKIPPED scheduling (no user files)"
-          continue
-        fi
+          # If .md5 exists, still schedule overwrite
+          if [ -f "$d/$MD5_FILENAME" ]; then
+            first_run_log "Scheduling overwrite for .md5-only directory: $d"
+            first_run_overwrite+=("$d")
+          else
+            first_run_log "SKIPPED scheduling for truly empty directory: $d"
+            dir_log_append "$d" "SKIPPED scheduling (no user files)"
+            continue
+          fi
+		fi
       fi
 
       if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
