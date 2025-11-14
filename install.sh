@@ -39,6 +39,9 @@ fi
 echo -e "${YELLOW}==> Creating directories${RESET}"
 mkdir -p "$BINDIR" "$LIBSUBDIR"
 
+# Install VERSION so runtime can read the packaged version string
+install -m 0644 VERSION "$SHAREDIR/"
+
 echo -e "${YELLOW}==> Installing main script to $BINDIR${RESET}"
 install -m 0755 checksums.sh "$BINDIR/checksums"
 
