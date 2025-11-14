@@ -42,8 +42,6 @@
 #    initialized by init.sh or via CLI/config handling performed earlier.
 
 run_checksums() {
-  build_exclusions
-
   RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
   LOG_FILEPATH="$RUN_LOG"
   : > "$RUN_LOG"
@@ -78,6 +76,9 @@ run_checksums() {
       . "$DEFAULT_CONF"
     fi
   fi
+
+  # Build exclusions now that CLI/config have been applied
+  build_exclusions
 
   log "Starting run on $TARGET_DIR"
   log "Run ID: $RUN_ID"

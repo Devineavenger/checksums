@@ -34,9 +34,10 @@ decide_quick_plan() {
       continue
     fi
 
-    # Optional: align preview with SKIP_EMPTY behavior
+    # Optional: align preview with SKIP_EMPTY behavior using a cheap shallow test
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-      if ! has_files "$d"; then
+      # Cheap shallow check for any regular file in the directory (fast preview)
+      if ! find "$d" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
         printf '%s\0' "$d" >> "$out_skipped"
         continue
       fi
@@ -97,7 +98,7 @@ decide_directories_plan() {
 
     if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
       # If any file newer than sumfile, we need to process
-      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c 'test "{}" -nt "'"$sumf"'" && exit 0' 2>/dev/null; then
+      if find_file_expr "$d" | LC_ALL=C xargs -0 -n1 -I{} bash -c "test \"\$1\" -nt \"\$2\"" _ {} "$sumf" 2>/dev/null; then
         printf '%s\0' "$d" >> "$plan_to_process_file"
         continue
       fi
