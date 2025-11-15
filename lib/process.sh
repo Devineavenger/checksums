@@ -91,6 +91,9 @@ classify_batch_size() {
 }
 
 process_single_directory() {
+  if [ "${DEBUG:-0}" -gt 0 ]; then
+    dbg "Effective BATCH_RULES=$BATCH_RULES PARALLEL_JOBS=$PARALLEL_JOBS DRY_RUN=$DRY_RUN"
+  fi
   local d="$1"
 
   # Defensive check: if caller passed a non-existent path, bail out cleanly.
