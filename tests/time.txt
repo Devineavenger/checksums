@@ -1,0 +1,6 @@
+running: PATH="/tmp/bin:$PATH" time checksums --allow-root-sidefiles -v -p 1 /mnt/n/Temp/test-par/ 
+result: 8.14user 3.76system 0:21.83elapsed 54%CPU (0avgtext+0avgdata 6744maxresident)k 0inputs+0outputs (4major+3099862minor)pagefaults 0swaps
+running: PATH="/tmp/bin:$PATH" time checksums --allow-root-sidefiles -v -p 4 /mnt/n/Temp/test-par/
+result: 8.02user 3.77system 0:21.75elapsed 54%CPU (0avgtext+0avgdata 6312maxresident)k 10288inputs+0outputs (90major+3100828minor)pagefaults 0swaps
+running: PATH="/tmp/bin:$PATH" time checksums --allow-root-sidefiles -v -p 16 /mnt/n/Temp/test-par/
+result: 8.24user 3.86system 0:27.61elapsed 43%CPU (0avgtext+0avgdata 6532maxresident)k 10296inputs+0outputs (105major+3245707minor)pagefaults 0swaps

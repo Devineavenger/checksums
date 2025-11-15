@@ -213,10 +213,10 @@ process_single_directory() {
   fi
 
   # Collect tasks for hashing
-  local results_file=""
+  local results_dir=""
   if [ "$DRY_RUN" -eq 0 ]; then
-    results_file="$(mktemp "${TMPDIR:-/tmp}/hash_results.XXXXXX")" || results_file="$tmp_sum.hash.results"
-    : > "$results_file"
+    results_dir="$(mktemp -d "${TMPDIR:-/tmp}/hash_results_dir.XXXXXX")" || results_dir="$tmp_sum.hash.results.d"
+    mkdir -p "$results_dir"
   fi
   # Ensure temporary artifacts are cleaned up deterministically.
   # Avoid trapping RETURN globally; instead perform explicit cleanup at each exit point.
@@ -315,33 +315,39 @@ process_single_directory() {
       fi
     else
       _par_maybe_wait
-      _do_hash_task "$fpath" "$PER_FILE_ALGO" "$results_file" &
+      local worker_out
+      worker_out="$results_dir/$(basename "$fpath").out"
+      _do_hash_task "$fpath" "$PER_FILE_ALGO" "$worker_out" &
       HASH_PIDS+=("$!")
       HASH_PIDS_COUNT=${#HASH_PIDS[@]}
     fi
   done
 
-  # Collect parallel results
+  # Collect parallel results from per-worker output files
   if [ "$DRY_RUN" -eq 0 ]; then
     _par_wait_all
-    while IFS=$'\t' read -r rpath rhash; do
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        path_to_hash["$rpath"]="$rhash"
-        local id="${path_to_inode[$rpath]}"
-        [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
-      else
-        map_set "$MAP_path_to_hash" "$rpath" "$rhash"
-        local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
-        [ -n "$id" ] && [ -n "$rhash" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
-      fi
-      local bname; bname=$(basename "$rpath")
-      if [ -n "$rhash" ]; then
-        vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
-      else
-        record_error "Hash failed for $rpath"
-      fi
-    done < "$results_file"
-    rm -f -- "$results_file" 2>/dev/null || true
+    for worker_out in "$results_dir"/*.out; do
+      [ -f "$worker_out" ] || continue
+      while IFS=$'\t' read -r rpath rhash; do
+        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+          path_to_hash["$rpath"]="$rhash"
+          local id="${path_to_inode[$rpath]}"
+          [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
+        else
+          map_set "$MAP_path_to_hash" "$rpath" "$rhash"
+          local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
+          [ -n "$id" ] && [ -n "$rhash" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
+        fi
+        local bname; bname=$(basename "$rpath")
+        if [ -n "$rhash" ]; then
+          vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
+        else
+          record_error "Hash failed for $rpath"
+        fi
+      done < "$worker_out"
+      rm -f -- "$worker_out" 2>/dev/null || true
+    done
+    rmdir "$results_dir" 2>/dev/null || true
   fi
 
   # Write outputs
