@@ -105,26 +105,20 @@ first_run_verify() {
       dir_log_append "$d" "Verified OK: $d"
       count_verified=$((count_verified+1))
 
-      # Respect SKIP_EMPTY: do not schedule truly empty/container-only directories
-      if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
-        if ! has_files "$d"; then
-          # If .md5 exists, still schedule overwrite
-          if [ -f "$d/$MD5_FILENAME" ]; then
-            first_run_log "Scheduling overwrite for .md5-only directory: $d"
-            first_run_overwrite+=("$d")
-          else
-            first_run_log "SKIPPED scheduling for truly empty directory: $d"
-            dir_log_append "$d" "SKIPPED scheduling (no user files)"
-            continue
-          fi
-		fi
-      fi
-
-      if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
-        first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
+      # Single, definitive scheduling rule:
+      # - Only schedule if the directory contains user files.
+      # - In dry-run or verify-only, do not mutate; just log.
+      if has_files "$d"; then
+        if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
+          first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
+        else
+          first_run_log "SCHEDULED: would create meta/log for $d"
+          first_run_overwrite+=("$d")
+          dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
+        fi
       else
-        first_run_log "SCHEDULED: would create meta/log for $d"
-        first_run_overwrite+=("$d")
+        first_run_log "SKIPPED scheduling for empty/container-only directory: $d"
+        dir_log_append "$d" "SKIPPED scheduling (no user files)"
       fi
       continue
     fi

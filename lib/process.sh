@@ -88,8 +88,8 @@ process_single_directory() {
   # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
   # This must happen before any filename derivation, logging to per-dir logs, or side effects.
   if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ] && [ "$is_scheduled" -eq 0 ]; then
-    if ! has_files "$d"; then
-      # Do not set LOG_FILEPATH, do not touch any files
+    # Skip processing if there are no regular files directly inside this directory.
+    if ! has_local_files "$d"; then
       return 0
     fi
   fi

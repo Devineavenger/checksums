@@ -28,6 +28,11 @@ user-install:
 user-uninstall:
 	./uninstall.sh
 
+user-reinstall:
+	./uninstall.sh
+	sleep 1
+	./install.sh
+
 test:
 	bats tests/
 
@@ -108,6 +113,7 @@ help:
 	@echo "  make uninstall             - Uninstall checksums (developer style)"
 	@echo "  make user-install          - Run friendly ./install.sh script"
 	@echo "  make user-uninstall        - Run friendly ./uninstall.sh script"
+	@echo "  make user-reinstall        - Run friendly ./uninstall.sh & ./install.sh script"
 	@echo "  make test                  - Run unit tests (Bats)"
 	@echo "  make lint                  - Run shellcheck linting"
 	@echo "  make ci                    - Run lint + test (local CI check)"

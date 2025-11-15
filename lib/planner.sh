@@ -40,10 +40,15 @@ decide_quick_plan() {
       printf '%s\0' "$d" >> "$out_proc"; continue
     fi
 
-    # Optional: align preview with SKIP_EMPTY behavior using a cheap shallow test
-    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-      # Cheap shallow check for any regular file in the directory (fast preview)
-      if ! find "$d" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+    # Align preview with SKIP_EMPTY + local-file semantics
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+      # If no files anywhere under d, skip entirely
+      if ! has_files "$d"; then
+        printf '%s\0' "$d" >> "$out_skipped"
+        continue
+      fi
+      # If d contains no regular files directly (only files in subdirs), skip creating sidecars for d
+      if ! has_local_files "$d"; then
         printf '%s\0' "$d" >> "$out_skipped"
         continue
       fi
@@ -53,7 +58,6 @@ decide_quick_plan() {
     printf '%s\0' "$d" >> "$out_proc"
   done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
 }
-
 
 # ---------------------------------------------------------------------
 # Full planner (side-effect-free): accurate decisions, may be slow.
@@ -95,20 +99,19 @@ decide_directories_plan() {
     # First-run carve-out: If we are in FIRST_RUN and the directory has .md5
     # but is missing .meta or .log, schedule processing even if no user files exist.
     if [ "${FIRST_RUN:-0}" -eq 1 ]; then
-      if [ -f "$sumf" ] && { [ ! -f "$metaf" ] || [ ! -f "$d/$LOG_FILENAME" ]; }; then
+      if [ -f "$sumf" ] \
+         && { [ ! -f "$metaf" ] || [ ! -f "$d/$LOG_FILENAME" ]; } \
+         && has_local_files "$d"; then
+        # Only schedule sidecar creation for this directory if it has files locally
         printf '%s\0' "$d" >> "$plan_to_process_file"
         continue
       fi
     fi
 
-    # If SKIP_EMPTY is enabled, quickly check for any regular files anywhere under d.
-    # This avoids scheduling directories that contain only subdirectories (no files)
-    # and prevents creation of .meta/.log/.md5 sidecar files for those folders.
-    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "$FORCE_REBUILD" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-      if ! has_files "$d"; then
-        printf '%s\0' "$d" >> "$plan_skipped_file"
-        continue
-      fi
+    # Always skip directories with no user files when SKIP_EMPTY=1
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$d"; then
+      printf '%s\0' "$d" >> "$plan_skipped_file"
+      continue
     fi
 
     if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then

@@ -23,6 +23,16 @@ _safe_name() {
   [ -n "$n" ] && printf '%s' "$n" || printf '%s' '__DO_NOT_MATCH__'
 }
 
+# Ensure derived exclusion names are available even if build_exclusions() hasn't been run.
+# This makes the helpers safe to call in isolation (interactive tests, unit probes).
+#MD5_EXCL="${MD5_EXCL:-$(_safe_name "$(basename "${MD5_FILENAME:-#####checksums#####.md5}")")}"
+#META_EXCL="${META_EXCL:-$(_safe_name "$(basename "${META_FILENAME:-#####checksums#####.meta}")")}"
+#LOG_EXCL="${LOG_EXCL:-$(_safe_name "$(basename "${LOG_FILENAME:-${BASE_NAME:-#####checksums#####}.log}")")}"
+#ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME:-#####checksums#####}.log")")}"
+#RUN_EXCL="${RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.run.log")")}"
+#FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")")}"
+#LOCK_EXCL="${LOCK_EXCL:-${META_EXCL}${LOCK_SUFFIX:-.lock}}"
+
 # has_files DIR
 # Return success (0) if any regular file exists anywhere under DIR that is NOT
 # a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
@@ -38,14 +48,15 @@ has_files() {
     case "$fname" in
       "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
       # rotated logs: either base.<ts>.log or base.<ts>
-      "$LOG_BASE".*".log" | "$LOG_BASE".* ) continue ;;
+      ${LOG_BASE}.*.log | ${LOG_BASE}.* ) continue ;;
       # run-level and first-run logs
       "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
       # lock suffix
       *"$LOCK_SUFFIX") continue ;;
       # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
       *)
-        if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+        # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
+        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
           local pat
           for pat in "${EXCLUDE_PATTERNS[@]}"; do
             # shellcheck disable=SC2053
@@ -60,6 +71,34 @@ has_files() {
     esac
   done < <(find "$d" -type f -print0 2>/dev/null)
   return "$found"
+}
+
+# has_local_files DIR
+# Return 0 if there is any regular file directly inside DIR (maxdepth 1)
+# excluding known tool-generated files/patterns (same exclusions as has_files).
+has_local_files() {
+  local d="$1" f fname
+  while IFS= read -r -d '' f; do
+    fname=$(basename "$f")
+    case "$fname" in
+      "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
+      ${LOG_BASE}.*.log | ${LOG_BASE}.* ) continue ;;
+      "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
+      *"$LOCK_SUFFIX") continue ;;
+      *)
+        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+          local pat skip=0
+          for pat in "${EXCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            [[ "$fname" == $pat ]] && skip=1 && break
+          done
+          [ "$skip" -eq 1 ] && continue
+        fi
+        return 0
+        ;;
+    esac
+  done < <(find "$d" -maxdepth 1 -type f -print0 2>/dev/null)
+  return 1
 }
 
 build_exclusions() {
@@ -107,7 +146,7 @@ find_file_expr() {
       local skip=0
 
       # Apply exclude patterns first; these are shell globs evaluated with [[ .. == pattern ]]
-      if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+      if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
         for pat in "${EXCLUDE_PATTERNS[@]}"; do
           # shellcheck disable=SC2053
           [[ "$fname" == $pat ]] && skip=1 && break
@@ -115,7 +154,7 @@ find_file_expr() {
       fi
 
       # If include patterns are defined, require a match (after exclusions)
-      if [ "$skip" -eq 0 ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+      if [ "$skip" -eq 0 ] && [ "${INCLUDE_PATTERNS:+1}" = "1" ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
         local match=0
         for pat in "${INCLUDE_PATTERNS[@]}"; do
           # shellcheck disable=SC2053
