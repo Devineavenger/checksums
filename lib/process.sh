@@ -56,17 +56,38 @@ fi
 declare -a pids 2>/dev/null || pids=()
 declare -i pids_count=0 2>/dev/null || pids_count=0
 
-# Adaptive batch size selector based on file size (bytes).
-# Small (<1MB) → batch 20; medium (<100MB) → batch 5; large → batch 1.
+# Adaptive batch size selector based on file size (bytes) and BATCH_RULES string.
+# Example BATCH_RULES: "0-2M:20,2M-50M:10,>50M:1"
 classify_batch_size() {
   local size="$1"
-  if [ "$size" -lt $((2*1024*1024)) ]; then
-    echo 20
-  elif [ "$size" -lt $((50*1024*1024)) ]; then
-    echo 10
-  else
-    echo 1
-  fi
+  local rules="${BATCH_RULES:-0-2M:20,2M-50M:10,>50M:1}"
+  local rule low high count
+
+  IFS=',' read -ra parts <<< "$rules"
+  for rule in "${parts[@]}"; do
+    case "$rule" in
+      *-*:*)
+        low=$(echo "$rule" | sed -E 's/^([0-9]+)([KMG]?)-.*/\1\2/')
+        high=$(echo "$rule" | sed -E 's/^[0-9]+[KMG]?-(.*):.*/\1/')
+        count=$(echo "$rule" | sed -E 's/.*:([0-9]+)$/\1/')
+        # convert units
+        low_bytes=$(numfmt --from=iec <<<"$low" 2>/dev/null || echo "$low")
+        high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
+        if [ "$size" -ge "$low_bytes" ] && [ "$size" -lt "$high_bytes" ]; then
+          echo "$count"; return
+        fi
+        ;;
+      ">"*":*")
+        high=$(echo "$rule" | sed -E 's/^>(.*):.*/\1/')
+        count=$(echo "$rule" | sed -E 's/.*:([0-9]+)$/\1/')
+        high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
+        if [ "$size" -ge "$high_bytes" ]; then
+          echo "$count"; return
+        fi
+        ;;
+    esac
+  done
+  echo 1
 }
 
 process_single_directory() {

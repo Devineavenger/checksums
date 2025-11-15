@@ -23,6 +23,10 @@ Options:
   -F                 first-run verify existing .md5 files that lack .meta/.log
   -C CHOICE          first-run choice: skip | overwrite | prompt (default prompt)
   -p N               parallel hashing jobs (default 1)
+  -b RULES           adaptive batching rules (default: "0-2M:20,2M-50M:10,>50M:1")
+                     format: "LOW-HIGH:COUNT,LOW-HIGH:COUNT,>HIGH:COUNT"
+                     units: K/M/G suffix supported (e.g. 512K, 2M, 1G).
+  --batch RULES      same as -b, long form
   -o FORMAT          log format: text (default), json, csv
   -V                 verify-only mode (audit; no writes)
   -y                 yes (skip confirmation)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.5.2
+# Version: 3.5.3
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.5.2"
+  printf '%s' "3.5.3"
 }
 
 # Populate VER using the robust lookup
@@ -87,23 +87,24 @@ VER="$(determine_VER)"
 ME="$(basename "$0")"
 
 # === Defaults (override via config or CLI) ===
-BASE_NAME="#####checksums#####"   # Base name for sidecar files (.md5, .meta, .log)
-PER_FILE_ALGO="md5"               # md5 (default) or sha256
-META_SIG_ALGO="sha256"            # sha256 (default), md5, or none
-LOG_BASE=""                       # Base name for per-dir logs; defaults to BASE_NAME if not set
-DRY_RUN=0                         # -n simulate actions without writing files
-DEBUG=0                           # -d debug verbosity (repeatable)
-VERBOSE=0                         # -v verbose logging
-YES=0                             # -y assume yes (skip confirmation)
-ASSUME_NO=0                       # --assume-no (force prompt decline)
-FORCE_REBUILD=0                   # -r force recomputation ignoring manifests
-FIRST_RUN=0                       # -F first-run verification/bootstrap mode
-FIRST_RUN_CHOICE="prompt"         # -C skip | overwrite | prompt (on mismatch)
-PARALLEL_JOBS=1                   # -p N parallel hashing jobs
-LOG_FORMAT="text"                 # -o text (default), json, csv
-VERIFY_ONLY=0                     # -V audit only (no writes)
-CONFIG_FILE=""                    # --config FILE explicit config path
-VERIFY_MD5_DETAILS=1              # When non-zero, planner will run per-directory md5 verification on .md5-only dirs and emit MISSING/MISMATCH lines into the run log (enabled by default). Use --md5-details / -z to explicitly toggle; default = 1
+BASE_NAME="#####checksums#####"          # Base name for sidecar files (.md5, .meta, .log)
+PER_FILE_ALGO="md5"                      # md5 (default) or sha256
+META_SIG_ALGO="sha256"                   # sha256 (default), md5, or none
+LOG_BASE=""                              # Base name for per-dir logs; defaults to BASE_NAME if not set
+DRY_RUN=0                                # -n simulate actions without writing files
+DEBUG=0                                  # -d debug verbosity (repeatable)
+VERBOSE=0                                # -v verbose logging
+YES=0                                    # -y assume yes (skip confirmation)
+ASSUME_NO=0                              # --assume-no (force prompt decline)
+FORCE_REBUILD=0                          # -r force recomputation ignoring manifests
+FIRST_RUN=0                              # -F first-run verification/bootstrap mode
+FIRST_RUN_CHOICE="prompt"                # -C skip | overwrite | prompt (on mismatch)
+PARALLEL_JOBS=1                          # -p N parallel hashing jobs
+LOG_FORMAT="text"                        # -o text (default), json, csv
+VERIFY_ONLY=0                            # -V audit only (no writes)
+CONFIG_FILE=""                           # --config FILE explicit config path
+VERIFY_MD5_DETAILS=1                     # When non-zero, planner will run per-directory md5 verification on .md5-only dirs and emit MISSING/MISMATCH lines into the run log (enabled by default). Use --md5-details / -z to explicitly toggle; default = 1
+BATCH_RULES="0-2M:20,2M-50M:10,>50M:1"   # -b | --batch Adaptive batching defaults. Format string: "LOW-HIGH:COUNT,LOW-HIGH:COUNT,>HIGH:COUNT" Units: suffix K/M/G supported (e.g. 2M = 2 megabytes). Default: 0–2M → 20 files, 2M–50M → 10 files, >50M → 1 file
 
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default

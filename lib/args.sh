@@ -42,7 +42,7 @@ parse_args() {
   # getopts optstring:
   #   options with args must be suffixed by ':'
   #   The trailing '-:' enables long options handling via OPTARG parsing.
-  while getopts "f:a:m:l:ndvrFC:p:o:yVhz-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrFC:p:o:yVhzb:-:" opt 2>/dev/null; do
     case "$opt" in
       # Short options (same as legacy tool)
       f) BASE_NAME=$OPTARG ;;            # base name for .md5/.meta/.log
@@ -57,6 +57,7 @@ parse_args() {
       C) FIRST_RUN_CHOICE=$OPTARG ;;     # skip | overwrite | prompt
       z) VERIFY_MD5_DETAILS=0 ;;         # short: -z => disable md5-details (no-md5-details)
       p) PARALLEL_JOBS=$OPTARG ;;        # number of parallel hashing jobs
+      b) BATCH_RULES=$OPTARG ;;          # short: -b RULES => adaptive batching rules
       o) LOG_FORMAT=$OPTARG ;;           # text | json | csv
       y) YES=1 ;;                        # assume-yes (non-interactive)
       V) VERIFY_ONLY=1 ;;                # verify-only audit mode (no writes)
@@ -92,6 +93,11 @@ parse_args() {
             # Disable md5-details in planning
             VERIFY_MD5_DETAILS=0
             ;;
+          batch)
+            # --batch RULES (consume next positional as value)
+            BATCH_RULES="${!OPTIND}"
+            OPTIND=$((OPTIND + 1))
+            ;;
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
             NO_ROOT_SIDEFILES=0
@@ -111,6 +117,15 @@ parse_args() {
 
   # Move past parsed options to remaining positionals
   shift $((OPTIND - 1))
+
+  # === Sanity check for BATCH_RULES format ===
+  # Valid examples: "0-2M:20,2M-50M:10,>50M:1"
+  # Pattern: comma‑separated list of ranges "LOW-HIGH:COUNT" or ">HIGH:COUNT"
+  # Units: optional K/M/G suffix
+  if ! [[ "$BATCH_RULES" =~ ^([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+,)*([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+|>[0-9]+[KMG]?:[0-9]+)$ ]]; then
+    record_error "Invalid --batch/-b rules format: '$BATCH_RULES'. Falling back to default."
+    BATCH_RULES="0-2M:20,2M-50M:10,>50M:1"
+  fi
 
   # Guard against missing DIRECTORY under set -u (nounset)
   if [ $# -lt 1 ]; then
