@@ -46,8 +46,13 @@ run_checksums() {
   LOG_FILEPATH="$RUN_LOG"
   : > "$RUN_LOG"
 
-  [ "$DEBUG" -gt 0 ] && log_level=3
-  [ "$VERBOSE" -gt 0 ] && [ "$DEBUG" -eq 0 ] && log_level=2
+  if [ "$DEBUG" -gt 0 ]; then
+    log_level=3
+  elif [ "$VERBOSE" -ge 2 ]; then
+    log_level=3   # -vv or higher unlocks debug
+  elif [ "$VERBOSE" -gt 0 ]; then
+    log_level=2   # single -v = verbose only
+  fi
 
   detect_tools
   detect_stat

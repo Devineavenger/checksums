@@ -251,7 +251,7 @@ process_single_directory() {
           local oldp="${old_path_by_inode[$inode_dev]}"
           if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
             h="${inode_hash_cache[$inode_dev]}"; reuse=1
-            log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+            vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
           fi
         fi
       fi
@@ -262,7 +262,7 @@ process_single_directory() {
       local os; os="$(map_get "$MAP_old_size" "$oldp")"
       if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
         h="$cached"; reuse=1
-        log "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+        vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
       fi
     fi
 
@@ -272,7 +272,7 @@ process_single_directory() {
         if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
           h="${meta_hash_by_path[$fname]}"; reuse=1
           inode_hash_cache["$inode_dev"]="$h"
-          log "Reusing hash for unchanged file $fname"
+          vlog "Reusing hash for unchanged file $fname"
         fi
       else
         # When using fallback, meta_* arrays may not exist; leverage text maps if available
@@ -283,7 +283,7 @@ process_single_directory() {
         if [ -n "$mm" ] && [ "$mm" = "$mtime" ] && [ -n "$ms" ] && [ "$ms" = "$size" ] && [ -n "$mh" ]; then
           h="$mh"; reuse=1
           map_set "$MAP_inode_hash_cache" "$inode_dev" "$h"
-          log "Reusing hash for unchanged file $fname"
+          vlog "Reusing hash for unchanged file $fname"
         fi
       fi
     fi
@@ -336,7 +336,7 @@ process_single_directory() {
       fi
       local bname; bname=$(basename "$rpath")
       if [ -n "$rhash" ]; then
-        log "Hashed $bname -> ${rhash:0:16}... (truncated)"
+        vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
       else
         record_error "Hash failed for $rpath"
       fi

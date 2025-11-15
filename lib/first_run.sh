@@ -21,7 +21,7 @@ verify_md5_file() {
   local dir="$1"
   local sumf="$dir/$MD5_FILENAME"
   [ -f "$sumf" ] || return 2
-  dbg "Verifying $sumf"
+  vlog "Verifying $sumf"
 
   if command -v md5sum >/dev/null 2>&1; then
     # Try GNU md5sum check first
