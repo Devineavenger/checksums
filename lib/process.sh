@@ -56,6 +56,19 @@ fi
 declare -a pids 2>/dev/null || pids=()
 declare -i pids_count=0 2>/dev/null || pids_count=0
 
+# Adaptive batch size selector based on file size (bytes).
+# Small (<1MB) → batch 20; medium (<100MB) → batch 5; large → batch 1.
+classify_batch_size() {
+  local size="$1"
+  if [ "$size" -lt $((2*1024*1024)) ]; then
+    echo 20
+  elif [ "$size" -lt $((50*1024*1024)) ]; then
+    echo 10
+  else
+    echo 1
+  fi
+}
+
 process_single_directory() {
   local d="$1"
 
@@ -235,6 +248,11 @@ process_single_directory() {
     MAP_path_to_meta="$(mktemp)"; : > "$MAP_path_to_meta"
   fi
 
+  # Batch state
+  local -a batch_files=()
+  local batch_id=0
+  local current_batch_size=0
+
   # Decide reuse vs compute; spawn parallel hash tasks
   for fpath in "${files[@]}"; do
     local fname inode dev mtime size inode_dev reuse h
@@ -314,14 +332,33 @@ process_single_directory() {
         map_set "$MAP_path_to_hash" "$fpath" ""
       fi
     else
-      _par_maybe_wait
-      local worker_out
-      worker_out="$results_dir/$(basename "$fpath").out"
-      _do_hash_task "$fpath" "$PER_FILE_ALGO" "$worker_out" &
-      HASH_PIDS+=("$!")
-      HASH_PIDS_COUNT=${#HASH_PIDS[@]}
+      # Adaptive batching: decide batch size based on file size
+      local batch_size; batch_size=$(classify_batch_size "$size")
+      batch_files+=("$fpath")
+      current_batch_size=$((current_batch_size+1))
+      if [ "$current_batch_size" -ge "$batch_size" ]; then
+        _par_maybe_wait
+        local worker_out="$results_dir/batch_${batch_id}.out"
+        _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+        HASH_PIDS+=("$!")
+        HASH_PIDS_COUNT=${#HASH_PIDS[@]}
+        batch_files=()
+        current_batch_size=0
+        batch_id=$((batch_id+1))
+      fi
     fi
   done
+
+  # Flush any remaining files in the last batch
+  if [ "$DRY_RUN" -eq 0 ] && [ "${#batch_files[@]}" -gt 0 ]; then
+    _par_maybe_wait
+    local worker_out="$results_dir/batch_${batch_id}.out"
+    _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+    HASH_PIDS+=("$!")
+    HASH_PIDS_COUNT=${#HASH_PIDS[@]}
+    batch_files=()
+    current_batch_size=0
+  fi
 
   # Collect parallel results from per-worker output files
   if [ "$DRY_RUN" -eq 0 ]; then

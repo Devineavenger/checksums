@@ -67,3 +67,15 @@ _do_hash_task() {
   h=$(file_hash "$path" "$algo") || h=""
   printf '%s\t%s\n' "$path" "$h" >> "$results_file"
 }
+
+# New: batch worker — hashes multiple files sequentially and writes all results.
+# Usage: _do_hash_batch <algo> <results_file> <file1> <file2> ...
+_do_hash_batch() {
+  local algo="$1" results_file="$2"
+  shift 2
+  for path in "$@"; do
+    local h
+    h=$(file_hash "$path" "$algo") || h=""
+    printf '%s\t%s\n' "$path" "$h" >> "$results_file"
+  done
+}
