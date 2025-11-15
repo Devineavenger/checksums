@@ -12,29 +12,32 @@ $ME Version $VER
 Usage: $ME [options] DIRECTORY
 
 Options:
-  -f NAME         base name for files (default: ${BASE_NAME})
-  -a ALGO         per-file checksum algorithm: md5 (default) or sha256
-  -m ALGO         meta signature algorithm: sha256 (default), md5, or none
-  -l LOGNAME      log base name (default: same as -f)
-  -n              dry-run (no writes)
-  -d              debug (repeat for more)
-  -v              verbose
-  -r              force rebuild (ignore cheap checks and manifest)
-  -F              first-run verify existing .md5 files that lack .meta/.log
-  -C CHOICE       first-run choice: skip | overwrite | prompt (default prompt)
-  -p N            parallel hashing jobs (default 1)
-  -o FORMAT       log format: text (default), json, csv
-  -V              verify-only mode (audit; no writes)
-  -y              yes (skip confirmation)
-  --assume-yes    assume "yes" for all prompts (non-interactive)
-  --assume-no     assume "no" for all prompts (non-interactive)
-  --config FILE   load configuration from FILE (overrides default)
-  --skip-empty    treat directories with no files anywhere under them as skipped (default)
+  -f NAME            base name for files (default: ${BASE_NAME})
+  -a ALGO            per-file checksum algorithm: md5 (default) or sha256
+  -m ALGO            meta signature algorithm: sha256 (default), md5, or none
+  -l LOGNAME         log base name (default: same as -f)
+  -n                 dry-run (no writes)
+  -d                 debug (repeat for more)
+  -v                 verbose
+  -r                 force rebuild (ignore cheap checks and manifest)
+  -F                 first-run verify existing .md5 files that lack .meta/.log
+  -C CHOICE          first-run choice: skip | overwrite | prompt (default prompt)
+  -p N               parallel hashing jobs (default 1)
+  -o FORMAT          log format: text (default), json, csv
+  -V                 verify-only mode (audit; no writes)
+  -y                 yes (skip confirmation)
+  -z                 disable per-directory MD5-details (same as --no-md5-details)
+  --md5-details      when planning, run md5 verification for .md5-only directories and record MISSING/MISMATCH details in the run log (enabled by default)
+  --no-md5-details   disable per-directory MD5-details (same as -z)
+  --assume-yes       assume "yes" for all prompts (non-interactive)
+  --assume-no        assume "no" for all prompts (non-interactive)
+  --config FILE      load configuration from FILE (overrides default)
+  --skip-empty       treat directories with no files anywhere under them as skipped (default)
   --allow-root-sidefiles
-                  allow per-directory sidecar files (.md5/.meta/.log) to be created in the root DIRECTORY.
-                  By default the tool keeps the root clean; pass this flag to permit sidecar artifacts in root.
-  --version       show version and exit
-  -h              help
+                     allow per-directory sidecar files (.md5/.meta/.log) to be created in the root DIRECTORY.
+                     by default the tool keeps the root clean; pass this flag to permit sidecar artifacts in root.
+  --version          show version and exit
+  -h                 help
 
 Config file:
   By default, the tool looks for a config named "<BASE_NAME>.conf" in the root DIRECTORY.

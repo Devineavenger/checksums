@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.4.6
+# Version: 3.4.7
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.4.6"
+  printf '%s' "3.4.7"
 }
 
 # Populate VER using the robust lookup
@@ -103,6 +103,7 @@ PARALLEL_JOBS=1                   # -p N parallel hashing jobs
 LOG_FORMAT="text"                 # -o text (default), json, csv
 VERIFY_ONLY=0                     # -V audit only (no writes)
 CONFIG_FILE=""                    # --config FILE explicit config path
+VERIFY_MD5_DETAILS=1              # When non-zero, planner will run per-directory md5 verification on .md5-only dirs and emit MISSING/MISMATCH lines into the run log (enabled by default). Use --md5-details / -z to explicitly toggle; default = 1
 
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default

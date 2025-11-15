@@ -37,11 +37,12 @@ parse_args() {
   VERIFY_ONLY=0
   ASSUME_NO=0
   CONFIG_FILE=""
+  VERIFY_MD5_DETAILS="${VERIFY_MD5_DETAILS:-1}"   # Default will come from init.sh; allow CLI to override. Initialize for safety.
 
   # getopts optstring:
   #   options with args must be suffixed by ':'
   #   The trailing '-:' enables long options handling via OPTARG parsing.
-  while getopts "f:a:m:l:ndvrFC:p:o:yVh-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrFC:p:o:yVhz-:" opt 2>/dev/null; do
     case "$opt" in
       # Short options (same as legacy tool)
       f) BASE_NAME=$OPTARG ;;            # base name for .md5/.meta/.log
@@ -54,6 +55,7 @@ parse_args() {
       r) FORCE_REBUILD=1 ;;              # force rebuild ignoring manifests
       F) FIRST_RUN=1 ;;                  # first-run verification/bootstrap mode
       C) FIRST_RUN_CHOICE=$OPTARG ;;     # skip | overwrite | prompt
+      z) VERIFY_MD5_DETAILS=0 ;;         # short: -z => disable md5-details (no-md5-details)
       p) PARALLEL_JOBS=$OPTARG ;;        # number of parallel hashing jobs
       o) LOG_FORMAT=$OPTARG ;;           # text | json | csv
       y) YES=1 ;;                        # assume-yes (non-interactive)
@@ -81,6 +83,14 @@ parse_args() {
           skip-empty)
             # Affirmative: ensure SKIP_EMPTY enabled (default already 1 in init.sh)
             SKIP_EMPTY=1
+            ;;
+          md5-details)
+            # Enable optional detailed MD5 verification on .md5-only dirs during planning
+            VERIFY_MD5_DETAILS=1
+            ;;
+          no-md5-details)
+            # Disable md5-details in planning
+            VERIFY_MD5_DETAILS=0
             ;;
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)

@@ -168,11 +168,10 @@ process_single_directory() {
   # Collect candidate files (NUL-delimited), sort for stable order
   while IFS= read -r -d '' f; do files+=("$f"); done < <(find_file_expr "$d" | LC_ALL=C sort -z)
 
-  if [ "$DRY_RUN" -eq 1 ]; then
-    log "DRY RUN: Would process ${#files[@]} files in $d"
-  else
-    : > "$tmp_sum" || { record_error "Cannot write $tmp_sum"; return; }
-    : > "$tmp_meta" || { record_error "Cannot write $tmp_meta"; return; }
+  # Progress hint for large directories (only when verbose or many files)
+  local total_files=${#files[@]}
+  if [ "$total_files" -gt 100 ] && [ "${VERBOSE:-0}" -gt 0 ]; then
+    vlog "PROC: $d has $total_files files; hashing will run with PARALLEL_JOBS=$PARALLEL_JOBS"
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks)
