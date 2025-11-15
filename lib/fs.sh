@@ -45,11 +45,14 @@ has_files() {
   while IFS= read -r -d '' f; do
     fname=$(basename "$f")
     # Skip our tool-generated files: exact base names and rotated variants.
+    # Note: use unquoted patterns in case arms so shell globs are interpreted
+    # for matching rather than literal strings. ALT_LOG_EXCL is the log base
+    # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
     case "$fname" in
       "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
-      # rotated logs: either base.<ts>.log or base.<ts>
-      ${LOG_BASE}.*.log | ${LOG_BASE}.* ) continue ;;
-      # run-level and first-run logs
+      # rotated logs: base.<ts>.log (tolerate legacy variants too)
+      ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
+      # run-level and first-run logs (explicit names — match literally)
       "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
       # lock suffix
       *"$LOCK_SUFFIX") continue ;;
@@ -64,7 +67,7 @@ has_files() {
           done
           [ -z "$fname" ] && continue
         fi
-        # Found a non-tool regular file — stop right here, nubskull
+        # Found a non-tool regular file — stop right here
         found=0
         break
         ;;
@@ -80,9 +83,12 @@ has_local_files() {
   local d="$1" f fname
   while IFS= read -r -d '' f; do
     fname=$(basename "$f")
+    # Mirror the same exclusions as has_files but only consider files directly
+    # inside the directory (maxdepth 1). This prevents creating sidecars for
+    # parent/container dirs that contain files only in subdirectories.
     case "$fname" in
       "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
-      ${LOG_BASE}.*.log | ${LOG_BASE}.* ) continue ;;
+      ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
       "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
       *"$LOCK_SUFFIX") continue ;;
       *)
@@ -109,7 +115,9 @@ build_exclusions() {
   LOG_EXCL=$(_safe_name "$(basename "$LOG_FILENAME")")
   RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.run.log")"
   FIRST_RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")"
-  ALT_LOG_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.log")"
+  # ALT_LOG_EXCL is the log base without the .log suffix so rotated logs can be matched as:
+  #   <ALT_LOG_EXCL>.<timestamp>.log
+  ALT_LOG_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}")"
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
 
@@ -136,11 +144,11 @@ find_file_expr() {
     ! -name "$MD5_EXCL" \
     ! -name "$META_EXCL" \
     ! -name "$LOG_EXCL" \
-    ! -name "$ALT_LOG_EXCL" \
     ! -name "$LOCK_EXCL" \
 	! -name "$RUN_EXCL" \
     ! -name "$FIRST_RUN_EXCL" \
-    ! -name "${ALT_LOG_EXCL}.*" \
+    ! -name "${ALT_LOG_EXCL}.log" \
+    ! -name "${ALT_LOG_EXCL}.*.log" \
     -print0 | while IFS= read -r -d '' f; do
       local fname; fname=$(basename "$f")
       local skip=0

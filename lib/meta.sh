@@ -137,14 +137,22 @@ with_lock() {
   local lockfile="$1"; shift
   # shellcheck disable=SC2154
   if [ "$TOOL_flock" -eq 1 ]; then
+    # Ensure parent directory exists and allocate a descriptor safely.
     mkdir -p "$(dirname "$lockfile")" 2>/dev/null || true
     : > "$lockfile" 2>/dev/null || true
-    exec 9>"$lockfile" || { "$@"; return; }
-    flock -x 9
-    "$@"
-    flock -u 9
-    exec 9>&-
-    rm -f -- "$lockfile" 2>/dev/null || true
+    # Open fd 9 for the duration of the command; ensure we don't leak if open fails.
+    if exec 9> "$lockfile"; then
+      flock -x 9
+      "$@"
+      flock -u 9
+      # close fd 9
+      eval "exec 9>&-"
+      rm -f -- "$lockfile" 2>/dev/null || true
+    else
+      # Fallback: run without lock but record a warning
+      record_error "Warning: could not open lockfile descriptor for $lockfile; running without lock"
+      "$@"
+    fi
   else
     record_error "Warning: flock not available; running without file locks (race possible)."
     "$@"

@@ -52,6 +52,10 @@ if declare -p -A >/dev/null 2>&1; then
   : "${meta_inode_dev:=}"  # no-op; keeps ShellCheck quiet about undefined vars
 fi
 
+# Ensure parallel job arrays exist to avoid unbound var warnings
+declare -a pids 2>/dev/null || pids=()
+declare -i pids_count=0 2>/dev/null || pids_count=0
+
 process_single_directory() {
   local d="$1"
 
@@ -215,6 +219,12 @@ process_single_directory() {
     results_file="$(mktemp "${TMPDIR:-/tmp}/hash_results.XXXXXX")" || results_file="$tmp_sum.hash.results"
     : > "$results_file"
   fi
+  # Ensure temporary artifacts are cleaned up if we exit early from this function
+  # shellcheck disable=SC2329  # invoked via trap on RETURN
+  _proc_cleanup() {
+    rm -f -- "${tmp_sum:-}" "${tmp_meta:-}" "${results_file:-}" 2>/dev/null || true
+  }
+  trap _proc_cleanup RETURN
 
   # These maps are per-run; dual storage based on USE_ASSOC
   declare -A path_to_hash  # path -> hash (filled for reused or after parallel)

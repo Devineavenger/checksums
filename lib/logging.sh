@@ -67,6 +67,8 @@ fatal()  { _global_log 0 "$*"; exit 1; }
 
 record_error() {
   # Add an error to the in-memory errors array and increment the error counter.
+  # Ensure errors array exists (defensive if init.sh wasn't sourced exactly)
+  declare -ga errors >/dev/null 2>&1 || true
   errors+=("$*")
   count_errors=$((count_errors+1))
   _global_log 0 "$*"
@@ -142,13 +144,20 @@ rotate_log() {
   local dir base ts
   dir=$(dirname -- "$logfile")
   base=$(basename -- "$logfile")
+  # Strip a single trailing .log from the base name so rotated files are
+  # written as <base>.<ts>.log rather than <base>.log.<ts>.log
+  if [[ "$base" == *.log ]]; then
+    base_noext="${base%.*}"
+  else
+    base_noext="$base"
+  fi
 
   if [ -f "$logfile" ] && [ -s "$logfile" ]; then
     # Only rotate if this file contains a prior run header; otherwise treat as new file
     if grep -q '^#run' "$logfile" 2>/dev/null; then
       ts=$(date +"%Y%m%d-%H%M%S")
-      mv -- "$logfile" "$dir/$base.$ts.log" || return 1
-      log "Rotated $base -> $base.$ts.log"
+      mv -- "$logfile" "$dir/$base_noext.$ts.log" || return 1
+      log "Rotated $base -> $base_noext.$ts.log"
     else
       # File exists and is non-empty but lacks #run header: do not rotate (first-create scenario)
       log "Not rotating $base (appears to be new; no prior #run header)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # checksums.sh (v3.0 entrypoint)
-# Version: 3.4.5
+# Version: 3.4.6
 #
 # Minimal entrypoint that sources the new modular lib and runs main.
 # Preserves the original CLI, usage, and behavior by delegating to lib.
