@@ -143,11 +143,12 @@ with_lock() {
     # Open fd 9 for the duration of the command; ensure we don't leak if open fails.
     if exec 9> "$lockfile"; then
       flock -x 9
+      # run the command while holding the lock
       "$@"
+      # release and close fd 9 (use eval to avoid shells that don't support exec 9>&- directly)
       flock -u 9
-      # close fd 9
-      eval "exec 9>&-"
-      rm -f -- "$lockfile" 2>/dev/null || true
+      eval "exec 9>&-" || true
+      # Do not remove the lockfile here; leaving it is safe and avoids races with other openers.
     else
       # Fallback: run without lock but record a warning
       record_error "Warning: could not open lockfile descriptor for $lockfile; running without lock"

@@ -166,22 +166,25 @@ rotate_log() {
 
   (
     cd -- "$dir" || exit 0
-    # Preferred path: use find -printf to produce sortable timestamps when available.
-    if find . -maxdepth 1 -type f -name "$base.*.log" -printf "%T@ %p\n" >/dev/null 2>&1; then
-      find . -maxdepth 1 -type f -name "$base.*.log" -printf "%T@ %p\n" 2>/dev/null \
+
+    # Build a list of rotated files that exactly match base_noext.<ts>.log
+    # (avoid matching other patterns like base.log.<ts> etc).
+    # Prefer find -printf when available; otherwise use a portable fallback.
+    if find . -maxdepth 1 -type f -name "$base_noext.*.log" -printf "%T@ %p\n" >/dev/null 2>&1; then
+      find . -maxdepth 1 -type f -name "$base_noext.*.log" -printf "%T@ %p\n" 2>/dev/null \
         | LC_ALL=C sort -r -n \
-        | awk 'NR>=3 {print $2}' \
+        | awk 'NR>2 {print $2}' \
         | xargs -r -- rm -f --
     else
-      # Portable fallback when -printf isn't available: use stat to build sortable pairs.
-      find . -maxdepth 1 -type f -name "$base.*.log" 2>/dev/null \
+      # Portable fallback: use stat to produce sortable timestamps
+      find . -maxdepth 1 -type f -name "$base_noext.*.log" 2>/dev/null \
       | while IFS= read -r f; do
           if stat --version >/dev/null 2>&1; then
             printf '%s\t%s\n' "$(stat -c %Y -- "$f" 2>/dev/null)" "$f"
           else
             printf '%s\t%s\n' "$(stat -f %m -- "$f" 2>/dev/null)" "$f"
           fi
-      done | LC_ALL=C sort -r -n | awk -F'\t' 'NR>=3 {print $2}' | while IFS= read -r f; do
+        done | LC_ALL=C sort -r -n | awk -F'\t' 'NR>2 {print $2}' | while IFS= read -r f; do
           [ -f "$f" ] && rm -f -- "$f"
         done
     fi
@@ -201,4 +204,99 @@ log_run_header() {
     first_run_log "FIRST_RUN=1 at $ts"
     FIRST_RUN_LOGGED=1
   fi
+}
+
+# Emit a compact MD5-details summary into the run log and console.
+# Usage: emit_md5_detail <dir> <verifier_return_code>
+emit_md5_detail() {
+  local d="$1" vr="$2"
+  case "$vr" in
+    0)
+      vlog "MD5-DETAIL: verified OK for $d"
+      [ -n "${RUN_LOG:-}" ] && printf 'VERIFIED: %s\n' "$d" >>"${RUN_LOG}"
+      ;;
+    1)
+      log "MD5-DETAIL: mismatches in $d"
+      [ -n "${RUN_LOG:-}" ] && printf 'MISMATCH: %s\n' "$d" >>"${RUN_LOG}"
+      ;;
+    2)
+      log "MD5-DETAIL: missing files referenced in $d"
+      [ -n "${RUN_LOG:-}" ] && printf 'MISSING: %s\n' "$d" >>"${RUN_LOG}"
+      ;;
+    *)
+      log "MD5-DETAIL: verifier returned $vr for $d"
+      ;;
+  esac
+}
+
+# Emit per-file MD5 details for a directory into RUN_LOG and return verifier rc.
+# Usage: emit_md5_file_details <dir> <sumfile>
+# Writes lines like:
+#   MISSING: /abs/path/to/file
+#   MISMATCH: /abs/path\texpected=...\tactual=...
+# Returns 0 if all ok, 1 if any mismatch, 2 if any missing (mimics verify_md5_file)
+emit_md5_file_details() {
+  local dir="$1" sumf="$2"
+  local entry fname expected actual rc=0 missing=0 bad=0 fpath
+  [ -f "$sumf" ] || return 2
+  # Count how many valid file entries we actually parsed from the sumfile.
+  # If the sumfile exists but contains no valid file entries (only blank/comments/
+  # otherwise unparsable lines), we treat that as "referenced files missing"
+  # (rc=2) so the planner/first-run logic will surface the directory for attention.
+  local processed_count=0
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    # Skip empty or comment lines
+    [ -z "$entry" ] && continue
+    case "$entry" in \#*) continue ;; esac
+
+    # Parse BSD vs GNU formats
+    case "$entry" in
+      MD5*=*)  # BSD/macOS format: MD5 (filename) = hash
+        fname=$(printf '%s' "$entry" | sed -E 's/^MD5 \((.*)\) = .*/\1/')
+        expected=$(printf '%s' "$entry" | awk '{print $NF}')
+        ;;
+      *)       # GNU format: hash␠␠filename
+        expected=${entry%%[[:space:]]*}
+        fname=${entry#"$expected"}
+        fname=$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')
+        ;;
+    esac
+
+    # normalize filename: remove leading ./ if present
+    fname="${fname#./}"
+
+    # skip if still empty (malformed line)
+    [ -z "$fname" ] && continue
+    processed_count=$((processed_count+1))
+
+    fpath="$dir/$fname"
+    if [ ! -e "$fpath" ]; then
+      missing=1
+      [ -n "${RUN_LOG:-}" ] && printf 'MISSING: %s\n' "$fpath" >>"${RUN_LOG}"
+      continue
+    fi
+    actual=$(file_hash "$fpath" "md5")
+    if [ "$actual" != "$expected" ]; then
+      bad=1
+      [ -n "${RUN_LOG:-}" ] && printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >>"${RUN_LOG}"
+    fi
+  done < "$sumf"
+  # If there were no valid file entries in the sumfile but the sumfile is non-empty,
+  # treat that as an error (missing referenced files / malformed manifest).
+  if [ "$processed_count" -eq 0 ]; then
+    # if sumfile contains any non-blank line, consider it malformed / referencing nothing
+    if grep -q '[^[:space:]]' "$sumf" 2>/dev/null; then
+      rc=2
+    else
+      rc=0
+    fi
+  elif [ "$missing" -ne 0 ]; then
+    rc=2
+  elif [ "$bad" -ne 0 ]; then
+    rc=1
+  else
+    rc=0
+  fi
+  unset processed_count
+  return "$rc"
 }

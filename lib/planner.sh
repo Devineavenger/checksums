@@ -79,6 +79,13 @@ decide_directories_plan() {
     local base_name sumf metaf reason changed
     base_name=$(basename "$d")
     sumf="$d/$MD5_FILENAME"
+	if [ "${DEBUG:-0}" -gt 0 ]; then
+      if [ -f "$sumf" ]; then
+        dbg "sumfile present for $d -> $sumf"
+      else
+        dbg "sumfile missing for $d -> $sumf"
+      fi
+    fi
     metaf="$d/$META_FILENAME"
     reason="unknown"
     changed=1
@@ -132,6 +139,11 @@ decide_directories_plan() {
         reason="newer-file-detected"
         printf '%s\0' "$d" >> "$plan_to_process_file"
         vlog "PLAN: process $d reason=$reason"
+        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+          local vr
+          vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
+          emit_md5_detail "$d" "$vr"
+        fi
         continue
       fi
 
@@ -142,6 +154,11 @@ decide_directories_plan() {
         reason="filecount-mismatch"
         printf '%s\0' "$d" >> "$plan_to_process_file"
         vlog "PLAN: process $d reason=$reason"
+        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+          local vr
+          vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
+          emit_md5_detail "$d" "$vr"
+        fi
         continue
       fi
 
@@ -151,6 +168,20 @@ decide_directories_plan() {
         read_meta "$metaf"
         changed=0
         reason="meta-verified"
+        # If enabled, run md5 verification even when meta verifies.
+        # This detects hash mismatches / missing files the meta-stat check cannot.
+        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+          # Use the deterministic reporter that parses the .md5 and writes per-file
+          # MISSING/MISMATCH lines directly to RUN_LOG. This avoids global FIRST_RUN_LOG
+          # aliasing and reproduces the detailed first-run output during planning.
+          # Capture the exact return code from emit_md5_file_details reliably.
+          # Previous form relied on `|| vr=$?` while vr was preset to 2 which
+          # left vr unchanged on success and produced spurious "missing"
+          # summaries (directories referenced instead of per-file entries).
+          local vr
+          vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
+          emit_md5_detail "$d" "$vr"
+        fi
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
           # shellcheck disable=SC2154  # meta_mtime/meta_size defined in init.sh and populated by read_meta
           if [ "${#meta_mtime[@]}" -gt 0 ]; then
@@ -181,36 +212,17 @@ decide_directories_plan() {
         else
           reason="meta-invalid"
         fi
-
-        # Optional: when enabled, run md5 verification for MD5-only dirs and
-        # emit concise MISSING / MISMATCH / VERIFIED lines into the run log.
-        if [ "${VERIFY_MD5_DETAILS:-0}" -eq 1 ] && [ -f "$sumf" ]; then
-          # verify_md5_file writes FIRST_RUN_LOG entries; we prefer to capture
-          # the verifier outcome and write compact entries into RUN_LOG.
-          # verify_md5_file return codes: 0 ok, 1 mismatch, 2 missing
+        # When enabled, always run md5 verification for directories that have a .md5
+        # but lack a valid meta (metafile missing or signature invalid). This runs
+        # regardless of FIRST_RUN so operators see MISSING/MISMATCH/VERIFIED lines
+        # in the run-level log for diagnostic purposes.
+        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+          # As above: deterministic per-file reporting into RUN_LOG for dirs lacking valid meta.
+          # Capture the verifier exit code reliably (avoid `cmd || rc=$?` races).
           local vr
-          vr=2
-          verify_md5_file "$d" || vr=$?
-          case "$vr" in
-            0)
-              vlog "MD5-DETAIL: verified OK for $d"
-              [ -n "${RUN_LOG:-}" ] && printf 'VERIFIED: %s\n' "$d" >>"${RUN_LOG}"
-              ;;
-            1)
-              log "MD5-DETAIL: mismatches in $d"
-              # For compactness we record the directory; details remain in FIRST_RUN_LOG if available
-              [ -n "${RUN_LOG:-}" ] && printf 'MISMATCH: %s\n' "$d" >>"${RUN_LOG}"
-              ;;
-            2)
-              log "MD5-DETAIL: missing files referenced in $d"
-              [ -n "${RUN_LOG:-}" ] && printf 'MISSING: %s\n' "$d" >>"${RUN_LOG}"
-              ;;
-            *)
-              log "MD5-DETAIL: verifier returned $vr for $d"
-              ;;
-          esac
+          vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
+          emit_md5_detail "$d" "$vr"
         fi
-
         # proceed to schedule for processing below
       fi
 

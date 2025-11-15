@@ -218,12 +218,11 @@ process_single_directory() {
     results_file="$(mktemp "${TMPDIR:-/tmp}/hash_results.XXXXXX")" || results_file="$tmp_sum.hash.results"
     : > "$results_file"
   fi
-  # Ensure temporary artifacts are cleaned up if we exit early from this function
-  # shellcheck disable=SC2329  # invoked via trap on RETURN
+  # Ensure temporary artifacts are cleaned up deterministically.
+  # Avoid trapping RETURN globally; instead perform explicit cleanup at each exit point.
   _proc_cleanup() {
     rm -f -- "${tmp_sum:-}" "${tmp_meta:-}" "${results_file:-}" 2>/dev/null || true
   }
-  trap _proc_cleanup RETURN
 
   # These maps are per-run; dual storage based on USE_ASSOC
   declare -A path_to_hash  # path -> hash (filled for reused or after parallel)
@@ -317,8 +316,8 @@ process_single_directory() {
     else
       _par_maybe_wait
       _do_hash_task "$fpath" "$PER_FILE_ALGO" "$results_file" &
-      pids+=("$!")
-      pids_count=${#pids[@]}
+      HASH_PIDS+=("$!")
+      HASH_PIDS_COUNT=${#HASH_PIDS[@]}
     fi
   done
 
@@ -391,6 +390,8 @@ process_single_directory() {
   fi
 
   log "Finished directory: $d"
+  # deterministic cleanup of per-directory temporaries
+  _proc_cleanup
   LOG_FILEPATH=""
 }
 

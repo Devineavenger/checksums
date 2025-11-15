@@ -30,34 +30,34 @@ file_hash() {
   fi
 }
 
-# Parallel job control state
-pids=()
-pids_count=0
+# Parallel job control state (namespaced to avoid collisions)
+HASH_PIDS=()
+HASH_PIDS_COUNT=0
 
 _par_wait_one() {
   # Wait for the oldest background PID in our queue
-  local pid="${pids[0]}"
+  local pid="${HASH_PIDS[0]}"
   if [ -n "$pid" ]; then
     wait "$pid" 2>/dev/null || true
-    pids=("${pids[@]:1}")
-    pids_count=${#pids[@]}
-  fi
+    HASH_PIDS=("${HASH_PIDS[@]:1}")
+    HASH_PIDS_COUNT=${#HASH_PIDS[@]}
+   fi
 }
 
 _par_maybe_wait() {
   # If we have reached PARALLEL_JOBS in-flight, wait for one to finish.
-  while [ "$pids_count" -ge "$PARALLEL_JOBS" ]; do _par_wait_one; done
+  while [ "${HASH_PIDS_COUNT:-0}" -ge "$PARALLEL_JOBS" ]; do _par_wait_one; done
 }
 
 _par_wait_all() {
   # Wait for all outstanding workers to finish before proceeding.
-  if [ "${#pids[@]}" -gt 0 ]; then
-    for pid in "${pids[@]}"; do
+  if [ "${#HASH_PIDS[@]}" -gt 0 ]; then
+    for pid in "${HASH_PIDS[@]}"; do
       [ -n "$pid" ] && wait "$pid" 2>/dev/null || true
     done
   fi
-  pids=()
-  pids_count=0
+  HASH_PIDS=()
+  HASH_PIDS_COUNT=0
 }
 
 _do_hash_task() {
