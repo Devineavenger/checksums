@@ -85,6 +85,10 @@ run_checksums() {
   # Build exclusions now that CLI/config have been applied
   build_exclusions
 
+  # Explicit notice when reuse heuristics are disabled
+  if [ "${NO_REUSE:-0}" -eq 1 ]; then
+    log "NO_REUSE=1: disabling reuse heuristics, all files will be rehashed"
+  fi
   log "Starting run on $TARGET_DIR"
   log "Run ID: $RUN_ID"
   log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
