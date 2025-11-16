@@ -53,7 +53,24 @@ if [ "$(ls "$TESTDIR"/file_100M_* 2>/dev/null | wc -l)" -lt 100 ]; then
   done
 fi
 
-echo "Dataset ready (~2.3 GB total)."
+# === Step 1b: Report dataset size ===
+DATASET_SIZE=$(du -sh "$TESTDIR" | cut -f1)
+echo "Dataset ready (total size: $DATASET_SIZE)."
+
+DATASET_BYTES=$(find "$TESTDIR" -type f -printf "%s\n" | awk '{sum+=$1} END {print sum}')
+
+if [ "$DATASET_BYTES" -ge $((1024*1024)) ]; then
+  # Show in MB with 2 decimals
+  DATASET_HUMAN=$(echo "scale=2; $DATASET_BYTES/1024/1024" | bc)
+  echo "Dataset ready (no overhead) (total size: ${DATASET_HUMAN} MB)"
+elif [ "$DATASET_BYTES" -ge 1024 ]; then
+  # Show in KB
+  DATASET_HUMAN=$(echo "scale=2; $DATASET_BYTES/1024" | bc)
+  echo "Dataset ready (no overhead) (total size: ${DATASET_HUMAN} KB)"
+else
+  # Show in bytes
+  echo "Dataset ready (no overhead) (total size: ${DATASET_BYTES} B)"
+fi
 
 # === Step 2: Initialize results file ===
 echo "p,b,c,d,elapsed" > "$RESULTS"
@@ -66,18 +83,19 @@ for p in 16 8 6 4 2 1; do
         rules="0-2M:$b,2M-50M:$c,>50M:$d"
         echo "DEBUG: starting run p=$p b=$b c=$c d=$d rules=$rules"
 
+        # Drop caches so the next run reads from disk, not RAM
+        sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+
         # Run checksums with forced recomputation (-r), non-interactive (-y),
         # and allow root sidefiles so TESTDIR itself is processed.
-        # Capture only elapsed seconds from /usr/bin/time.
         elapsed=$( PATH="/tmp/bin:$PATH" /usr/bin/time -f "%e" \
-          checksums -v -r -y --allow-root-sidefiles -p "$p" --batch "$rules" "$TESTDIR" \
+          checksums -v -r -R -y --allow-root-sidefiles -p "$p" --batch "$rules" "$TESTDIR" \
           2>&1 >/dev/null || echo "ERR" )
 
         echo "DEBUG: finished run p=$p b=$b c=$c d=$d elapsed=$elapsed"
         echo "$p,$b,$c,$d,$elapsed" >> "$RESULTS"
 
         # Optional: sanity check that the run actually processed files.
-        # Tail the run log if available; helps diagnose suspiciously short times.
         RUNLOG="$TESTDIR/#####checksums#####.run.log"
         if [ -f "$RUNLOG" ]; then
           tail -n 5 "$RUNLOG" | sed 's/^/DEBUG LOG: /'

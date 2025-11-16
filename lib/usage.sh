@@ -20,6 +20,8 @@ Options:
   -d                 debug (repeat for more)
   -v                 verbose
   -r                 force rebuild (ignore cheap checks and manifest)
+  -R                 disable reuse heuristics; always recompute file hashes
+  --no-reuse         same as -R
   -F                 first-run verify existing .md5 files that lack .meta/.log
   -C CHOICE          first-run choice: skip | overwrite | prompt (default prompt)
   -p N               parallel hashing jobs (default 1)

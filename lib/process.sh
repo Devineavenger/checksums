@@ -286,27 +286,32 @@ process_single_directory() {
     inode_dev="${inode}:${dev}"
     reuse=0; h=""
 
-    # Strong incremental by inode (renames and hardlinks)
-    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-      if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
-        if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
-          local oldp="${old_path_by_inode[$inode_dev]}"
-          if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
-            h="${inode_hash_cache[$inode_dev]}"; reuse=1
-            vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+    # If NO_REUSE=1, skip all reuse heuristics and force recomputation
+    if [ "${NO_REUSE:-0}" -eq 1 ]; then
+      reuse=0
+    else
+      # Strong incremental by inode (renames and hardlinks)
+      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+        if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
+          if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
+            local oldp="${old_path_by_inode[$inode_dev]}"
+            if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
+              h="${inode_hash_cache[$inode_dev]}"; reuse=1
+              vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+            fi
           fi
         fi
+      else
+        local oldp; oldp="$(map_get "$MAP_old_path_by_inode" "$inode_dev")"
+        local cached; cached="$(map_get "$MAP_inode_hash_cache" "$inode_dev")"
+        local om; om="$(map_get "$MAP_old_mtime" "$oldp")"
+        local os; os="$(map_get "$MAP_old_size" "$oldp")"
+        if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
+          h="$cached"; reuse=1
+          vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+        fi
       fi
-    else
-      local oldp; oldp="$(map_get "$MAP_old_path_by_inode" "$inode_dev")"
-      local cached; cached="$(map_get "$MAP_inode_hash_cache" "$inode_dev")"
-      local om; om="$(map_get "$MAP_old_mtime" "$oldp")"
-      local os; os="$(map_get "$MAP_old_size" "$oldp")"
-      if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
-        h="$cached"; reuse=1
-        vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
-      fi
-    fi
+	fi
 
     # Fallback: reuse by same path if unchanged
     if [ "$reuse" -eq 0 ]; then

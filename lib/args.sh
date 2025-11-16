@@ -42,7 +42,7 @@ parse_args() {
   # getopts optstring:
   #   options with args must be suffixed by ':'
   #   The trailing '-:' enables long options handling via OPTARG parsing.
-  while getopts "f:a:m:l:ndvrFC:p:o:yVhzb:-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:o:yVhzb:-:" opt 2>/dev/null; do
     case "$opt" in
       # Short options (same as legacy tool)
       f) BASE_NAME=$OPTARG ;;            # base name for .md5/.meta/.log
@@ -53,6 +53,7 @@ parse_args() {
       d) DEBUG=$((DEBUG+1)) ;;           # debug (repeatable)
       v) VERBOSE=$((VERBOSE+1)) ;;       # verbose
       r) FORCE_REBUILD=1 ;;              # force rebuild ignoring manifests
+      R) NO_REUSE=1 ;;                   # short flag: disable reuse heuristics
       F) FIRST_RUN=1 ;;                  # first-run verification/bootstrap mode
       C) FIRST_RUN_CHOICE=$OPTARG ;;     # skip | overwrite | prompt
       z) VERIFY_MD5_DETAILS=0 ;;         # short: -z => disable md5-details (no-md5-details)
@@ -101,6 +102,9 @@ parse_args() {
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
             NO_ROOT_SIDEFILES=0
+            ;;
+          no-reuse)
+            NO_REUSE=1
             ;;
           *)
             usage

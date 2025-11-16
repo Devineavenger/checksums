@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.5.5
+# Version: 3.5.6
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.5.5"
+  printf '%s' "3.5.6"
 }
 
 # Populate VER using the robust lookup
@@ -109,6 +109,9 @@ BATCH_RULES="0-2M:20,2M-50M:10,>50M:1"   # -b | --batch Adaptive batching defaul
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 SKIP_EMPTY=1
+
+# Disable reuse heuristics (new flag -R / --no-reuse)
+NO_REUSE=0
 
 # Root sidefile protection (no per-dir .md5/.meta/.log in root by default): on by default
 # Pass --allow-root-sidefiles to disable protection and allow sidefiles in root.
