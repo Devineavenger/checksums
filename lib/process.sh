@@ -313,8 +313,8 @@ process_single_directory() {
       fi
 	fi
 
-    # Fallback: reuse by same path if unchanged
-    if [ "$reuse" -eq 0 ]; then
+    # Fallback: reuse by same path if unchanged (disabled when NO_REUSE=1)
+    if [ "$reuse" -eq 0 ] && [ "${NO_REUSE:-0}" -eq 0 ]; then
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
           h="${meta_hash_by_path[$fname]}"; reuse=1
