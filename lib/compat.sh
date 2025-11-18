@@ -10,7 +10,7 @@
 USE_ASSOC=1   # 1 = use associative arrays, 0 = fallback text maps
 
 check_bash_version() {
-  local major=${BASH_VERSINFO[0]}
+  local major=${BASH_VERSINFO[0]:-0}
   if [ "$major" -lt 4 ]; then
     USE_ASSOC=0
     log "Bash < 4 detected (version $major), using POSIX text-map fallback"
@@ -45,9 +45,10 @@ map_set() {
 map_get() {
   local mapfile="$1" key="$2"
   if [ "${TOOL_flock:-0}" -eq 1 ]; then
-    # read-only, but still use lock to get consistent snapshot
-    # shellcheck disable=SC2016  # $0/$1 are for the child sh -c, not this shell
+    # Use lock for a consistent snapshot and print only once
+    # shellcheck disable=SC2016
     with_lock "$mapfile.lock" sh -c 'grep "^$1:" "$0" 2>/dev/null | cut -d: -f2-' "$mapfile" "$key"
+  else
     grep "^$key:" "$mapfile" 2>/dev/null | cut -d: -f2-
   fi
 }

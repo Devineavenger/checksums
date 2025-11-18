@@ -82,8 +82,21 @@ run_checksums() {
     fi
   fi
 
-  # Build exclusions now that CLI/config have been applied
+  # NOTE: Exclusion globals (MD5_EXCL/META_EXCL/LOG_EXCL/etc.) are required by fs helpers.
+  # Ensure they are initialized even if build_exclusions hasn't run yet. This prevents
+  # unset-variable issues when helpers are called before the standard build step.
+  if [ -z "${MD5_EXCL:-}" ] || [ -z "${META_EXCL:-}" ] || [ -z "${LOG_EXCL:-}" ]; then
+    dbg "Calling build_exclusions early to initialize exclusion globals"
+    build_exclusions
+  fi
+
+  # Build exclusions again after CLI/config to reflect any changes to BASE_NAME/LOG_BASE.
+  # This keeps derived basenames aligned with user-provided flags.
   build_exclusions
+
+  # Initialize adaptive batch thresholds once per run to avoid repeated numfmt conversions.
+  # This reduces overhead when classifying batch sizes for many files.
+  init_batch_thresholds
 
   # Explicit notice when reuse heuristics are disabled
   if [ "${NO_REUSE:-0}" -eq 1 ]; then
@@ -130,12 +143,21 @@ run_checksums() {
   rm -f "$preview_proc_file" "$preview_skipped_file"
 
   # Count preview totals (fast approximate)
-  local total_files_preview=0
-  for d in "${preview_proc[@]}"; do
-    while IFS= read -r -d '' _; do
-      total_files_preview=$((total_files_preview+1))
-    done < <(find -L "$d" -maxdepth 1 -type f -print0 2>/dev/null || find "$d" -maxdepth 1 -type f -print0 2>/dev/null)
-  done
+  if [ "${#preview_proc[@]}" -gt 0 ]; then
+    # Single pass: count NULs across all to‑process dirs
+    # Faster and fewer forks than per‑dir loops; preserves "approximate" semantics
+    # Use -L only if desirable globally; otherwise default to non-following for performance
+    # Note: find –print0 paths are concatenated via xargs to avoid hitting ARG_MAX
+    total_files_preview=$(
+      printf '%s\0' "${preview_proc[@]}" \
+        | tr '\n' '\0' \
+        | xargs -0 -r -n1 -I{} find "{}" -maxdepth 1 -type f -print0 2>/dev/null \
+        | tr -cd '\0' \
+        | wc -c
+    )
+  else
+    total_files_preview=0
+  fi
   echo "total files (preview): $total_files_preview"
 
   # ----------------------------

@@ -56,33 +56,56 @@ fi
 declare -a pids 2>/dev/null || pids=()
 declare -i pids_count=0 2>/dev/null || pids_count=0
 
-# Adaptive batch size selector based on file size (bytes) and BATCH_RULES string.
-# Example BATCH_RULES: "0-2M:20,2M-50M:10,>50M:1"
-classify_batch_size() {
-  local size="$1"
-  local rules="${BATCH_RULES:-0-2M:20,2M-50M:10,>50M:1}"
-  local rule low high count
+# Precompute batch thresholds once per run to avoid repeated numfmt conversions.
+declare -A BATCH_THRESHOLDS=()
 
+# Parse BATCH_RULES (e.g. "0-1M:20,1M-80M:5,>80M:1") into byte ranges and counts.
+# Called once (orchestrator) to populate BATCH_THRESHOLDS map.
+init_batch_thresholds() {
+  local rules="${BATCH_RULES:-0-1M:20,1M-80M:5,>80M:1}"
   IFS=',' read -ra parts <<< "$rules"
   for rule in "${parts[@]}"; do
     case "$rule" in
       *-*:*)
-        low=$(echo "$rule" | sed -E 's/^([0-9]+)([KMG]?)-.*/\1\2/')
-        high=$(echo "$rule" | sed -E 's/^[0-9]+[KMG]?-(.*):.*/\1/')
-        count=$(echo "$rule" | sed -E 's/.*:([0-9]+)$/\1/')
-        # convert units
+        local low="${rule%%-*}"
+        local high="${rule#*-}"
+        high="${high%%:*}"
+        local count="${rule##*:}"
+        # Convert units only once per rule
+        local low_bytes
+        local high_bytes
         low_bytes=$(numfmt --from=iec <<<"$low" 2>/dev/null || echo "$low")
         high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
-        if [ "$size" -ge "$low_bytes" ] && [ "$size" -lt "$high_bytes" ]; then
-          echo "$count"; return
-        fi
+        BATCH_THRESHOLDS["$low_bytes-$high_bytes"]="$count"
         ;;
       ">"*":*")
-        high=$(echo "$rule" | sed -E 's/^>(.*):.*/\1/')
-        count=$(echo "$rule" | sed -E 's/.*:([0-9]+)$/\1/')
+        local high="${rule#*>}"
+        high="${high%%:*}"
+        local count="${rule##*:}"
+        local high_bytes
         high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
-        if [ "$size" -ge "$high_bytes" ]; then
-          echo "$count"; return
+        BATCH_THRESHOLDS[">$high_bytes"]="$count"
+        ;;
+    esac
+  done
+}
+
+# Lookup batch size based on precomputed thresholds (default=1).
+classify_batch_size() {
+  local size="$1"
+  for key in "${!BATCH_THRESHOLDS[@]}"; do
+    case "$key" in
+      *-*)
+        local low="${key%%-*}"
+        local high="${key##*-}"
+        if [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
+          echo "${BATCH_THRESHOLDS[$key]}"; return
+        fi
+        ;;
+      ">"*)
+        local high="${key#*>}"
+        if [ "$size" -ge "$high" ]; then
+          echo "${BATCH_THRESHOLDS[$key]}"; return
         fi
         ;;
     esac
@@ -281,8 +304,14 @@ process_single_directory() {
   for fpath in "${files[@]}"; do
     local fname inode dev mtime size inode_dev reuse h
     fname=$(basename "$fpath")
-    inode=$(stat_field "$fpath" inode); dev=$(stat_field "$fpath" dev)
-    mtime=$(stat_field "$fpath" mtime); size=$(stat_field "$fpath" size)
+    # Use a single stat invocation to fetch inode/dev/mtime/size to reduce overhead.
+    # stat_all_fields prints TAB-delimited fields; parse them once.
+    local stat_line
+    stat_line=$(stat_all_fields "$fpath") || stat_line=""
+    inode=$(printf '%s' "$stat_line" | awk -F'\t' '{print $1}')
+    dev=$(printf   '%s' "$stat_line" | awk -F'\t' '{print $2}')
+    mtime=$(printf '%s' "$stat_line" | awk -F'\t' '{print $3}')
+    size=$(printf  '%s' "$stat_line" | awk -F'\t' '{print $4}')
     inode_dev="${inode}:${dev}"
     reuse=0; h=""
 

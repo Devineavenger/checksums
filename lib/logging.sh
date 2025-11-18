@@ -164,31 +164,15 @@ rotate_log() {
     fi
   fi
 
-  (
-    cd -- "$dir" || exit 0
-
-    # Build a list of rotated files that exactly match base_noext.<ts>.log
-    # (avoid matching other patterns like base.log.<ts> etc).
-    # Prefer find -printf when available; otherwise use a portable fallback.
-    if find . -maxdepth 1 -type f -name "$base_noext.*.log" -printf "%T@ %p\n" >/dev/null 2>&1; then
-      find . -maxdepth 1 -type f -name "$base_noext.*.log" -printf "%T@ %p\n" 2>/dev/null \
-        | LC_ALL=C sort -r -n \
-        | awk 'NR>2 {print $2}' \
-        | xargs -r -- rm -f --
-    else
-      # Portable fallback: use stat to produce sortable timestamps
-      find . -maxdepth 1 -type f -name "$base_noext.*.log" 2>/dev/null \
-      | while IFS= read -r f; do
-          if stat --version >/dev/null 2>&1; then
-            printf '%s\t%s\n' "$(stat -c %Y -- "$f" 2>/dev/null)" "$f"
-          else
-            printf '%s\t%s\n' "$(stat -f %m -- "$f" 2>/dev/null)" "$f"
-          fi
-        done | LC_ALL=C sort -r -n | awk -F'\t' 'NR>2 {print $2}' | while IFS= read -r f; do
-          [ -f "$f" ] && rm -f -- "$f"
-        done
-    fi
-  )
+  # Simplify rotation cleanup: keep only the 2 most recent rotated logs.
+  # Use find + stat + sort instead of ls to handle filenames safely (SC2012 fix).
+  if find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 | grep -q .; then
+    find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
+      | xargs -0 stat --format '%Y %n' \
+      | sort -nr \
+      | awk 'NR>2 {print $2}' \
+      | xargs -r rm -f --
+  fi
 }
 
 log_run_header() {
@@ -284,9 +268,12 @@ emit_md5_file_details() {
   # If there were no valid file entries in the sumfile but the sumfile is non-empty,
   # treat that as an error (missing referenced files / malformed manifest).
   if [ "$processed_count" -eq 0 ]; then
-    # if sumfile contains any non-blank line, consider it malformed / referencing nothing
+    # Clarify operator diagnostics: a non-empty sumfile with no parseable entries is malformed.
+    # Log it as MALFORMED so run-level logs capture the root cause clearly.
     if grep -q '[^[:space:]]' "$sumf" 2>/dev/null; then
       rc=2
+      log "MD5-DETAIL: malformed manifest detected in $sumf"
+      [ -n "${RUN_LOG:-}" ] && printf 'MALFORMED: %s\n' "$sumf" >>"${RUN_LOG}"
     else
       rc=0
     fi

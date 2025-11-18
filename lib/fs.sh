@@ -33,48 +33,51 @@ _safe_name() {
 #FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")")}"
 #LOCK_EXCL="${LOCK_EXCL:-${META_EXCL}${LOCK_SUFFIX:-.lock}}"
 
-# has_files DIR
-# Return success (0) if any regular file exists anywhere under DIR that is NOT
-# a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
-has_files() {
-  local d="$1" f fname
-  # find only regular files; NUL-delimit to safely handle weird names
-  # Exclude files whose basenames match MD5/META/LOG or their rotated variants.
-  # Use a small loop to exit early on the first matching user file.
-  local found=1
-  while IFS= read -r -d '' f; do
-    fname=$(basename "$f")
-    # Skip our tool-generated files: exact base names and rotated variants.
-    # Note: use unquoted patterns in case arms so shell globs are interpreted
-    # for matching rather than literal strings. ALT_LOG_EXCL is the log base
-    # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
-    case "$fname" in
-      "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
-      # rotated logs: base.<ts>.log (tolerate legacy variants too)
-      ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
-      # run-level and first-run logs (explicit names — match literally)
-      "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
-      # lock suffix
-      *"$LOCK_SUFFIX") continue ;;
-      # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
-      *)
-        # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
-        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
-          local pat
-          for pat in "${EXCLUDE_PATTERNS[@]}"; do
-            # shellcheck disable=SC2053
-            [[ "$fname" == $pat ]] && { fname=""; break; }
-          done
-          [ -z "$fname" ] && continue
-        fi
-        # Found a non-tool regular file — stop right here
-        found=0
-        break
-        ;;
-    esac
-  done < <(find "$d" -type f -print0 2>/dev/null)
-  return "$found"
+# Cache-friendly listing helper: centralize find invocation to a single place,
+# making it easier to swap for memoization if needed without touching callers.
+list_files_cached() {
+  local d="$1"
+  find "$d" -type f -print0 2>/dev/null
 }
+
+ # has_files DIR
+ # Return success (0) if any regular file exists anywhere under DIR that is NOT
+ # a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
+ has_files() {
+   local d="$1" f fname
+  # Iterate once over a cached listing stream; exit early on first user file match.
+  while IFS= read -r -d '' f; do
+     fname=$(basename "$f")
+     # Skip our tool-generated files: exact base names and rotated variants.
+     # Note: use unquoted patterns in case arms so shell globs are interpreted
+     # for matching rather than literal strings. ALT_LOG_EXCL is the log base
+     # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
+     case "$fname" in
+       "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
+       # rotated logs: base.<ts>.log (tolerate legacy variants too)
+       ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
+       # run-level and first-run logs (explicit names — match literally)
+       "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
+       # lock suffix
+       *"$LOCK_SUFFIX") continue ;;
+       # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
+       *)
+         # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
+         if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+           local pat
+           for pat in "${EXCLUDE_PATTERNS[@]}"; do
+             # shellcheck disable=SC2053
+             [[ "$fname" == $pat ]] && { fname=""; break; }
+           done
+           [ -z "$fname" ] && continue
+         fi
+        # Found a non-tool regular file — return success immediately.
+        return 0
+         ;;
+     esac
+  done < <(list_files_cached "$d")
+  return 1
+ }
 
 # has_local_files DIR
 # Return 0 if there is any regular file directly inside DIR (maxdepth 1)
