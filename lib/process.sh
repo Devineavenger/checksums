@@ -192,7 +192,8 @@ process_single_directory() {
       # Acquire the same lock before removing the invalid meta to avoid races with other runs
       # that might attempt to write while we delete (TOCTOU protection).
       local lockfile="${metaf}${LOCK_SUFFIX}"
-      with_lock "$lockfile" sh -c 'rm -f -- "$0"' "$metaf"
+      # Use double quotes and $1 to refer to the metaf argument passed to sh -c
+      with_lock "$lockfile" sh -c "rm -f -- \"\$1\"" sh "$metaf"
       [ -f "$metaf" ] && record_error "Could not remove invalid meta $metaf"
     fi
   fi
