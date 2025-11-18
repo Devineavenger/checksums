@@ -133,13 +133,26 @@ decide_directories_plan() {
     fi
 
     if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
-      # If any file newer than sumfile, we need to process
-      if find_file_expr "$d" \
-         | LC_ALL=C xargs -0 -r -n1 -I{} sh -c "test \"\$1\" -nt \"\$2\"" sh {} "$sumf" 2>/dev/null; then
+      # If any file newer than sumfile, we need to process.
+      # Optimization + portability: Use find -newer to short-circuit without spawning many shells.
+      # The candidate set is restricted by find_file_expr exclusions; reuse those filters here.
+      # Note: find_file_expr emits only direct files (maxdepth 1) and excludes artifacts.
+      if find "$d" -maxdepth 1 -type f \
+           ! -name "$MD5_EXCL" \
+           ! -name "$META_EXCL" \
+           ! -name "$LOG_EXCL" \
+           ! -name "$LOCK_EXCL" \
+           ! -name "$RUN_EXCL" \
+           ! -name "$FIRST_RUN_EXCL" \
+           ! -name "${ALT_LOG_EXCL}.log" \
+           ! -name "${ALT_LOG_EXCL}.*.log" \
+           -newer "$sumf" -print -quit 2>/dev/null | grep -q .; then
         reason="newer-file-detected"
         printf '%s\0' "$d" >> "$plan_to_process_file"
         vlog "PLAN: process $d reason=$reason"
-        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+        # Use a consistent default for md5-details (enabled unless explicitly disabled).
+        local md5_details="${VERIFY_MD5_DETAILS:-1}"
+        if [ "$md5_details" -eq 1 ] && [ -f "$sumf" ]; then
           local vr
           vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
           emit_md5_detail "$d" "$vr"
@@ -170,7 +183,8 @@ decide_directories_plan() {
         reason="meta-verified"
         # If enabled, run md5 verification even when meta verifies.
         # This detects hash mismatches / missing files the meta-stat check cannot.
-        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+        local md5_details="${VERIFY_MD5_DETAILS:-1}"
+        if [ "$md5_details" -eq 1 ] && [ -f "$sumf" ]; then
           # Use the deterministic reporter that parses the .md5 and writes per-file
           # MISSING/MISMATCH lines directly to RUN_LOG. This avoids global FIRST_RUN_LOG
           # aliasing and reproduces the detailed first-run output during planning.
@@ -216,7 +230,8 @@ decide_directories_plan() {
         # but lack a valid meta (metafile missing or signature invalid). This runs
         # regardless of FIRST_RUN so operators see MISSING/MISMATCH/VERIFIED lines
         # in the run-level log for diagnostic purposes.
-        if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
+        local md5_details="${VERIFY_MD5_DETAILS:-1}"
+        if [ "$md5_details" -eq 1 ] && [ -f "$sumf" ]; then
           # As above: deterministic per-file reporting into RUN_LOG for dirs lacking valid meta.
           # Capture the verifier exit code reliably (avoid `cmd || rc=$?` races).
           local vr

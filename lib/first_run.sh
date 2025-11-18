@@ -75,17 +75,33 @@ first_run_verify() {
   local -a targets=()
 
   # Collect directories that contain an .md5 and have at least one sidefile missing.
-  declare -A _fr_seen=()
-  while IFS= read -r -d '' f; do
-    local d; d=$(dirname "$f")
-    # Select if either .meta OR .log is missing
-    if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
-      if [ -z "${_fr_seen[$d]:-}" ]; then
-        targets+=("$d")
-        _fr_seen["$d"]=1
+  # Bash 3.x lacks associative arrays; guard declare -A and provide a simple fallback.
+  if declare -p -A >/dev/null 2>&1; then
+    # Bash ≥ 4: use an assoc set to avoid duplicate targets.
+    declare -A _fr_seen=()
+    while IFS= read -r -d '' f; do
+      local d; d=$(dirname "$f")
+      # Select if either .meta OR .log is missing
+      if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
+        if [ -z "${_fr_seen[$d]:-}" ]; then
+          targets+=("$d")
+          _fr_seen["$d"]=1
+        fi
       fi
-    fi
-  done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+  else
+    # Bash < 4: use a space-delimited “seen_list” to prevent duplicates.
+    local seen_list=""
+    while IFS= read -r -d '' f; do
+      local d; d=$(dirname "$f")
+      if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
+        case " $seen_list " in
+          *" $d "*) ;;               # already present
+          *) targets+=("$d"); seen_list="$seen_list $d" ;;
+        esac
+      fi
+    done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+  fi
 
   if [ "${#targets[@]}" -eq 0 ]; then
     log "First-run: no existing $MD5_FILENAME needing verification found."

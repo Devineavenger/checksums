@@ -126,7 +126,9 @@ build_exclusions() {
 
   # after computing MD5_EXCL, META_EXCL, LOG_EXCL, RUN_BASENAME, FIRST_RUN_BASENAME, ALT_LOG_EXCL, LOCK_EXCL
   # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.
-  EXCLUDE_PATTERNS+=("$MD5_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "$ALT_LOG_EXCL" "$LOCK_EXCL")
+  # IMPORTANT: do not exclude bare ALT_LOG_EXCL or ALT_LOG_EXCL.* (could match user files).
+  # Only exclude the actual rotated log patterns to avoid skipping real data.
+  EXCLUDE_PATTERNS+=("$MD5_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
 }
 
 # Default pattern arrays exist in args.sh but we also declare here for safety.

@@ -165,13 +165,26 @@ rotate_log() {
   fi
 
   # Simplify rotation cleanup: keep only the 2 most recent rotated logs.
-  # Use find + stat + sort instead of ls to handle filenames safely (SC2012 fix).
+  # Portable approach:
+  # - On GNU systems: use stat --format '%Y %n' for mtime + path.
+  # - On BSD/macOS: use stat -f '%m %N'.
+  # Avoid 'ls' to safely handle special characters in filenames (ShellCheck SC2012).
   if find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 | grep -q .; then
-    find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
-      | xargs -0 stat --format '%Y %n' \
-      | sort -nr \
-      | awk 'NR>2 {print $2}' \
-      | xargs -r rm -f --
+    if stat --version >/dev/null 2>&1; then
+      # GNU stat path
+      find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
+        | xargs -0 stat --format '%Y %n' \
+        | sort -nr \
+        | awk 'NR>2 {print $2}' \
+        | xargs -r rm -f --
+    else
+      # BSD/macOS stat path
+      find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
+        | xargs -0 stat -f '%m %N' \
+        | sort -nr \
+        | awk 'NR>2 {print $2}' \
+        | xargs -r rm -f --
+    fi
   fi
 }
 

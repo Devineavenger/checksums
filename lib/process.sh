@@ -53,8 +53,9 @@ if declare -p -A >/dev/null 2>&1; then
 fi
 
 # Ensure parallel job arrays exist to avoid unbound var warnings
-declare -a pids 2>/dev/null || pids=()
-declare -i pids_count=0 2>/dev/null || pids_count=0
+# Remove unused local arrays (pids/pids_count). Worker control uses HASH_PIDS/HASH_PIDS_COUNT in hash.sh.
+# This avoids confusion and keeps state centralized in hash helpers.
+# (no replacement needed)
 
 # Precompute batch thresholds once per run to avoid repeated numfmt conversions.
 declare -A BATCH_THRESHOLDS=()
@@ -188,7 +189,11 @@ process_single_directory() {
     record_error "Meta signature invalid for $metaf; ignoring meta and forcing rebuild"
     # In verify-only mode, we don't delete or rewrite; just record error and continue
     if [ "$VERIFY_ONLY" -eq 0 ]; then
-      rm -f -- "$metaf" 2>/dev/null || record_error "Could not remove invalid meta $metaf"
+      # Acquire the same lock before removing the invalid meta to avoid races with other runs
+      # that might attempt to write while we delete (TOCTOU protection).
+      local lockfile="${metaf}${LOCK_SUFFIX}"
+      with_lock "$lockfile" sh -c 'rm -f -- "$0"' "$metaf"
+      [ -f "$metaf" ] && record_error "Could not remove invalid meta $metaf"
     fi
   fi
 
