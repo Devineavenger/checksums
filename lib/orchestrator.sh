@@ -65,6 +65,7 @@ run_checksums() {
   cd - >/dev/null 2>&1 || true
   [ "$TARGET_DIR" = "/" ] && fatal "Refusing to run on system root"
 
+  # Load config before parsing CLI so CLI overrides config values.
   if [ -n "$CONFIG_FILE" ]; then
     if [ -f "$CONFIG_FILE" ]; then
       log "Loading config from explicit file $CONFIG_FILE"

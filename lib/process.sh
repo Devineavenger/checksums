@@ -75,8 +75,13 @@ init_batch_thresholds() {
         # Convert units only once per rule
         local low_bytes
         local high_bytes
-        low_bytes=$(numfmt --from=iec <<<"$low" 2>/dev/null || echo "$low")
-        high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
+        if [ "${TOOL_numfmt:-0}" -eq 1 ]; then
+          low_bytes=$(numfmt --from=iec <<<"$low" 2>/dev/null || echo "$low")
+          high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
+        else
+          low_bytes="$low"
+          high_bytes="$high"
+        fi
         BATCH_THRESHOLDS["$low_bytes-$high_bytes"]="$count"
         ;;
       ">"*":*")
@@ -228,6 +233,13 @@ process_single_directory() {
 
   # Normal processing path
   read_meta "$metaf"
+
+  # If meta signature verified and unchanged, count as verified too
+  if [ -f "$metaf" ] && verify_meta_sig "$metaf"; then
+    if [ "${SKIP_EMPTY:-1}" -eq 1 ] && has_files "$d"; then
+      count_verified=$((count_verified+1))
+    fi
+  fi
 
   local tmp_sum="${sumf}.tmp" tmp_meta="${metaf}.tmp"
   local -a files=()

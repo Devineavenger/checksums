@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.6.3
+# Version: 3.6.4
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.6.3"
+  printf '%s' "3.6.4"
 }
 
 # Populate VER using the robust lookup
@@ -152,7 +152,7 @@ declare -g count_overwritten=0    # Directories overwritten (first-run schedulin
 declare -g count_errors=0         # Errors encountered
 
 # === Run ID (audit trail) ===
-RUN_ID=$(uuidgen 2>/dev/null || date +%s$$)
+RUN_ID=$(uuidgen 2>/dev/null || printf '%s-%s-%s' "$(date +%s)" "$$" "$RANDOM")
 
 # === Associative arrays for meta (declare if supported) ===
 # Avoid scalar assignments that would convert arrays; initialize as empty maps.
