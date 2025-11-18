@@ -25,13 +25,18 @@ _safe_name() {
 
 # Ensure derived exclusion names are available even if build_exclusions() hasn't been run.
 # This makes the helpers safe to call in isolation (interactive tests, unit probes).
-#MD5_EXCL="${MD5_EXCL:-$(_safe_name "$(basename "${MD5_FILENAME:-#####checksums#####.md5}")")}"
-#META_EXCL="${META_EXCL:-$(_safe_name "$(basename "${META_FILENAME:-#####checksums#####.meta}")")}"
-#LOG_EXCL="${LOG_EXCL:-$(_safe_name "$(basename "${LOG_FILENAME:-${BASE_NAME:-#####checksums#####}.log}")")}"
-#ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME:-#####checksums#####}.log")")}"
-#RUN_EXCL="${RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.run.log")")}"
-#FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")")}"
-#LOCK_EXCL="${LOCK_EXCL:-${META_EXCL}${LOCK_SUFFIX:-.lock}}"
+# We provide safe defaults here to avoid unbound variables under `set -u`.
+MD5_EXCL="${MD5_EXCL:-$(_safe_name "$(basename "${MD5_FILENAME:-#####checksums#####.md5}")")}"
+META_EXCL="${META_EXCL:-$(_safe_name "$(basename "${META_FILENAME:-#####checksums#####.meta}")")}"
+LOG_EXCL="${LOG_EXCL:-$(_safe_name "$(basename "${LOG_FILENAME:-#####checksums#####.log}")")}"
+ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}")")}"
+RUN_EXCL="${RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}.run.log")")}"
+FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}.first-run.log")")}"
+LOCK_EXCL="${LOCK_EXCL:-$(_safe_name "${LOCK_SUFFIX:-.lock}")}"
+
+# Default pattern arrays exist in args.sh but we also declare here for safety.
+declare -a INCLUDE_PATTERNS=${INCLUDE_PATTERNS:+("${INCLUDE_PATTERNS[@]}")}
+declare -a EXCLUDE_PATTERNS=${EXCLUDE_PATTERNS:+("${EXCLUDE_PATTERNS[@]}")}
 
 # Cache-friendly listing helper: centralize find invocation to a single place,
 # making it easier to swap for memoization if needed without touching callers.
@@ -40,44 +45,44 @@ list_files_cached() {
   find "$d" -type f -print0 2>/dev/null
 }
 
- # has_files DIR
- # Return success (0) if any regular file exists anywhere under DIR that is NOT
- # a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
- has_files() {
-   local d="$1" f fname
+# has_files DIR
+# Return success (0) if any regular file exists anywhere under DIR that is NOT
+# a tool-generated artifact (.md5, .meta, .log, rotated logs). Otherwise return 1.
+has_files() {
+  local d="$1" f fname
   # Iterate once over a cached listing stream; exit early on first user file match.
   while IFS= read -r -d '' f; do
-     fname=$(basename "$f")
-     # Skip our tool-generated files: exact base names and rotated variants.
-     # Note: use unquoted patterns in case arms so shell globs are interpreted
-     # for matching rather than literal strings. ALT_LOG_EXCL is the log base
-     # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
-     case "$fname" in
-       "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
-       # rotated logs: base.<ts>.log (tolerate legacy variants too)
-       ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
-       # run-level and first-run logs (explicit names — match literally)
-       "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
-       # lock suffix
-       *"$LOCK_SUFFIX") continue ;;
-       # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
-       *)
-         # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
-         if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
-           local pat
-           for pat in "${EXCLUDE_PATTERNS[@]}"; do
-             # shellcheck disable=SC2053
-             [[ "$fname" == $pat ]] && { fname=""; break; }
-           done
-           [ -z "$fname" ] && continue
-         fi
+    fname=$(basename "$f")
+    # Skip our tool-generated files: exact base names and rotated variants.
+    # Note: use unquoted patterns in case arms so shell globs are interpreted
+    # for matching rather than literal strings. ALT_LOG_EXCL is the log base
+    # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
+    case "$fname" in
+      "$MD5_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      # rotated logs: base.<ts>.log (tolerate legacy variants too)
+      ${ALT_LOG_EXCL}.*.log ) continue ;;
+      # run-level and first-run logs (explicit names — match literally)
+      "$RUN_EXCL" | "$FIRST_RUN_EXCL" ) continue ;;
+      # lock suffix
+      *"$LOCK_SUFFIX") continue ;;
+      # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
+      *)
+        # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
+        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+          local pat
+          for pat in "${EXCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            [[ "$fname" == $pat ]] && { fname=""; break; }
+          done
+          [ -z "$fname" ] && continue
+        fi
         # Found a non-tool regular file — return success immediately.
         return 0
-         ;;
-     esac
+        ;;
+    esac
   done < <(list_files_cached "$d")
   return 1
- }
+}
 
 # has_local_files DIR
 # Return 0 if there is any regular file directly inside DIR (maxdepth 1)
@@ -90,9 +95,9 @@ has_local_files() {
     # inside the directory (maxdepth 1). This prevents creating sidecars for
     # parent/container dirs that contain files only in subdirectories.
     case "$fname" in
-      "$MD5_FILENAME" | "$META_FILENAME" | "$LOG_FILENAME" ) continue ;;
-      ${LOG_BASE}.*.log | ${ALT_LOG_EXCL}.*.log | ${ALT_LOG_EXCL}.* ) continue ;;
-      "${LOG_BASE}.run.log" | "${LOG_BASE}.first-run.log" ) continue ;;
+      "$MD5_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      ${ALT_LOG_EXCL}.*.log ) continue ;;
+      "$RUN_EXCL" | "$FIRST_RUN_EXCL" ) continue ;;
       *"$LOCK_SUFFIX") continue ;;
       *)
         if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
@@ -131,10 +136,6 @@ build_exclusions() {
   EXCLUDE_PATTERNS+=("$MD5_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
 }
 
-# Default pattern arrays exist in args.sh but we also declare here for safety.
-declare -a INCLUDE_PATTERNS=()
-declare -a EXCLUDE_PATTERNS=()
-
 find_file_expr() {
   # Emit NUL-delimited list of regular files in the provided directory that are
   # candidates for inclusion in the per-directory checksum manifest.
@@ -149,8 +150,8 @@ find_file_expr() {
     ! -name "$MD5_EXCL" \
     ! -name "$META_EXCL" \
     ! -name "$LOG_EXCL" \
-    ! -name "$LOCK_EXCL" \
-	! -name "$RUN_EXCL" \
+    ! -name "*${LOCK_SUFFIX}" \
+    ! -name "$RUN_EXCL" \
     ! -name "$FIRST_RUN_EXCL" \
     ! -name "${ALT_LOG_EXCL}.log" \
     ! -name "${ALT_LOG_EXCL}.*.log" \

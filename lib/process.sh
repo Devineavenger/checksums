@@ -268,13 +268,18 @@ process_single_directory() {
   # Transfer meta data to our caches (associative or text maps)
   if [ "${USE_ASSOC:-0}" -eq 1 ]; then
     # meta_* arrays are populated by read_meta in lib/meta.sh
-    for p in "${!meta_inode_dev[@]}"; do
-      old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
-      old_mtime["$p"]="${meta_mtime[$p]}"
-      old_size["$p"]="${meta_size[$p]}"
-      old_hash["$p"]="${meta_hash_by_path[$p]}"
-      inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]}"
-    done
+    if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
+      for p in "${!meta_inode_dev[@]}"; do
+        # guard against unset keys under set -u
+        if [ -n "${meta_inode_dev[$p]:-}" ]; then
+          old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
+          old_mtime["$p"]="${meta_mtime[$p]:-}"
+          old_size["$p"]="${meta_size[$p]:-}"
+          old_hash["$p"]="${meta_hash_by_path[$p]:-}"
+          inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]:-}"
+        fi
+      done
+    fi
   else
     # meta_* arrays exist only when Bash >= 4; for fallback, re-read meta file lines
     if [ -f "$metaf" ]; then

@@ -63,7 +63,10 @@ run_checksums() {
   cd "$TARGET_DIR" || fatal "Cannot cd to $TARGET_DIR"
   TARGET_DIR=$(pwd -P)
   cd - >/dev/null 2>&1 || true
-  [ "$TARGET_DIR" = "/" ] && fatal "Refusing to run on system root"
+  if [ "$TARGET_DIR" = "/" ]; then
+    _global_log 0 "Refusing to run on system root"
+    return 1   # return instead of fatal/exit so tests can assert
+  fi
 
   # Load config before parsing CLI so CLI overrides config values.
   if [ -n "$CONFIG_FILE" ]; then
