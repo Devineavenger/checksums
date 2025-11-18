@@ -40,9 +40,11 @@ verify_md5_file() {
         fname=$(printf '%s' "$entry" | sed -E 's/^MD5 \((.*)\) = .*/\1/')
         expected=$(printf '%s' "$entry" | awk '{print $NF}')
         ;;
-      *)        # Assume GNU format: hash␣␣filename
-        expected=$(printf '%s' "$entry" | awk '{print $1}')
-        fname=$(printf '%s' "$entry" | awk '{$1=""; sub(/^ +/,""); print}')
+      *)        # GNU format: hash␣␣filename (tolerate one or more spaces)
+        expected=${entry%%[[:space:]]*}
+        fname=${entry#"$expected"}
+        # strip leading spaces and optional leading '*'
+        fname=$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')
         ;;
     esac
 

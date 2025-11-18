@@ -57,3 +57,29 @@ teardown() {
   run verify_md5_file "$TMPDIR"
   [ "$status" -eq 0 ]
 }
+
+@test "verify_md5_file handles multiple files correctly" {
+  echo "foo" > "$TMPDIR/foo.txt"
+  echo "bar" > "$TMPDIR/bar.txt"
+  md5foo=$(file_hash "$TMPDIR/foo.txt" md5)
+  md5bar=$(file_hash "$TMPDIR/bar.txt" md5)
+  {
+    printf '%s  %s\n' "$md5foo" "foo.txt"
+    printf '%s  %s\n' "$md5bar" "bar.txt"
+  } > "$TMPDIR/$MD5_FILENAME"
+  run verify_md5_file "$TMPDIR"
+  [ "$status" -eq 0 ]
+}
+
+@test "verify_md5_file returns 2 when manifest references missing file" {
+  md5=$(file_hash "$TMPDIR/file.txt" md5)
+  printf '%s  %s\n' "$md5" "nonexistent.txt" > "$TMPDIR/$MD5_FILENAME"
+  run verify_md5_file "$TMPDIR"
+  [ "$status" -eq 2 ]
+}
+
+@test "verify_md5_file returns 1 for malformed manifest line" {
+  echo "not-a-valid-line" > "$TMPDIR/$MD5_FILENAME"
+  run verify_md5_file "$TMPDIR"
+  [ "$status" -eq 1 ]
+}
