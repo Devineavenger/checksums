@@ -38,6 +38,59 @@ LOCK_EXCL="${LOCK_EXCL:-$(_safe_name "${LOCK_SUFFIX:-.lock}")}"
 declare -a INCLUDE_PATTERNS=${INCLUDE_PATTERNS:+("${INCLUDE_PATTERNS[@]}")}
 declare -a EXCLUDE_PATTERNS=${EXCLUDE_PATTERNS:+("${EXCLUDE_PATTERNS[@]}")}
 
+# normalize_unit: produce numfmt-friendly IEC tokens (plain number, K, M, G, T, P, E),
+# or the "Ki/Mi/Gi" form if you prefer explicit binary suffix (both accepted by numfmt).
+normalize_unit() {
+  local val="$1"
+  local num suffix
+  num=$(printf '%s' "$val" | sed -E 's/^([0-9]+).*/\1/')
+  suffix=$(printf '%s' "$val" | sed -E 's/^[0-9]+//')
+  suffix=$(echo "$suffix" | tr '[:upper:]' '[:lower:]')
+
+  case "$suffix" in
+    '' )        echo "$num" ;;            # plain number
+    b)          echo "${num}" ;;          # bytes as plain number
+    k|kb|kib)   echo "${num}K" ;;         # numfmt accepts "K" or "Ki"
+    m|mb|mib)   echo "${num}M" ;;
+    g|gb|gib)   echo "${num}G" ;;
+    t|tb|tib)   echo "${num}T" ;;
+    p|pb|pib)   echo "${num}P" ;;
+    e|eb|eib)   echo "${num}E" ;;
+    *)          echo "$val" ;;            # unknown suffix, leave unchanged
+  esac
+}
+
+# bytes_from_unit: accept outputs from normalize_unit (plain number or K/M/G/T/P/E)
+bytes_from_unit() {
+  local val="$1"
+  local num suffix
+  num="${val%%[A-Za-z]*}"
+  suffix="${val#$num}"
+  case "$suffix" in
+    ""|b|B) echo "$num" ;;
+    K)      echo $(( num * 1024 )) ;;
+    M)      echo $(( num * 1024 * 1024 )) ;;
+    G)      echo $(( num * 1024 * 1024 * 1024 )) ;;
+    T)      echo $(( num * 1024 * 1024 * 1024 * 1024 )) ;;
+    P)      echo $(( num * 1024 * 1024 * 1024 * 1024 * 1024 )) ;;
+    E)      echo $(( num * 1024 * 1024 * 1024 * 1024 * 1024 * 1024 )) ;;
+    *)      echo "$num" ;;
+  esac
+}
+
+# Convert a human unit token to bytes, preferring numfmt when available,
+# falling back to local bytes_from_unit on failure.
+_to_bytes() {
+  local token="$1" out=""
+  if [ "${TOOL_numfmt:-0}" -eq 1 ]; then
+    out=$(numfmt --from=iec <<<"$(normalize_unit "$token")" 2>/dev/null || true)
+  fi
+  if [ -z "$out" ]; then
+    out="$(bytes_from_unit "$(normalize_unit "$token")")"
+  fi
+  printf '%s' "${out//[[:space:]]/}"
+}
+
 # Cache-friendly listing helper: centralize find invocation to a single place,
 # making it easier to swap for memoization if needed without touching callers.
 list_files_cached() {

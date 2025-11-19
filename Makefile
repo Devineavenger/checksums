@@ -114,7 +114,7 @@ help:
 	@echo "  make user-install          - Run friendly ./install.sh script"
 	@echo "  make user-uninstall        - Run friendly ./uninstall.sh script"
 	@echo "  make user-reinstall        - Run friendly ./uninstall.sh & ./install.sh script"
-	@echo "  make test                  - Run unit tests (Bats)"
+	@echo "  make tests                 - Run unit tests (Bats)"
 	@echo "  make lint                  - Run shellcheck linting"
 	@echo "  make ci                    - Run lint + test (local CI check)"
 	@echo "  make check                 - Run lint + test + changelog preview"

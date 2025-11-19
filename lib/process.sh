@@ -58,64 +58,146 @@ fi
 # (no replacement needed)
 
 # Precompute batch thresholds once per run to avoid repeated numfmt conversions.
-declare -A BATCH_THRESHOLDS=()
+# Ensure global associative type even inside functions.
+if declare -p -A >/dev/null 2>&1; then
+  # re-declare globally to avoid local shadowing issues under set -u
+  declare -gA BATCH_THRESHOLDS 2>/dev/null || true
+  # If not yet declared as associative, reset and declare
+  if ! declare -p BATCH_THRESHOLDS 2>/dev/null | grep -q 'declare \-A'; then
+    unset BATCH_THRESHOLDS
+    declare -gA BATCH_THRESHOLDS
+  fi
+else
+  # Fallback (Bash < 4): keep a scalar to avoid set -u complaints; not used on Bash 5.x
+  BATCH_THRESHOLDS=""
+fi
+# Fallback list is referenced below; declare defensively even on Bash 5.x
+declare -g THRESHOLDS_LIST=""
 
 # Parse BATCH_RULES (e.g. "0-1M:20,1M-80M:5,>80M:1") into byte ranges and counts.
-# Called once (orchestrator) to populate BATCH_THRESHOLDS map.
+# Called once (orchestrator) to populate BATCH_THRESHOLDS or THRESHOLDS_LIST.
 init_batch_thresholds() {
   local rules="${BATCH_RULES:-0-1M:20,1M-80M:5,>80M:1}"
   IFS=',' read -ra parts <<< "$rules"
+
   for rule in "${parts[@]}"; do
-    case "$rule" in
-      *-*:*)
-        local low="${rule%%-*}"
-        local high="${rule#*-}"
-        high="${high%%:*}"
-        local count="${rule##*:}"
-        # Convert units only once per rule
-        local low_bytes
-        local high_bytes
-        if [ "${TOOL_numfmt:-0}" -eq 1 ]; then
-          low_bytes=$(numfmt --from=iec <<<"$low" 2>/dev/null || echo "$low")
-          high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
-        else
-          low_bytes="$low"
-          high_bytes="$high"
-        fi
+    # trim spaces
+    rule="${rule#"${rule%%[! ]*}"}"
+    rule="${rule%"${rule##*[! ]}"}"
+
+    if [[ "$rule" == *-*:* ]]; then
+      # Fixed range: LOW-HIGH:COUNT
+      local range count low high low_bytes high_bytes
+      range="${rule%%:*}"
+      count="${rule##*:}"
+      low="${range%%-*}"
+      high="${range##*-}"
+
+      dbg "rule=$rule range=$range low=$low high=$high count=$count"
+
+      case "$count" in ''|*[!0-9]*) dbg "init_batch_thresholds: invalid count='$count' in rule='$rule'"; continue ;; esac
+
+      low_bytes="$(_to_bytes "$low")"
+      high_bytes="$(_to_bytes "$high")"
+
+      case "$low_bytes"  in ''|*[!0-9]*) dbg "init_batch_thresholds: low not numeric for '$rule'"; continue ;; esac
+      case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
+
+      if declare -p -A >/dev/null 2>&1; then
         BATCH_THRESHOLDS["$low_bytes-$high_bytes"]="$count"
-        ;;
-      ">"*":*")
-        local high="${rule#*>}"
-        high="${high%%:*}"
-        local count="${rule##*:}"
-        local high_bytes
-        high_bytes=$(numfmt --from=iec <<<"$high" 2>/dev/null || echo "$high")
-        BATCH_THRESHOLDS[">$high_bytes"]="$count"
-        ;;
-    esac
+      else
+        THRESHOLDS_LIST+="$low_bytes $high_bytes $count"$'\n'
+      fi
+
+    elif [[ "${rule:0:1}" == ">" && "$rule" == *:* ]]; then
+      # Open-ended: >HIGH:COUNT
+      local high count high_bytes
+      high="${rule#*>}"
+      count="${high##*:}"
+      high="${high%%:*}"
+
+      dbg "rule=$rule high=$high count=$count"
+
+      case "$count" in ''|*[!0-9]*) dbg "init_batch_thresholds: invalid count='$count' in rule='$rule'"; continue ;; esac
+
+      high_bytes="$(_to_bytes "$high")"
+      case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
+
+      # Store open-ended as "<high_bytes>-"
+      if declare -p -A >/dev/null 2>&1; then
+        BATCH_THRESHOLDS["$high_bytes-"]="$count"
+      else
+        THRESHOLDS_LIST+="$high_bytes- $count"$'\n'
+      fi
+
+    else
+      dbg "init_batch_thresholds: unrecognized rule format: '$rule'"
+    fi
   done
+
+  # Optional debug print
+  if [ "${DEBUG:-0}" -gt 0 ]; then
+    if declare -p -A >/dev/null 2>&1; then
+      dbg "BATCH_THRESHOLDS contents (sorted):"
+      for k in $(printf '%s\n' "${!BATCH_THRESHOLDS[@]}" | sort -V); do
+        dbg "  $k -> ${BATCH_THRESHOLDS[$k]}"
+      done
+    else
+      dbg "THRESHOLDS_LIST:"
+      dbg "$(printf '%s' "$THRESHOLDS_LIST")"
+    fi
+  fi
 }
+
 
 # Lookup batch size based on precomputed thresholds (default=1).
 classify_batch_size() {
   local size="$1"
-  for key in "${!BATCH_THRESHOLDS[@]}"; do
-    case "$key" in
-      *-*)
-        local low="${key%%-*}"
-        local high="${key##*-}"
-        if [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
-          echo "${BATCH_THRESHOLDS[$key]}"; return
-        fi
-        ;;
-      ">"*)
-        local high="${key#*>}"
-        if [ "$size" -ge "$high" ]; then
-          echo "${BATCH_THRESHOLDS[$key]}"; return
-        fi
-        ;;
-    esac
-  done
+
+  if declare -p -A >/dev/null 2>&1; then
+    # Associative array path (Bash >= 4)
+    for key in "${!BATCH_THRESHOLDS[@]}"; do
+      case "$key" in
+        *-*)
+          local low="${key%%-*}"
+          local high="${key##*-}"
+          if [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
+            echo "${BATCH_THRESHOLDS[$key]}"; return
+          fi
+          ;;
+        ">"*)
+          local high="${key#*>}"
+          if [ "$size" -ge "$high" ]; then
+            echo "${BATCH_THRESHOLDS[$key]}"; return
+          fi
+          ;;
+      esac
+    done
+  else
+    # Fallback path (Bash 3.x): iterate THRESHOLDS_LIST lines
+    local line low high count
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      case "$line" in
+        "> "*)
+          # format: "> HIGH COUNT"
+          read -r _ high count <<<"$line"
+          if [ -n "$high" ] && [ -n "$count" ] && [ "$size" -ge "$high" ]; then
+            echo "$count"; return
+          fi
+          ;;
+        *)
+          # format: "LOW HIGH COUNT"
+          read -r low high count <<<"$line"
+          if [ -n "$low" ] && [ -n "$high" ] && [ -n "$count" ] \
+             && [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
+            echo "$count"; return
+          fi
+          ;;
+      esac
+    done <<<"$THRESHOLDS_LIST"
+  fi
+
   echo 1
 }
 

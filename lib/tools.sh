@@ -4,13 +4,28 @@
 # Tool detection and preflight checks; preserves original hints and messaging.
 
 detect_tools() {
-  if command -v md5sum >/dev/null 2>&1; then TOOL_md5_cmd="md5sum"; elif command -v md5 >/dev/null 2>&1; then TOOL_md5_cmd="md5 -r"; fi
-  if command -v sha256sum >/dev/null 2>&1; then TOOL_sha256="sha256sum"; fi
-  if command -v shasum >/dev/null 2>&1 && [ -z "$TOOL_sha256" ]; then TOOL_shasum="shasum -a 256"; fi
+  if command -v md5sum >/dev/null 2>&1; then
+    TOOL_md5_cmd="md5sum"
+  elif command -v md5 >/dev/null 2>&1; then
+    TOOL_md5_cmd="md5 -r"
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    TOOL_sha256="$(command -v sha256sum)"
+    TOOL_shasum=""
+  elif command -v shasum >/dev/null 2>&1; then
+    TOOL_sha256=""
+    TOOL_shasum="$(command -v shasum) -a 256"
+  else
+    TOOL_sha256=""
+    TOOL_shasum=""
+  fi
+
   if stat --version >/dev/null 2>&1; then TOOL_stat_gnu=1; else TOOL_stat_gnu=0; fi
   if command -v flock >/dev/null 2>&1; then TOOL_flock=1; else TOOL_flock=0; fi
   if command -v numfmt >/dev/null 2>&1; then TOOL_numfmt=1; else TOOL_numfmt=0; fi
-  dbg "detected tools: md5='${TOOL_md5_cmd:-none}' sha256='${TOOL_sha256:-${TOOL_shasum:-none}}' flock=$TOOL_flock stat_gnu=$TOOL_stat_gnu numfmt=$TOOL_numfmt"
+
+  dbg "detected tools: md5='${TOOL_md5_cmd:-none}' sha256='${TOOL_sha256:-none}' shasum='${TOOL_shasum:-none}' flock=$TOOL_flock stat_gnu=$TOOL_stat_gnu numfmt=$TOOL_numfmt"
 }
 
 install_hints() {
