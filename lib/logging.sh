@@ -61,8 +61,8 @@ _global_log() {
 
 # Convenience wrappers for common log levels
 log()    { _global_log 1 "$*"; }
-vlog()   { _global_log 2 "$*"; }
-dbg()    { _global_log 3 "$*"; }
+vlog()   { if [ "${VERBOSE:-0}" -gt 0 ]; then _global_log 2 "$*"; fi; }
+dbg()    { if [ "${DEBUG:-0}" -gt 0 ]; then _global_log 3 "$*"; fi; }
 fatal()  { _global_log 0 "$*"; exit 1; }
 
 record_error() {

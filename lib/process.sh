@@ -81,9 +81,8 @@ init_batch_thresholds() {
   IFS=',' read -ra parts <<< "$rules"
 
   for rule in "${parts[@]}"; do
-    # trim spaces
-    rule="${rule#"${rule%%[! ]*}"}"
-    rule="${rule%"${rule##*[! ]}"}"
+    # trim all whitespace using Bash built-ins
+    rule="${rule//[[:space:]]/}"
 
     if [[ "$rule" == *-*:* ]]; then
       # Fixed range: LOW-HIGH:COUNT
@@ -152,52 +151,52 @@ init_batch_thresholds() {
 
 # Lookup batch size based on precomputed thresholds (default=1).
 classify_batch_size() {
-  local size="$1"
+  # Expect byte-sized integer input; defend against empty/non-digit inputs.
+  local size_raw="${1:-0}"
+  # keep only digits; empty -> 0
+  local size
+  size="$(printf '%s' "$size_raw" | sed -E 's/[^0-9]//g')"
+  [ -z "$size" ] && size=0
 
   if declare -p -A >/dev/null 2>&1; then
-    # Associative array path (Bash >= 4)
     for key in "${!BATCH_THRESHOLDS[@]}"; do
       case "$key" in
         *-*)
-          local low="${key%%-*}"
-          local high="${key##*-}"
-          if [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
+          local low="${key%%-*}" high="${key##*-}"
+          # skip malformed thresholds
+          [[ -z "$low" || -z "$high" || "$low" =~ [^0-9] || "$high" =~ [^0-9] ]] && continue
+          if (( size >= low )) && (( size < high )); then
             echo "${BATCH_THRESHOLDS[$key]}"; return
           fi
           ;;
         ">"*)
           local high="${key#*>}"
-          if [ "$size" -ge "$high" ]; then
+          [[ -z "$high" || "$high" =~ [^0-9] ]] && continue
+          if (( size >= high )); then
             echo "${BATCH_THRESHOLDS[$key]}"; return
           fi
           ;;
       esac
     done
   else
-    # Fallback path (Bash 3.x): iterate THRESHOLDS_LIST lines
+    # fallback: parse THRESHOLDS_LIST safely
     local line low high count
     while IFS= read -r line; do
       [ -z "$line" ] && continue
       case "$line" in
         "> "*)
-          # format: "> HIGH COUNT"
           read -r _ high count <<<"$line"
-          if [ -n "$high" ] && [ -n "$count" ] && [ "$size" -ge "$high" ]; then
-            echo "$count"; return
-          fi
+          [[ -z "$high" || -z "$count" || "$high" =~ [^0-9] || "$count" =~ [^0-9] ]] && continue
+          if (( size >= high )); then echo "$count"; return; fi
           ;;
         *)
-          # format: "LOW HIGH COUNT"
           read -r low high count <<<"$line"
-          if [ -n "$low" ] && [ -n "$high" ] && [ -n "$count" ] \
-             && [ "$size" -ge "$low" ] && [ "$size" -lt "$high" ]; then
-            echo "$count"; return
-          fi
+          [[ -z "$low" || -z "$high" || -z "$count" || "$low" =~ [^0-9] || "$high" =~ [^0-9] || "$count" =~ [^0-9] ]] && continue
+          if (( size >= low )) && (( size < high )); then echo "$count"; return; fi
           ;;
       esac
     done <<<"$THRESHOLDS_LIST"
   fi
-
   echo 1
 }
 
@@ -381,7 +380,8 @@ process_single_directory() {
   local results_dir=""
   if [ "$DRY_RUN" -eq 0 ]; then
     results_dir="$(mktemp -d "${TMPDIR:-/tmp}/hash_results_dir.XXXXXX")" || results_dir="$tmp_sum.hash.results.d"
-    mkdir -p "$results_dir"
+    # Ensure directory exists even if mktemp fallback path is used
+    mkdir -p -- "$results_dir"
   fi
   # Ensure temporary artifacts are cleaned up deterministically.
   # Avoid trapping RETURN globally; instead perform explicit cleanup at each exit point.
@@ -404,6 +404,11 @@ process_single_directory() {
   local -a batch_files=()
   local batch_id=0
   local current_batch_size=0
+
+  # Normalize NO_REUSE once to avoid repeated empty checks
+  local no_reuse_val="${NO_REUSE:-0}"
+  [ -z "$no_reuse_val" ] && no_reuse_val=0
+  NO_REUSE="$no_reuse_val"
 
   # Decide reuse vs compute; spawn parallel hash tasks
   for fpath in "${files[@]}"; do
@@ -448,7 +453,11 @@ process_single_directory() {
 	fi
 
     # Fallback: reuse by same path if unchanged (disabled when NO_REUSE=1)
-    if [ "$reuse" -eq 0 ] && [ "${NO_REUSE:-0}" -eq 0 ]; then
+    # Use arithmetic context to avoid [: : integer expected] on empty operands
+    local no_reuse_val="${NO_REUSE:-0}"
+    [ -z "$no_reuse_val" ] && no_reuse_val=0
+    if (( ${reuse:-0} == 0 )) && (( ${no_reuse_val:-0} == 0 )); then
+      dbg "DEBUG: considering reuse: reuse='${reuse:-0}' NO_REUSE='${no_reuse_val}' file='$fname'"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
           h="${meta_hash_by_path[$fname]}"; reuse=1
@@ -478,7 +487,7 @@ process_single_directory() {
       map_set "$MAP_path_to_meta" "$fpath" "${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
     fi
 
-    if [ "$reuse" -eq 1 ]; then
+    if (( reuse == 1 )); then
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]="$h"
       else
@@ -487,7 +496,7 @@ process_single_directory() {
       continue
     fi
 
-    if [ "$DRY_RUN" -eq 1 ]; then
+    if (( DRY_RUN == 1 )); then
       log "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]=""
@@ -499,7 +508,7 @@ process_single_directory() {
       local batch_size; batch_size=$(classify_batch_size "$size")
       batch_files+=("$fpath")
       current_batch_size=$((current_batch_size+1))
-      if [ "$current_batch_size" -ge "$batch_size" ]; then
+      if (( current_batch_size >= batch_size )); then
         _par_maybe_wait
         local worker_out="$results_dir/batch_${batch_id}.out"
         _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
@@ -512,34 +521,28 @@ process_single_directory() {
     fi
   done
 
-  # Flush any remaining files in the last batch
-  if [ "$DRY_RUN" -eq 0 ] && [ "${#batch_files[@]}" -gt 0 ]; then
-    _par_maybe_wait
-    local worker_out="$results_dir/batch_${batch_id}.out"
-    _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
-    HASH_PIDS+=("$!")
-    HASH_PIDS_COUNT=${#HASH_PIDS[@]}
-    batch_files=()
-    current_batch_size=0
-  fi
+  # Legacy xargs block removed; rely on existing _do_hash_batch + _par_wait_all
+  # Collect hashed results from per-worker output files below.
 
-  # Collect parallel results from per-worker output files
-  if [ "$DRY_RUN" -eq 0 ]; then
+  # Collect parallel results from per-worker output files (set -u safe)
+  if (( DRY_RUN == 0 )); then
     _par_wait_all
     for worker_out in "$results_dir"/*.out; do
       [ -f "$worker_out" ] || continue
       while IFS=$'\t' read -r rpath rhash; do
+        # Update path_to_hash and inode cache safely
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          path_to_hash["$rpath"]="$rhash"
-          local id="${path_to_inode[$rpath]}"
-          [ -n "$id" ] && [ -n "$rhash" ] && inode_hash_cache["$id"]="$rhash"
+          path_to_hash["$rpath"]="${rhash:-}"
+          local id="${path_to_inode[$rpath]:-}"
+          [ -n "$id" ] && [ -n "${rhash:-}" ] && inode_hash_cache["$id"]="$rhash"
         else
-          map_set "$MAP_path_to_hash" "$rpath" "$rhash"
+          map_set "$MAP_path_to_hash" "$rpath" "${rhash:-}"
           local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
-          [ -n "$id" ] && [ -n "$rhash" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
+          [ -n "$id" ] && [ -n "${rhash:-}" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
         fi
+        # Optional: verbose hint
         local bname; bname=$(basename "$rpath")
-        if [ -n "$rhash" ]; then
+        if [ -n "${rhash:-}" ]; then
           vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
         else
           record_error "Hash failed for $rpath"
@@ -551,13 +554,13 @@ process_single_directory() {
   fi
 
   # Write outputs
-  if [ "$DRY_RUN" -eq 0 ]; then
+  if (( DRY_RUN == 0 )); then
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       for fpath in "${files[@]}"; do
         local fname h meta_line
         fname=$(basename "$fpath")
-        h="${path_to_hash[$fpath]}"
-        meta_line="${path_to_meta[$fpath]}"$'\t'"$h"
+        h="${path_to_hash[$fpath]:-}"
+        meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
         # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
@@ -567,7 +570,7 @@ process_single_directory() {
         local fname h meta_line
         fname=$(basename "$fpath")
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
-        meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"$h"
+        meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
         # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
@@ -602,3 +605,4 @@ process_single_directory() {
 }
 
 # Note: decide_directories_plan intentionally lives in lib/planner.sh
+# MFz

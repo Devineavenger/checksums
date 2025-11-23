@@ -78,17 +78,27 @@ bytes_from_unit() {
   esac
 }
 
-# Convert a human unit token to bytes, preferring numfmt when available,
-# falling back to local bytes_from_unit on failure.
+declare -gA TO_BYTES_CACHE=()
+
+# Convert a human unit token to bytes, with caching to avoid repeated subprocess calls.
 _to_bytes() {
-  local token="$1" out=""
+  local token="$1"
+  # Return cached value if present
+  if [ -n "${TO_BYTES_CACHE[$token]:-}" ]; then
+    printf '%s' "${TO_BYTES_CACHE[$token]}"
+    return
+  fi
+
+  local out=""
   if [ "${TOOL_numfmt:-0}" -eq 1 ]; then
     out=$(numfmt --from=iec <<<"$(normalize_unit "$token")" 2>/dev/null || true)
   fi
   if [ -z "$out" ]; then
     out="$(bytes_from_unit "$(normalize_unit "$token")")"
   fi
-  printf '%s' "${out//[[:space:]]/}"
+  out="${out//[[:space:]]/}"
+  TO_BYTES_CACHE["$token"]="$out"
+  printf '%s' "$out"
 }
 
 # Cache-friendly listing helper: centralize find invocation to a single place,
