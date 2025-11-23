@@ -20,7 +20,8 @@ FIRST_RUN_LOGGED=0     # avoid writing FIRST_RUN header more than once per run
 _global_log() {
   local level="$1"; shift
   local msg="$*"
-  local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # Use Bash builtin time formatting to avoid spawning `date`
+  local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
 
   local print_console=0
   [ "${log_level:-1}" -ge 0 ] && [ "$level" -le "${log_level:-1}" ] && print_console=1
@@ -77,7 +78,7 @@ record_error() {
 # first_run_log writes detailed first-run traces into the FIRST_RUN_LOG file.
 first_run_log() {
   local msg="$*"
-  local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
   [ -n "${FIRST_RUN_LOG:-}" ] && printf '%s %s\n' "$ts" "$msg" >> "$FIRST_RUN_LOG"
 }
 
@@ -87,7 +88,7 @@ dir_log_append() {
   local dir="$1"; shift
   local msg="$*"
   local logfile="$dir/$LOG_FILENAME"
-  local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
 
   # Honor NO_ROOT_SIDEFILES: do not create logs for the root directory
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$dir" = "${TARGET_DIR%/}" ]; then
@@ -113,7 +114,7 @@ dir_log_skip() {
   local sumf="$dir/$MD5_FILENAME"
   local metaf="$dir/$META_FILENAME"
   local logfile="$dir/$LOG_FILENAME"
-  local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
 
   # Avoid creating logs in root when NO_ROOT_SIDEFILES=1
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ] && [ "$dir" = "${TARGET_DIR%/}" ]; then
@@ -191,7 +192,7 @@ rotate_log() {
 log_run_header() {
   # Write an audit header into logfile with run id and timestamp.
   local logfile="$1"
-  local ts; ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
   printf '#run\t%s\t%s\n' "${RUN_ID:-unknown}" "$ts" >> "$logfile"
 
   # Emit FIRST_RUN header once per run if requested.

@@ -17,15 +17,15 @@ file_hash() {
   local f="$1" algo="$2"
   if [ "$algo" = "md5" ]; then
     if command -v md5sum >/dev/null 2>&1; then
-      md5sum --binary -- "$f" 2>/dev/null | awk '{print $1}'
+      md5sum --binary -- "$f" 2>/dev/null | cut -d' ' -f1
     else
-      md5 -r -- "$f" 2>/dev/null | awk '{print $1}'
+      md5 -r -- "$f" 2>/dev/null | cut -d' ' -f1
     fi
   else
     if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum --binary -- "$f" 2>/dev/null | awk '{print $1}'
+      sha256sum --binary -- "$f" 2>/dev/null | cut -d' ' -f1
     else
-      shasum -a 256 -- "$f" 2>/dev/null | awk '{print $1}'
+      shasum -a 256 -- "$f" 2>/dev/null | cut -d' ' -f1
     fi
   fi
 }

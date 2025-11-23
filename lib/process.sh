@@ -411,17 +411,24 @@ process_single_directory() {
   NO_REUSE="$no_reuse_val"
 
   # Decide reuse vs compute; spawn parallel hash tasks
+  # Local per-directory stat cache to avoid repeated stat calls within this pass.
+  declare -A _local_stat_cache=()
   for fpath in "${files[@]}"; do
     local fname inode dev mtime size inode_dev reuse h
-    fname=$(basename "$fpath")
+    # Faster than basename: use parameter expansion (no external process).
+    fname=${fpath##*/}
     # Use a single stat invocation to fetch inode/dev/mtime/size to reduce overhead.
-    # stat_all_fields prints TAB-delimited fields; parse them once.
+    # Parse stat_all_fields output without forking awk 4x; use shell IFS read instead.
     local stat_line
-    stat_line=$(stat_all_fields "$fpath") || stat_line=""
-    inode=$(printf '%s' "$stat_line" | awk -F'\t' '{print $1}')
-    dev=$(printf   '%s' "$stat_line" | awk -F'\t' '{print $2}')
-    mtime=$(printf '%s' "$stat_line" | awk -F'\t' '{print $3}')
-    size=$(printf  '%s' "$stat_line" | awk -F'\t' '{print $4}')
+    if [ -n "${_local_stat_cache[$fpath]:-}" ]; then
+      stat_line=${_local_stat_cache[$fpath]}
+    else
+      stat_line=$(stat_all_fields "$fpath" 2>/dev/null | tr -d '\r' | head -n1) || stat_line=""
+      _local_stat_cache["$fpath"]="$stat_line"
+    fi
+    # Split TAB-separated fields into variables in one builtin call (no external forks).
+    IFS=$'\t' read -r inode dev mtime size <<<"$stat_line"
+    inode=${inode:-0}; dev=${dev:-0}; mtime=${mtime:-0}; size=${size:-0}
     inode_dev="${inode}:${dev}"
     reuse=0; h=""
 
@@ -558,7 +565,7 @@ process_single_directory() {
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       for fpath in "${files[@]}"; do
         local fname h meta_line
-        fname=$(basename "$fpath")
+        fname=${fpath##*/}
         h="${path_to_hash[$fpath]:-}"
         meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
         # Write filename with leading ./ to match standard md5sum format
@@ -568,7 +575,7 @@ process_single_directory() {
     else
       for fpath in "${files[@]}"; do
         local fname h meta_line
-        fname=$(basename "$fpath")
+        fname=${fpath##*/}
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
         meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
         # Write filename with leading ./ to match standard md5sum format
