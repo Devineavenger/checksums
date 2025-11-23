@@ -65,7 +65,7 @@ bytes_from_unit() {
   local val="$1"
   local num suffix
   num="${val%%[A-Za-z]*}"
-  suffix="${val#$num}"
+  suffix="${val#"$num"}"
   case "$suffix" in
     ""|b|B) echo "$num" ;;
     K)      echo $(( num * 1024 )) ;;

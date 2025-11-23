@@ -69,7 +69,7 @@ if declare -p -A >/dev/null 2>&1; then
   fi
 else
   # Fallback (Bash < 4): keep a scalar to avoid set -u complaints; not used on Bash 5.x
-  BATCH_THRESHOLDS=""
+  BATCH_THRESHOLDS=()
 fi
 # Fallback list is referenced below; declare defensively even on Bash 5.x
 declare -g THRESHOLDS_LIST=""
