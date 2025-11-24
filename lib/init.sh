@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.7.2
+# Version: 3.7.3
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.7.2"
+  printf '%s' "3.7.3"
 }
 
 # Populate VER using the robust lookup

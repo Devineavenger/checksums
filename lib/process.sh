@@ -7,6 +7,13 @@
 #
 # Per-directory processing: hashing, meta writing, reuse heuristics, and verify-only mode.
 # Preserves the original flow while adding parallel hashing and inode-based reuse.
+#
+# High-level overview:
+# - Orchestrator selects directories; this module ensures each directory is handled safely.
+# - For normal runs, we compute hashes, write an .md5 list, and a richer .meta with extra fields.
+# - For verify-only runs, we parse existing manifests and report integrity without writing anything.
+# - We minimize unnecessary side effects (like logs or manifests) in container-only or empty folders.
+#
 # v2.4: switched from get_inode/get_dev/get_mtime/get_size to stat_field (unified abstraction).
 # v2.4: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available.
 # v2.6: fixes
@@ -39,26 +46,34 @@
 #  - Reuse heuristics use inode-aware caching to handle renames and hardlinks, and fall back to
 #    path-based reuse when associative arrays are not available.
 #  - All temporary artifacts are used in the local scope and cleaned up where appropriate.
+#  - Hashing is batched adaptively (based on file size), and parallel workers write results
+#    to per-batch files to avoid contention and make aggregation deterministic.
 #
 # Backwards-compatibility:
 #  - Behavior mirrors the previous monolithic checksums.sh while adding safety guards and
 #    improved diagnostics to make race conditions and log mismatches easier to diagnose.
+#  - Bash < 4 support: when associative arrays are not available, text-based "maps" are used
+#    via helper functions (map_get/map_set) and temporary files, preserving functionality.
+
 
 # Ensure associative meta arrays exist (no-op if already declared in init.sh).
 # Works in shells that support -A and is safe if arrays are already declared.
+# These hold previous-run metadata so we can reuse hashes based on inode/dev pairs or paths.
 if declare -p -A >/dev/null 2>&1; then
   declare -gA meta_inode_dev meta_size meta_hash_by_path 2>/dev/null || true
   # initialize to empty maps only if not already associative arrays
   : "${meta_inode_dev:=}"  # no-op; keeps ShellCheck quiet about undefined vars
 fi
 
-# Ensure parallel job arrays exist to avoid unbound var warnings
+# Ensure parallel job arrays exist to avoid unbound var warnings.
 # Remove unused local arrays (pids/pids_count). Worker control uses HASH_PIDS/HASH_PIDS_COUNT in hash.sh.
 # This avoids confusion and keeps state centralized in hash helpers.
 # (no replacement needed)
 
 # Precompute batch thresholds once per run to avoid repeated numfmt conversions.
 # Ensure global associative type even inside functions.
+# These thresholds let us choose batch sizes (how many files a worker processes) by file size,
+# balancing throughput and resource use.
 if declare -p -A >/dev/null 2>&1; then
   # re-declare globally to avoid local shadowing issues under set -u
   declare -gA BATCH_THRESHOLDS 2>/dev/null || true
@@ -76,6 +91,7 @@ declare -g THRESHOLDS_LIST=""
 
 # Parse BATCH_RULES (e.g. "0-1M:20,1M-80M:5,>80M:1") into byte ranges and counts.
 # Called once (orchestrator) to populate BATCH_THRESHOLDS or THRESHOLDS_LIST.
+# Rules are forgiving to whitespace and validated to avoid malformed entries.
 init_batch_thresholds() {
   local rules="${BATCH_RULES:-0-1M:20,1M-80M:5,>80M:1}"
   IFS=',' read -ra parts <<< "$rules"
@@ -150,6 +166,8 @@ init_batch_thresholds() {
 
 
 # Lookup batch size based on precomputed thresholds (default=1).
+# The input is raw bytes (numeric only); non-digit chars are stripped for resilience.
+# Returns an integer count for how many files to include per batch at this size.
 classify_batch_size() {
   # Expect byte-sized integer input; defend against empty/non-digit inputs.
   local size_raw="${1:-0}"
@@ -201,14 +219,12 @@ classify_batch_size() {
 }
 
 process_single_directory() {
+  # Entry point for a single directory. Defensive, side-effect-aware, and consistent.
   if [ "${DEBUG:-0}" -gt 0 ]; then
     dbg "Effective BATCH_RULES=$BATCH_RULES PARALLEL_JOBS=$PARALLEL_JOBS DRY_RUN=$DRY_RUN"
   fi
   local d="$1"
 
-  # Defensive check: if caller passed a non-existent path, bail out cleanly.
-  # This prevents the processor from creating logs or manifests for missing dirs
-  # when the orchestrator's plan becomes stale (e.g., race with external removal).
   if [ ! -d "$d" ]; then
     record_error "PROC: requested to process missing directory: $d"
     return 1
@@ -216,17 +232,12 @@ process_single_directory() {
 
   log "PROC: enter process_single_directory $d DRY_RUN=$DRY_RUN VERIFY_ONLY=$VERIFY_ONLY SKIP_EMPTY=${SKIP_EMPTY:-} NO_ROOT_SIDEFILES=${NO_ROOT_SIDEFILES:-}"
 
-  # Absolute root guard: if NO_ROOT_SIDEFILES=1 and d is the run TARGET_DIR, do nothing.
-  # This preserves the invariant that the run root remains free of sidecar files unless
-  # the operator explicitly opts in via --allow-root-sidefiles (NO_ROOT_SIDEFILES=0).
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ]; then
-    # Compare canonical absolute paths to avoid trailing-slash or symlink mismatches
     if [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$(cd "${TARGET_DIR%/}" 2>/dev/null && pwd -P)" ]; then
       return 0
     fi
   fi
 
-  # If this directory is explicitly scheduled by first-run, do not let SKIP_EMPTY skip it.
   local is_scheduled=0
   if [ "${USE_ASSOC:-0}" -eq 1 ]; then
     [ -n "${first_run_overwrite_set[$d]:-}" ] && is_scheduled=1
@@ -236,32 +247,21 @@ process_single_directory() {
     fi
   fi
 
-  # Absolute early guard: skip if SKIP_EMPTY and no regular files anywhere under d.
-  # This must happen before any filename derivation, logging to per-dir logs, or side effects.
+  # Early decision: if SKIP_EMPTY applies and directory is not scheduled, use has_local_files
+  # to avoid doing unnecessary work. This guard must not create side-effects.
   if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ] && [ "$is_scheduled" -eq 0 ]; then
-    # Skip processing if there are no regular files directly inside this directory.
     if ! has_local_files "$d"; then
       return 0
     fi
   fi
 
-  # Only derive filenames after we know the dir should be processed
+  # Derive paths now (but do NOT create logs yet)
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
-
-  # Prepare per-directory log: rotate and add audit run header.
-  # Setting LOG_FILEPATH ensures subsequent log() calls append to the per-dir logfile.
-  LOG_FILEPATH="$logf"
-  log "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
-  if [ "$DRY_RUN" -eq 0 ]; then
-    rotate_log "$LOG_FILEPATH"
-    : > "$LOG_FILEPATH"
-    log_run_header "$LOG_FILEPATH"
-  fi
 
   log "Starting directory: $d"
   log "sumfile: $sumf  metafile: $metaf  logfile: $logf"
 
-  # remove stale legacy lock if found (best-effort)
+  # Remove stale legacy lock if found (best-effort)
   if [ -f "${metaf}${LOCK_SUFFIX}" ]; then
     if [ ! -s "${metaf}${LOCK_SUFFIX}" ] || [ "$(find "${metaf}${LOCK_SUFFIX}" -mtime +0 -print 2>/dev/null)" ]; then
       dbg "Removing stale lock ${metaf}${LOCK_SUFFIX}"
@@ -269,31 +269,39 @@ process_single_directory() {
     fi
   fi
 
-  # If meta exists, verify signature; otherwise ignore/force rebuild.
-  # Invalid signatures are treated as if the meta is absent: we force rebuild.
+  # Meta verification and possible removal
   if [ -f "$metaf" ] && ! verify_meta_sig "$metaf"; then
     record_error "Meta signature invalid for $metaf; ignoring meta and forcing rebuild"
-    # In verify-only mode, we don't delete or rewrite; just record error and continue
     if [ "$VERIFY_ONLY" -eq 0 ]; then
-      # Acquire the same lock before removing the invalid meta to avoid races with other runs
-      # that might attempt to write while we delete (TOCTOU protection).
       local lockfile="${metaf}${LOCK_SUFFIX}"
-      # Use double quotes and $1 to refer to the metaf argument passed to sh -c
       with_lock "$lockfile" sh -c "rm -f -- \"\$1\"" sh "$metaf"
       [ -f "$metaf" ] && record_error "Could not remove invalid meta $metaf"
     fi
   fi
 
-  # Verification-only mode: do not write; only check md5 and meta.
+  # VERIFY_ONLY path (no writes)
   if [ "$VERIFY_ONLY" -eq 1 ]; then
     local vmd5
-    if [ -f "$sumf" ]; then
+    # If there are no candidate files anywhere under this dir, treat as skipped.
+    # If there are files but no MD5 manifest, record an error.
+    if ! has_files "$d"; then
+      log "Verify-only: skipped empty/container-only directory $d"
+      vmd5=0
+    elif [ -f "$sumf" ]; then
       emit_md5_file_details "$d" "$sumf"
       vmd5=$?
       emit_md5_detail "$d" "$vmd5"
     else
-      vmd5=2
-      record_error "Verify-only: MD5 file missing in $d"
+      # Only error when this directory actually contains files we care about.
+      # Use has_local_files to detect files directly inside (container directories might
+      # have descendents but no local files — those should be skipped, not error).
+      if has_local_files "$d"; then
+        vmd5=2
+        record_error "Verify-only: MD5 file missing in $d"
+      else
+        log "Verify-only: no local files in $d and no MD5 present; skipping"
+        vmd5=0
+      fi
     fi
 
     if [ -f "$metaf" ]; then
@@ -312,10 +320,9 @@ process_single_directory() {
     return
   fi
 
-  # Normal processing path
+  # Normal processing: read meta for reuse heuristics
   read_meta "$metaf"
 
-  # If meta signature verified and unchanged, count as verified too
   if [ -f "$metaf" ] && verify_meta_sig "$metaf"; then
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && has_files "$d"; then
       count_verified=$((count_verified+1))
@@ -325,19 +332,33 @@ process_single_directory() {
 
   local tmp_sum="${sumf}.tmp" tmp_meta="${metaf}.tmp"
   local -a files=()
-  # Collect candidate files (NUL-delimited), sort for stable order
+  # Collect candidate files now (this is authoritative list used for hashing)
   while IFS= read -r -d '' f; do files+=("$f"); done < <(find_file_expr "$d" | LC_ALL=C sort -z)
 
-  # Progress hint for large directories (only when verbose or many files)
   local total_files=${#files[@]}
   if [ "$total_files" -gt 100 ] && [ "${VERBOSE:-0}" -gt 0 ]; then
     vlog "PROC: $d has $total_files files; hashing will run with PARALLEL_JOBS=$PARALLEL_JOBS"
   fi
 
-  # Build old manifest maps and inode-based cache (for hardlinks)
-  # dual approach depending on USE_ASSOC.
+  # If there are no candidate files, return early before creating logs or other side-effects.
+  if [ "$total_files" -eq 0 ]; then
+    log "No candidate files in $d; skipping manifest creation"
+    return 0
+  fi
+
+  # Only now create/rotate per-directory log because we will actually process this dir.
+  LOG_FILEPATH=""
+  if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+    LOG_FILEPATH="$logf"
+    log "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
+    rotate_log "$LOG_FILEPATH"
+    : > "$LOG_FILEPATH"
+    log_run_header "$LOG_FILEPATH"
+  fi
+
+  # Build old manifest maps and inode-based cache (for hardlinks).
   declare -A old_path_by_inode old_mtime old_size old_hash
-  declare -A inode_hash_cache  # inode:dev -> hash
+  declare -A inode_hash_cache
   local MAP_old_path_by_inode MAP_old_mtime MAP_old_size MAP_old_hash MAP_inode_hash_cache
   if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     MAP_old_path_by_inode="$(mktemp)"; : > "$MAP_old_path_by_inode"
@@ -347,12 +368,9 @@ process_single_directory() {
     MAP_inode_hash_cache="$(mktemp)"; : > "$MAP_inode_hash_cache"
   fi
 
-  # Transfer meta data to our caches (associative or text maps)
   if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    # meta_* arrays are populated by read_meta in lib/meta.sh
     if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
       for p in "${!meta_inode_dev[@]}"; do
-        # guard against unset keys under set -u
         if [ -n "${meta_inode_dev[$p]:-}" ]; then
           old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
           old_mtime["$p"]="${meta_mtime[$p]:-}"
@@ -363,7 +381,6 @@ process_single_directory() {
       done
     fi
   else
-    # meta_* arrays exist only when Bash >= 4; for fallback, re-read meta file lines
     if [ -f "$metaf" ]; then
       while IFS=$'\t' read -r path inode dev mtime size hash; do
         [ -z "$path" ] && continue
@@ -377,23 +394,18 @@ process_single_directory() {
     fi
   fi
 
-  # Collect tasks for hashing
+  # Prepare hashing work
   local results_dir=""
   if [ "$DRY_RUN" -eq 0 ]; then
     results_dir="$(mktemp -d "${TMPDIR:-/tmp}/hash_results_dir.XXXXXX")" || results_dir="$tmp_sum.hash.results.d"
-    # Ensure directory exists even if mktemp fallback path is used
     mkdir -p -- "$results_dir"
   fi
-  # Ensure temporary artifacts are cleaned up deterministically.
-  # Avoid trapping RETURN globally; instead perform explicit cleanup at each exit point.
+
   _proc_cleanup() {
     rm -f -- "${tmp_sum:-}" "${tmp_meta:-}" "${results_file:-}" 2>/dev/null || true
   }
 
-  # These maps are per-run; dual storage based on USE_ASSOC
-  declare -A path_to_hash  # path -> hash (filled for reused or after parallel)
-  declare -A path_to_inode # path -> inode:dev
-  declare -A path_to_meta  # path -> "fname<TAB>inode<TAB>dev<TAB>mtime<TAB>size"
+  declare -A path_to_hash path_to_inode path_to_meta
   local MAP_path_to_hash MAP_path_to_inode MAP_path_to_meta
   if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     MAP_path_to_hash="$(mktemp)"; : > "$MAP_path_to_hash"
@@ -401,25 +413,18 @@ process_single_directory() {
     MAP_path_to_meta="$(mktemp)"; : > "$MAP_path_to_meta"
   fi
 
-  # Batch state
   local -a batch_files=()
   local batch_id=0
   local current_batch_size=0
 
-  # Normalize NO_REUSE once to avoid repeated empty checks
   local no_reuse_val="${NO_REUSE:-0}"
   [ -z "$no_reuse_val" ] && no_reuse_val=0
   NO_REUSE="$no_reuse_val"
 
-  # Decide reuse vs compute; spawn parallel hash tasks
-  # Local per-directory stat cache to avoid repeated stat calls within this pass.
   declare -A _local_stat_cache=()
   for fpath in "${files[@]}"; do
     local fname inode dev mtime size inode_dev reuse h
-    # Faster than basename: use parameter expansion (no external process).
     fname=${fpath##*/}
-    # Use a single stat invocation to fetch inode/dev/mtime/size to reduce overhead.
-    # Parse stat_all_fields output without forking awk 4x; use shell IFS read instead.
     local stat_line
     if [ -n "${_local_stat_cache[$fpath]:-}" ]; then
       stat_line=${_local_stat_cache[$fpath]}
@@ -427,17 +432,14 @@ process_single_directory() {
       stat_line=$(stat_all_fields "$fpath" 2>/dev/null | tr -d '\r' | head -n1) || stat_line=""
       _local_stat_cache["$fpath"]="$stat_line"
     fi
-    # Split TAB-separated fields into variables in one builtin call (no external forks).
     IFS=$'\t' read -r inode dev mtime size <<<"$stat_line"
     inode=${inode:-0}; dev=${dev:-0}; mtime=${mtime:-0}; size=${size:-0}
     inode_dev="${inode}:${dev}"
     reuse=0; h=""
 
-    # If NO_REUSE=1, skip all reuse heuristics and force recomputation
     if [ "${NO_REUSE:-0}" -eq 1 ]; then
       reuse=0
     else
-      # Strong incremental by inode (renames and hardlinks)
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         if [ -n "${inode_hash_cache[$inode_dev]:-}" ] && [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
           local oldp="${old_path_by_inode[$inode_dev]}"
@@ -462,10 +464,8 @@ process_single_directory() {
           fi
         fi
       fi
-	fi
+    fi
 
-    # Fallback: reuse by same path if unchanged (disabled when NO_REUSE=1)
-    # Use arithmetic context to avoid [: : integer expected] on empty operands
     local no_reuse_val="${NO_REUSE:-0}"
     [ -z "$no_reuse_val" ] && no_reuse_val=0
     if (( ${reuse:-0} == 0 )) && (( ${no_reuse_val:-0} == 0 )); then
@@ -480,7 +480,6 @@ process_single_directory() {
           fi
         fi
       else
-        # When using fallback, meta_* arrays may not exist; leverage text maps if available
         local mm ms mh
         mm="$(map_get "$MAP_old_mtime" "$fname")"
         ms="$(map_get "$MAP_old_size" "$fname")"
@@ -496,7 +495,6 @@ process_single_directory() {
       fi
     fi
 
-    # Record inode, meta tuple, and hash (assoc vs text)
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       path_to_inode["$fpath"]="$inode_dev"
       path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
@@ -522,7 +520,6 @@ process_single_directory() {
         map_set "$MAP_path_to_hash" "$fpath" ""
       fi
     else
-      # Adaptive batching: decide batch size based on file size
       local batch_size; batch_size=$(classify_batch_size "$size")
       batch_files+=("$fpath")
       current_batch_size=$((current_batch_size+1))
@@ -539,16 +536,11 @@ process_single_directory() {
     fi
   done
 
-  # Legacy xargs block removed; rely on existing _do_hash_batch + _par_wait_all
-  # Collect hashed results from per-worker output files below.
-
-  # Collect parallel results from per-worker output files (set -u safe)
   if (( DRY_RUN == 0 )); then
     _par_wait_all
     for worker_out in "$results_dir"/*.out; do
       [ -f "$worker_out" ] || continue
       while IFS=$'\t' read -r rpath rhash; do
-        # Update path_to_hash and inode cache safely
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
           path_to_hash["$rpath"]="${rhash:-}"
           local id="${path_to_inode[$rpath]:-}"
@@ -558,7 +550,6 @@ process_single_directory() {
           local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
           [ -n "$id" ] && [ -n "${rhash:-}" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
         fi
-        # Optional: verbose hint
         local bname; bname=$(basename "$rpath")
         if [ -n "${rhash:-}" ]; then
           vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
@@ -571,19 +562,16 @@ process_single_directory() {
     rmdir "$results_dir" 2>/dev/null || true
   fi
 
-  # Write outputs
   if (( DRY_RUN == 0 )); then
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       for fpath in "${files[@]}"; do
         local fname h meta_line
         fname=${fpath##*/}
         h="${path_to_hash[$fpath]:-}"
-        # If hash is empty, compute it now to avoid blank entries
         if [ -z "$h" ]; then
           h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
         fi
         meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
-        # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
       done
@@ -592,48 +580,45 @@ process_single_directory() {
         local fname h meta_line
         fname=${fpath##*/}
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
-        # If hash is empty, compute it now
         if [ -z "$h" ]; then
           h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
         fi
         meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
-        # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         printf '%s\n' "$meta_line" >> "$tmp_meta"
       done
-      # cleanup temp maps
       rm -f "$MAP_path_to_hash" "$MAP_path_to_inode" "$MAP_path_to_meta" 2>/dev/null || true
     fi
 
     local lockfile="${metaf}${LOCK_SUFFIX}"
-
-    # IMPORTANT: preserve line boundaries when passing meta entries to write_meta.
-    # Read tmp_meta into an array and expand as separate arguments.
     local -a meta_lines=()
-    while IFS= read -r line; do
-      meta_lines+=("$line")
-    done < "$tmp_meta"
+    if [ -f "$tmp_meta" ]; then
+      while IFS= read -r line; do
+        meta_lines+=("$line")
+      done < "$tmp_meta"
+    fi
 
-    with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
-    mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
-    log "Wrote $sumf and $metaf"
+    if [ -s "$tmp_sum" ]; then
+      with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
+      mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
+      log "Wrote $sumf and $metaf"
+      count_created=$((count_created+1))
+    else
+      log "Skipped writing manifests for $d (no local files)"
+      LOG_FILEPATH=""
+      _proc_cleanup
+      return 0
+    fi
 
-    # Increment created counter when we actually wrote new manifests
-    count_created=$((count_created+1))
-
-    # Sanity check: scan for malformed lines (missing hash before filename).
-    # If found, recompute and repair them in place.
     local repaired=0
     local tmp_fixed="${sumf}.fixed"
     while IFS= read -r line; do
-      # skip empty lines
       [ -z "$line" ] && continue
       local hash fname
       hash="${line%%[[:space:]]*}"
       fname="${line#"$hash"}"
       fname="$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')"
       if [ -z "$hash" ] || [[ "$hash" =~ ^[[:space:]]*$ ]]; then
-        # compute missing hash
         local fpath="$d/$fname"
         local newhash
         newhash="$(file_hash "$fpath" "$PER_FILE_ALGO")"
@@ -651,16 +636,13 @@ process_single_directory() {
     fi
   fi
 
-  # cleanup temp maps for old meta caches if used
   if [ "${USE_ASSOC:-0}" -eq 0 ]; then
     rm -f "$MAP_old_path_by_inode" "$MAP_old_mtime" "$MAP_old_size" "$MAP_old_hash" "$MAP_inode_hash_cache" 2>/dev/null || true
   fi
 
   log "Finished directory: $d"
-  # deterministic cleanup of per-directory temporaries
   _proc_cleanup
   LOG_FILEPATH=""
 }
 
 # Note: decide_directories_plan intentionally lives in lib/planner.sh
-# MFz
