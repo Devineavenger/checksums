@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.7.3
+# Version: 3.7.4
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.7.3"
+  printf '%s' "3.7.4"
 }
 
 # Populate VER using the robust lookup
@@ -123,7 +123,7 @@ META_FILENAME="${BASE_NAME}.meta"
 LOG_FILENAME="${LOG_BASE:-$BASE_NAME}.log"
 
 # === Filenames (secondary) ===
-LOCK_SUFFIX=".lock"
+: "${LOCK_SUFFIX:=.lock}"
 
 # === Exclusions (patterns to skip when scanning a directory) ===
 MD5_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""

@@ -232,6 +232,18 @@ process_single_directory() {
 
   log "PROC: enter process_single_directory $d DRY_RUN=$DRY_RUN VERIFY_ONLY=$VERIFY_ONLY SKIP_EMPTY=${SKIP_EMPTY:-} NO_ROOT_SIDEFILES=${NO_ROOT_SIDEFILES:-}"
 
+  # Unconditionally purge our meta lock for this directory (crash-safe).
+  # This targets only our sidecar lock, not arbitrary *.lock files.
+  : "${LOCK_SUFFIX:=.lock}"
+  if [ -z "${LOCK_SUFFIX}" ]; then
+    LOCK_SUFFIX=".lock"
+  fi
+  local md5f="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
+  # Debug: emit exact lock paths we will attempt to remove (visible in run log)
+  dbg "PROC: removing possible stale locks: ${md5f}${LOCK_SUFFIX} ${metaf}${LOCK_SUFFIX} ${logf}${LOCK_SUFFIX}"
+  # Narrow, deterministic removal: only our sidecar locks in this directory.
+  rm -f -- "${md5f}${LOCK_SUFFIX}" "${metaf}${LOCK_SUFFIX}" "${logf}${LOCK_SUFFIX}" 2>/dev/null || true
+
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ]; then
     if [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$(cd "${TARGET_DIR%/}" 2>/dev/null && pwd -P)" ]; then
       return 0
