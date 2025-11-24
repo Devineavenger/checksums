@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Version: 3.7.1
+# Version: 3.7.2
 #
 # init.sh
 #
@@ -77,7 +77,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.7.1"
+  printf '%s' "3.7.2"
 }
 
 # Populate VER using the robust lookup
@@ -146,7 +146,9 @@ declare -g log_level=1            # Default console logging level
 
 # === Summary counters (globals) ===
 declare -g count_verified=0       # Directories verified OK
-declare -g count_processed=0      # Directories processed
+declare -g count_processed=0      # Total directories processed (legacy)
+declare -g count_created=0        # Directories with new manifests created
+declare -g count_verified_existing=0  # Directories with existing manifests verified
 declare -g count_skipped=0        # Directories skipped
 declare -g count_overwritten=0    # Directories overwritten (first-run scheduling)
 declare -g count_errors=0         # Errors encountered

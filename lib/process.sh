@@ -286,13 +286,13 @@ process_single_directory() {
 
   # Verification-only mode: do not write; only check md5 and meta.
   if [ "$VERIFY_ONLY" -eq 1 ]; then
-    local vmd5=2
-    vmd5=$(verify_md5_file "$d")  # 0 ok, 1 mismatch, 2 missing
-    if [ "$vmd5" -eq 0 ]; then
-      log "Verify-only: MD5 OK for $d"
-    elif [ "$vmd5" -eq 1 ]; then
-      record_error "Verify-only: MD5 mismatches in $d"
+    local vmd5
+    if [ -f "$sumf" ]; then
+      emit_md5_file_details "$d" "$sumf"
+      vmd5=$?
+      emit_md5_detail "$d" "$vmd5"
     else
+      vmd5=2
       record_error "Verify-only: MD5 file missing in $d"
     fi
 
@@ -319,6 +319,7 @@ process_single_directory() {
   if [ -f "$metaf" ] && verify_meta_sig "$metaf"; then
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && has_files "$d"; then
       count_verified=$((count_verified+1))
+      count_verified_existing=$((count_verified_existing+1))
     fi
   fi
 
@@ -438,11 +439,12 @@ process_single_directory() {
     else
       # Strong incremental by inode (renames and hardlinks)
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        if [ -n "${inode_hash_cache[$inode_dev]:-}" ]; then
-          if [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
-            local oldp="${old_path_by_inode[$inode_dev]}"
-            if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
-              h="${inode_hash_cache[$inode_dev]}"; reuse=1
+        if [ -n "${inode_hash_cache[$inode_dev]:-}" ] && [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
+          local oldp="${old_path_by_inode[$inode_dev]}"
+          if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
+            h="${inode_hash_cache[$inode_dev]}"
+            if [ -n "$h" ]; then
+              reuse=1
               vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
             fi
           fi
@@ -453,8 +455,11 @@ process_single_directory() {
         local om; om="$(map_get "$MAP_old_mtime" "$oldp")"
         local os; os="$(map_get "$MAP_old_size" "$oldp")"
         if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
-          h="$cached"; reuse=1
-          vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+          h="$cached"
+          if [ -n "$h" ]; then
+            reuse=1
+            vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
+          fi
         fi
       fi
 	fi
@@ -467,9 +472,12 @@ process_single_directory() {
       dbg "DEBUG: considering reuse: reuse='${reuse:-0}' NO_REUSE='${no_reuse_val}' file='$fname'"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
-          h="${meta_hash_by_path[$fname]}"; reuse=1
-          inode_hash_cache["$inode_dev"]="$h"
-          vlog "Reusing hash for unchanged file $fname"
+          h="${meta_hash_by_path[$fname]:-}"
+          if [ -n "$h" ]; then
+            reuse=1
+            inode_hash_cache["$inode_dev"]="$h"
+            vlog "Reusing hash for unchanged file $fname"
+          fi
         fi
       else
         # When using fallback, meta_* arrays may not exist; leverage text maps if available
@@ -478,9 +486,12 @@ process_single_directory() {
         ms="$(map_get "$MAP_old_size" "$fname")"
         mh="$(map_get "$MAP_old_hash" "$fname")"
         if [ -n "$mm" ] && [ "$mm" = "$mtime" ] && [ -n "$ms" ] && [ "$ms" = "$size" ] && [ -n "$mh" ]; then
-          h="$mh"; reuse=1
-          map_set "$MAP_inode_hash_cache" "$inode_dev" "$h"
-          vlog "Reusing hash for unchanged file $fname"
+          h="$mh"
+          if [ -n "$h" ]; then
+            reuse=1
+            map_set "$MAP_inode_hash_cache" "$inode_dev" "$h"
+            vlog "Reusing hash for unchanged file $fname"
+          fi
         fi
       fi
     fi
@@ -567,6 +578,10 @@ process_single_directory() {
         local fname h meta_line
         fname=${fpath##*/}
         h="${path_to_hash[$fpath]:-}"
+        # If hash is empty, compute it now to avoid blank entries
+        if [ -z "$h" ]; then
+          h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+        fi
         meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
         # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
@@ -577,6 +592,10 @@ process_single_directory() {
         local fname h meta_line
         fname=${fpath##*/}
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
+        # If hash is empty, compute it now
+        if [ -z "$h" ]; then
+          h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+        fi
         meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
         # Write filename with leading ./ to match standard md5sum format
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
@@ -598,6 +617,38 @@ process_single_directory() {
     with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
     mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
     log "Wrote $sumf and $metaf"
+
+    # Increment created counter when we actually wrote new manifests
+    count_created=$((count_created+1))
+
+    # Sanity check: scan for malformed lines (missing hash before filename).
+    # If found, recompute and repair them in place.
+    local repaired=0
+    local tmp_fixed="${sumf}.fixed"
+    while IFS= read -r line; do
+      # skip empty lines
+      [ -z "$line" ] && continue
+      local hash fname
+      hash="${line%%[[:space:]]*}"
+      fname="${line#"$hash"}"
+      fname="$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')"
+      if [ -z "$hash" ] || [[ "$hash" =~ ^[[:space:]]*$ ]]; then
+        # compute missing hash
+        local fpath="$d/$fname"
+        local newhash
+        newhash="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+        printf '%s  ./%s\n' "$newhash" "$fname" >> "$tmp_fixed"
+        repaired=1
+      else
+        printf '%s\n' "$line" >> "$tmp_fixed"
+      fi
+    done < "$sumf"
+    if [ "$repaired" -eq 1 ]; then
+      mv -f "$tmp_fixed" "$sumf"
+      log "Repaired malformed entries in $sumf"
+    else
+      rm -f "$tmp_fixed" 2>/dev/null || true
+    fi
   fi
 
   # cleanup temp maps for old meta caches if used

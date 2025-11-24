@@ -312,8 +312,9 @@ run_checksums() {
 
   # === Central summary report ===
   log "Summary:"
-  log "  Verified:    $count_verified"
-  log "  Processed:   $count_processed"
+  log "  Verified (existing manifests): $count_verified_existing"
+  log "  New manifests created:         $count_created"
+  log "  Processed (total):             $count_processed"
   log "  Skipped:     $count_skipped"
   log "  Overwritten: $count_overwritten"
   log "  Errors:      $count_errors"
