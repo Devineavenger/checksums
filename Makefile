@@ -6,7 +6,7 @@ MAIN_SCRIPT   := checksums.sh
 VERSION_FILE  := VERSION
 
 .PHONY: all install uninstall user-install user-uninstall \
-	test lint ci version dist release changelog changelog-draft \
+	tests lint ci version dist release changelog changelog-draft \
 	clean check help
 
 # Default target
@@ -33,8 +33,8 @@ user-reinstall:
 	sleep 1
 	./install.sh
 
-test:
-	bats tests/
+tests:
+	./tests/run-bats.sh
 
 lint:
 	shellcheck $(MAIN_SCRIPT) lib/*.sh

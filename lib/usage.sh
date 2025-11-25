@@ -39,6 +39,7 @@ Options:
   --assume-no        assume "no" for all prompts (non-interactive)
   --config FILE      load configuration from FILE (overrides default)
   --skip-empty       treat directories with no files anywhere under them as skipped (default)
+  --no-skip-empty    disable skip-empty; process empty/container-only directories too
   --allow-root-sidefiles
                      allow per-directory sidecar files (.md5/.meta/.log) to be created in the root DIRECTORY.
                      by default the tool keeps the root clean; pass this flag to permit sidecar artifacts in root.

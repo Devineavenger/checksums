@@ -86,6 +86,10 @@ parse_args() {
             # Affirmative: ensure SKIP_EMPTY enabled (default already 1 in init.sh)
             SKIP_EMPTY=1
             ;;
+          no-skip-empty)
+            # Disable skipping empty/container-only directories
+            SKIP_EMPTY=0
+            ;;
           md5-details)
             # Enable optional detailed MD5 verification on .md5-only dirs during planning
             VERIFY_MD5_DETAILS=1

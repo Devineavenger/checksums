@@ -1,0 +1,57 @@
+# .github/workflows/tests.yml
+name: bats tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * *' # nightly strict run at 03:00 UTC
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        strict: [false] # default PR/CI run is non-strict
+    env:
+      CI_PARALLEL: 2
+      CI_STRICT_LOGS: ${{ matrix.strict }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coreutils grep md5sum
+
+      - name: Run tests
+        run: |
+          # Ensure bats is available; install if missing
+          if ! command -v bats >/dev/null 2>&1; then
+            sudo apt-get install -y bats
+          fi
+          ./tests/test_matrix.bats
+  nightly-strict:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    env:
+      CI_PARALLEL: 4
+      CI_STRICT_LOGS: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coreutils grep md5sum
+
+      - name: Run strict tests
+        run: |
+          if ! command -v bats >/dev/null 2>&1; then
+            sudo apt-get install -y bats
+          fi
+          ./tests/test_matrix.bats
