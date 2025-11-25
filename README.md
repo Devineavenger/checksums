@@ -207,6 +207,7 @@ make dist                    — Build versioned tarball in ./dist/
 make release NEW_VER=x.y.z   — Run release.sh with given version
 make changelog               — Preview changelog entries since last tag
 make changelog-draft         — Insert draft changelog into CHANGELOG.md
+make dos2unix                — Normalize CRLF → LF for common text files (runs ./scripts/dos2unix.sh)
 make clean                   — Remove dist/ and temp files
 make help                    — Show help message
 

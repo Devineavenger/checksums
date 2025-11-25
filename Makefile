@@ -29,7 +29,7 @@ endef
 export LICENSE_HEADER
 
 .PHONY: all install uninstall user-install user-uninstall \
-	tests lint ci version dist release changelog changelog-draft \
+	tests lint dos2unix ci version dist release changelog changelog-draft \
 	clean check help newfile addheader addheaders addheaders-recursive
 
 # Default target
@@ -61,6 +61,9 @@ tests:
 
 lint:
 	shellcheck $(MAIN_SCRIPT) lib/*.sh
+	
+dos2unix:
+	./scripts/dos2unix.sh
 
 ci: lint tests
 	@echo "✅ Local CI checks passed"

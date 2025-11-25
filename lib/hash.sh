@@ -53,7 +53,9 @@ _par_wait_all() {
   # Wait for all outstanding workers to finish before proceeding.
   if [ "${#HASH_PIDS[@]}" -gt 0 ]; then
     for pid in "${HASH_PIDS[@]}"; do
-      [ -n "$pid" ] && wait "$pid" 2>/dev/null || true
+      if [ -n "$pid" ]; then
+        wait "$pid" 2>/dev/null || true
+      fi
     done
   fi
   HASH_PIDS=()
