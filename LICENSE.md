@@ -1,25 +1,33 @@
 # License
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
 
-Copyright (c) 2025 Alexandru Barbu
-
+Copyright (c) 2025 Alexandru Barbu  
 All rights reserved.
 
-Permission is hereby granted to any individual or organization to use, study, and modify this software for personal, educational, or internal purposes, subject to the following conditions:
+Permission is hereby granted to any individual or organization to **use, study, and modify** this software for **personal, educational, or internal purposes**, subject to the following conditions:
 
 1. **Attribution**  
    You must retain this copyright notice in all copies or substantial portions of the software.
 
 2. **No Redistribution**  
-   You may not redistribute, sublicense, or publish this software, in whole or in part, in any form.
+   ❌ You may not redistribute, sublicense, or publish this software, in whole or in part, in any form.
 
 3. **No Commercial Use**  
-   You may not sell, rent, lease, or otherwise use this software for commercial purposes.
+   ❌ You may not sell, rent, lease, or otherwise use this software for commercial purposes, including offering it as part of a paid product or service.
 
 4. **No Derivative Distribution**  
-   You may modify the software for your own use, but you may not distribute modified versions.
+   ❌ You may modify the software privately for your own use, but you may not distribute modified versions or derivative works.
+
+---
+
+## Legal Status
+
+This project is **source‑available but not OSI‑approved open source**.  
+It is intended to allow individuals and organizations to learn from and use the code internally, while preventing redistribution, commercialization, or derivative distribution.
 
 ---
 
 ## Disclaimer
 
-This software is provided "as is", without warranty of any kind, express or implied. In no event shall the author be liable for any claim, damages, or other liability arising from the use of this software.
+This software is provided **"as is"**, without warranty of any kind, express or implied.  
+In no event shall the author be liable for any claim, damages, or other liability arising from the use of this software.

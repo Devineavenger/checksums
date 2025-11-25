@@ -5,11 +5,21 @@
 # Usage:
 #   ./release.sh <version> [--prerelease] [--draft]
 #
-# Behavior:
-#   - Idempotent tag handling (safe to re-run)
-#   - CI-aware: will not clobber remote tags unless FORCE_TAG_UPDATE=1
-#   - Creates annotated local tag, pushes branch and tag idempotently
-#   - Creates GitHub release via API if GH token is present and uploads artifact
+# This script:
+#   1. Updates the VERSION file
+#   2. Updates the version header in checksums.sh (if present)
+#   3. Updates the version header and fallback in lib/init.sh (safely)
+#   4. Promotes the [Unreleased] section in CHANGELOG.md
+#   5. Builds the dist tarball
+#   6. Commits and tags the release
+#   7. Pushes branch and tag to origin
+#   8. Optionally creates a GitHub Release via API and uploads the tarball
+#
+# Safety notes:
+#   - lib/init.sh is edited with targeted sed replacements that only change
+#     the header and the numeric fallback inside the VER= line, preserving quoting.
+#   - A shell syntax check (bash -n) runs after edits; if it fails, changes are rolled back.
+#   - The script creates .bak backups before in-place edits.
 #
 set -euo pipefail
 
@@ -36,42 +46,6 @@ fi
 
 echo "==> Releasing version $NEW_VER"
 
-# CI detection and policy
-CI="${GITHUB_ACTIONS:-}"
-# If set to 1, allow force-updating remote tags (use with caution)
-FORCE_TAG_UPDATE="${FORCE_TAG_UPDATE:-0}"
-
-# Helper: push tag idempotently
-push_tag_idempotent() {
-  local TAG="$1"
-
-  # Ensure origin exists
-  if ! git remote get-url origin >/dev/null 2>&1; then
-    echo "No origin remote configured; cannot push tag ${TAG}"
-    return 1
-  fi
-
-  # Check if tag exists on origin
-  if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
-    echo "Remote tag ${TAG} already exists."
-    if [ -n "$CI" ] && [ "${FORCE_TAG_UPDATE}" != "1" ]; then
-      echo "Running in CI and FORCE_TAG_UPDATE != 1; skipping remote tag update to avoid conflict."
-      return 0
-    fi
-    if [ "${FORCE_TAG_UPDATE}" = "1" ]; then
-      echo "Force updating remote tag ${TAG}"
-      git push --force origin "refs/tags/${TAG}:refs/tags/${TAG}" || return 1
-      return 0
-    fi
-    echo "Skipping push of ${TAG} (remote already present)."
-    return 0
-  else
-    echo "Pushing new tag ${TAG}"
-    git push origin "refs/tags/${TAG}" || return 1
-    return 0
-  fi
-}
-
 # Step 1: update VERSION file
 printf '%s\n' "$NEW_VER" > VERSION
 git add VERSION
@@ -97,42 +71,56 @@ if [ -f lib/init.sh ]; then
   if grep -q '^# Version:' lib/init.sh; then
     sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" lib/init.sh
   else
+    # Insert header after shebang (line 1)
     awk -v v="${NEW_VER}" 'NR==1{print; print "# Version: " v; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
-  # 3b: replace the first printf fallback line matching printf '%s' "x.y.z"
+  # 3b: reliably replace the final printf fallback line:
+  #    printf '%s' "3.3.1"
+  # with the new version. Update only the first matching occurrence.
   echo "==> Patching lib/init.sh printf fallback to ${NEW_VER}"
-  cp lib/init.sh lib/init.sh.bak2
+  cp lib/init.sh lib/init.sh.bak
 
+  # Use awk to replace the first matching printf '%s' "x.y.z" line.
+  # This is portable and avoids sed dialect issues.
   awk -v new="${NEW_VER}" '
     BEGIN { replaced = 0 }
     {
-      if (!replaced && $0 ~ /printf[[:space:]]+('\''%s'\''|"%s")[[:space:]]*["'\''][0-9]+\.[0-9]+\.[0-9]+["'\'']/) {
-        sub(/printf[[:space:]]+('\''%s'\''|"%s")[[:space:]]*["'\''][0-9]+\.[0-9]+\.[0-9]+["'\'']/, "printf '\''%s'\'' \"" new "\"")
-        replaced = 1
+      if (!replaced) {
+        # match lines containing: printf '%s' "digits.digits.digits" (allow surrounding spaces)
+        if ($0 ~ /printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/) {
+          # perform replacement preserving leading/trailing text
+          sub(/printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/,
+              "printf '\''%s'\'' \"" new "\"")
+          replaced = 1
+        }
       }
       print
     }
-    END { if (replaced == 0) exit 2 }
+    END {
+      # exit code nonzero if nothing was replaced (so caller can handle fallback)
+      if (replaced == 0) exit 2
+    }
   ' lib/init.sh > lib/init.sh.tmp 2>/dev/null || awk_exit=$? || true
 
   if [ "${awk_exit:-0}" -eq 0 ]; then
     mv lib/init.sh.tmp lib/init.sh
   else
+    # No printf fallback found; restore temp file away and insert a conservative fallback near top.
     rm -f lib/init.sh.tmp
     echo "==> No printf fallback line found; inserting conservative VER fallback near top"
-    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"'"'"'$(cat \"${BASE_DIR:-.}/VERSION\" 2>/dev/null || echo \"" v "\" )'"'"'\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"$(cat \\\"$BASE_DIR/VERSION\\\" 2>/dev/null || echo \"" v "\")\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
   fi
 
   # 3c: validate syntax; roll back on failure
   if ! bash -n lib/init.sh; then
     echo "ERROR: lib/init.sh has syntax errors after edit; restoring backup"
     mv lib/init.sh.bak lib/init.sh
-    rm -f lib/init.sh.bak lib/init.sh.bak2
+    rm -f lib/init.sh.bak
     exit 1
   fi
 
-  rm -f lib/init.sh.bak lib/init.sh.bak2
+  rm -f lib/init.sh.bak
   git add lib/init.sh
 else
   echo "==> lib/init.sh not found; skipping init version update"
@@ -147,27 +135,17 @@ if [ -f CHANGELOG.md ] && grep -q '^##
 
 ' CHANGELOG.md 2>/dev/null; then
   echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
-  # Replace first occurrence of "## [Unreleased]" with "## vX - DATE"
   awk -v ver="$NEW_VER" -v date="$DATE" '
     BEGIN { promoted = 0 }
-    {
-      if (!promoted && $0 ~ /^## 
-
-\[Unreleased\]
-
-/) {
-        print "## v" ver " - " date
-        promoted = 1
-        next
-      }
-      print
+    promoted == 0 && index($0, "## [Unreleased]") == 1 {
+      print "## v" ver " - " date
+      promoted = 1
+      next
     }
+    { print }
   ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
-
-  # Prepend a fresh [Unreleased] at the top
-  { echo "## [Unreleased]"; echo ""; cat CHANGELOG.md; } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
 else
-  echo "==> No [Unreleased] section found; creating new entries"
+  echo "==> No [Unreleased] section found, creating new entries"
   {
     echo "## [Unreleased]"
     echo ""
@@ -200,29 +178,24 @@ else
 fi
 
 # Create annotated tag for the release (overwrite if tag already exists locally)
-TAG="v${NEW_VER}"
-if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
-  git tag -d "${TAG}" || true
+if git rev-parse "refs/tags/v${NEW_VER}" >/dev/null 2>&1; then
+  git tag -d "v${NEW_VER}" || true
 fi
-git tag -a "${TAG}" -m "Release ${TAG}"
+git tag -a "v${NEW_VER}" -m "Release v${NEW_VER}"
 
 # Step 6.5: determine branch to push from (handle detached HEAD)
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD || true)"
 if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
-  RELEASE_BRANCH="release/${TAG}"
+  RELEASE_BRANCH="release/v${NEW_VER}"
   echo "==> Detached HEAD detected; creating branch ${RELEASE_BRANCH} from current commit"
   git checkout -b "${RELEASE_BRANCH}"
   CURRENT_BRANCH="${RELEASE_BRANCH}"
 fi
 
-# Step 7: push commit and tag to origin (idempotent)
+# Step 7: push commit and tag to origin
 echo "==> Pushing commit and tag to origin (branch: ${CURRENT_BRANCH})"
 git push origin "${CURRENT_BRANCH}"
-
-if ! push_tag_idempotent "${TAG}"; then
-  echo "ERROR: failed to push tag ${TAG}"
-  exit 1
-fi
+git push origin "v${NEW_VER}"
 
 # Step 8: generate grouped changelog notes for GitHub release
 echo "==> Generating grouped changelog notes"
@@ -260,7 +233,11 @@ if [ -n "$GHTOKEN" ]; then
   echo "==> Creating GitHub release via REST API"
 
   ORIGIN_URL="$(git remote get-url origin)"
-  REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
+  if echo "$ORIGIN_URL" | grep -q ':'; then
+    REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
+  else
+    REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*github.com[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
+  fi
 
   NOTES="$(printf "%b\n" "$CHANGELOG" | sed 's/"/\\"/g')"
   PRERELEASE_JSON=false
@@ -270,8 +247,8 @@ if [ -n "$GHTOKEN" ]; then
 
   read -r -d '' PAYLOAD <<EOF || true
 {
-  "tag_name":"${TAG}",
-  "name":"${TAG}",
+  "tag_name":"v${NEW_VER}",
+  "name":"v${NEW_VER}",
   "body":"${NOTES}",
   "draft": ${DRAFT_JSON},
   "prerelease": ${PRERELEASE_JSON}
@@ -301,13 +278,13 @@ EOF
       echo "==> dist/checksums-${NEW_VER}.tar.gz not found; skipping asset upload"
     fi
   else
-    # If release already exists (409/422), show response for debugging
-    echo "==> GitHub release creation returned status ${HTTP_STATUS}; response saved to /tmp/gh_release_response.json"
-    head -n 200 /tmp/gh_release_response.json || true
+    echo "==> GitHub release creation failed (status: $HTTP_STATUS); response saved to /tmp/gh_release_response.json"
+    echo "Response preview:"
+    head -n 100 /tmp/gh_release_response.json || true
   fi
 else
   echo "==> No GH_TOKEN/GITHUB_TOKEN provided; skipping API release step"
-  echo "Changelog for ${TAG}:"
+  echo "Changelog for v${NEW_VER}:"
   printf "%b\n" "$CHANGELOG"
 fi
 

@@ -1,4 +1,11 @@
-# Contributing Guidelines
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
+# Copyright (c) 2025 Alexandru Barbu
+#
+# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
+# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
+#
+# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
+# arising from its use.# Contributing Guidelines
 
 Thank you for your interest in contributing to **checksums**!  
 This project welcomes improvements, but please follow these rules so everything stays consistent.

@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: '0 3 * * *' # nightly strict run at 03:00 UTC
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,24 +20,37 @@ jobs:
       matrix:
         strict: [false] # default PR/CI run is non-strict
     env:
-      CI_PARALLEL: 2
+      CI_PARALLEL: 4
       CI_STRICT_LOGS: ${{ matrix.strict }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y coreutils grep md5sum
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
+          # Install bats (bats-core) from package if available, otherwise install bats-core from GitHub
+          if apt-cache show bats >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats
+          else
+            # Install bats-core (portable installer)
+            git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+            sudo /tmp/bats-core/install.sh /usr/local
+            rm -rf /tmp/bats-core
+          fi
 
       - name: Run tests
         run: |
-          # Ensure bats is available; install if missing
+          # Confirm bats is available
           if ! command -v bats >/dev/null 2>&1; then
-            sudo apt-get install -y bats
+            echo "bats not found after install; aborting" >&2
+            exit 2
           fi
           ./tests/test_matrix.bats
+
   nightly-strict:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -43,15 +60,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y coreutils grep md5sum
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
+          if apt-cache show bats >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats
+          else
+            git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+            sudo /tmp/bats-core/install.sh /usr/local
+            rm -rf /tmp/bats-core
+          fi
 
       - name: Run strict tests
         run: |
           if ! command -v bats >/dev/null 2>&1; then
-            sudo apt-get install -y bats
+            echo "bats not found after install; aborting" >&2
+            exit 2
           fi
           ./tests/test_matrix.bats

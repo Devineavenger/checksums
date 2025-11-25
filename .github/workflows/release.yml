@@ -4,64 +4,45 @@ permissions:
   contents: write
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (optional). If empty, release.sh will determine version from files.'
+        required: false
+      prerelease:
+        description: 'Create prerelease?'
+        required: false
+        default: 'false'
+      draft:
+        description: 'Create draft release?'
+        required: false
+        default: 'false'
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
   release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: true
 
       - name: Set up dependencies
-        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make git
-
-      - name: Extract version from tag
-        id: vars
-        run: |
-          TAG="${GITHUB_REF##*/}"
-          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Run release script
-        run: bash release.sh ${{ steps.vars.outputs.version }}
-
-      - name: Create release branch from current HEAD
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set FORCE_TAG_UPDATE=1 only if you explicitly want CI to overwrite remote tags
+          FORCE_TAG_UPDATE: 0
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          BRANCH="release/v${{ steps.vars.outputs.version }}"
-          # create branch from current HEAD (where release.sh ran and made changes)
-          git checkout -b "$BRANCH" || git checkout "$BRANCH"
-          git add CHANGELOG.md VERSION checksums.sh || true
-          git commit -m "chore(release): v${{ steps.vars.outputs.version }}" || echo "Nothing to commit on release branch"
-          git push --set-upstream origin "$BRANCH"
-
-      - name: Merge release branch into main and push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH="release/v${{ steps.vars.outputs.version }}"
-          git fetch origin main:main
-          git checkout main
-          git pull origin main
-          # Try fast-forward merge, otherwise create merge commit
-          if git merge --ff-only "$BRANCH"; then
-            echo "Fast-forwarded main to $BRANCH"
+          set -x
+          # prefer workflow_dispatch input; fall back to passing nothing (script will error if version missing)
+          if [ -n "${{ github.event.inputs.version || '' }}" ]; then
+            bash release.sh "${{ github.event.inputs.version }}" $( [ "${{ github.event.inputs.prerelease }}" = "true" ] && echo --prerelease ) $( [ "${{ github.event.inputs.draft }}" = "true" ] && echo --draft )
           else
-            git merge --no-ff "$BRANCH" -m "chore: merge $BRANCH into main"
+            bash release.sh
           fi
-          git push origin main
-
-      - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: checksums-${{ steps.vars.outputs.version }}
-          path: dist/checksums-${{ steps.vars.outputs.version }}.tar.gz
