@@ -13,8 +13,9 @@
 [![Redistribution: Prohibited](https://img.shields.io/badge/redistribution-prohibited-red)](LICENSE.md)
 [![Commercial Use: Forbidden](https://img.shields.io/badge/commercial--use-forbidden-darkred)](LICENSE.md)
 [![Derivative Distribution: Not Allowed](https://img.shields.io/badge/derivative--distribution-not--allowed-lightgrey)](LICENSE.md)
-[![Version](https://img.shields.io/github/v/release/Devineavenger/checksums?sort=semver)](https://github.com/Devineavenger/checksums/releases)
-[![Downloads](https://img.shields.io/github/downloads/Devineavenger/checksums/total.svg)](https://github.com/Devineavenger/checksums/releases)
+[![Version](https://img.shields.io/github/v/release/Devineavenger/checksums?sort=semver&display_name=tag)](https://github.com/Devineavenger/checksums/releases)
+[![Downloads](https://img.shields.io/github/downloads/Devineavenger/checksums/total?label=downloads)](https://github.com/Devineavenger/checksums/releases)
+[![Tests](https://github.com/Devineavenger/checksums/actions/workflows/test.yml/badge.svg)](https://github.com/Devineavenger/checksums/actions/workflows/test.yml)
 [![CI](https://github.com/Devineavenger/checksums/actions/workflows/ci.yml/badge.svg)](https://github.com/Devineavenger/checksums/actions/workflows/ci.yml)
 [![Release](https://github.com/Devineavenger/checksums/actions/workflows/release.yml/badge.svg)](https://github.com/Devineavenger/checksums/actions/workflows/release.yml)
 
