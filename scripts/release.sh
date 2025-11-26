@@ -4,9 +4,10 @@
 #   ./scripts/release.sh <version> [--prerelease] [--draft]
 #
 # Notes:
-#  - Updates VERSION, checksums.sh header, lib/init.sh header/fallback
-#  - Promotes [Unreleased] in docs/CHANGELOG.md (moved to docs/)
-#  - Builds dist, commits, tags, pushes, and optionally creates a GitHub release
+#  - Sync with origin/main first (auto-stash dirty tree), then update VERSION,
+#    checksums.sh header, lib/init.sh header/fallback
+#  - Promote [Unreleased] in docs/CHANGELOG.md
+#  - Build dist, commit, tag, push, and optionally create a GitHub release
 set -euo pipefail
 
 # Canonical repo root (derive if not provided)
@@ -33,22 +34,47 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# Step 0: auto-stash any local changes, then sync with remote before making edits
+echo "==> Checking working tree cleanliness"
+STASHED=0
+if [ -n "$(git status --porcelain)" ]; then
+  echo "==> Dirty tree detected; stashing changes (including untracked) for rebase"
+  git stash push -u -m "auto-stash: release pre-sync" || {
+    echo "ERROR: failed to stash local changes"; exit 1;
+  }
+  STASHED=1
+fi
+
+echo "==> Syncing with origin/main (pre-edit)"
+git fetch origin
+if ! git rebase origin/main; then
+  echo "ERROR: rebase failed — resolve conflicts and rerun make release"
+  # If we stashed, keep the stash intact; user can apply later manually.
+  exit 1
+fi
+
+if [ "$STASHED" -eq 1 ]; then
+  echo "==> Restoring stashed changes after rebase"
+  if git stash list | grep -q "auto-stash: release pre-sync"; then
+    # Pop the most recent stash (assumes this is the one we just created)
+    if ! git stash pop; then
+      echo "ERROR: stash pop produced conflicts — please resolve, then rerun make release"
+      exit 1
+    fi
+  fi
+fi
+
+# If no version argument provided, derive from VERSION file or latest tag
 if [ -z "$NEW_VER" ]; then
-  # If no version was provided, try to determine one automatically:
-  # 1) Use VERSION file if present
-  # 2) Else derive from latest git tag (vMAJOR.MINOR.PATCH) and bump patch
   if [ -f VERSION ]; then
     NEW_VER="$(tr -d ' \t\n\r' < VERSION)"
     echo "No version argument provided; using VERSION file: ${NEW_VER}"
   else
-    # Try to get the latest tag and bump patch
     latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
     if [ -n "$latest_tag" ]; then
-      # strip leading v if present
       base="${latest_tag#v}"
       IFS='.' read -r major minor patch <<< "$base"
       major="${major:-0}"; minor="${minor:-0}"; patch="${patch:-0}"
-      # ensure numeric fallback
       case "$patch" in ''|*[!0-9]*) patch=0 ;; esac
       patch=$((patch + 1))
       NEW_VER="${major}.${minor}.${patch}"
@@ -212,6 +238,8 @@ echo "==> Building dist tarball"
 make dist
 
 # Step 6: commit and tag locally (include all changes)
+# - git add -u stages modifications/deletions of already-tracked files (source, tests, docs)
+# - explicit adds ensure version/changelog files are staged even if new
 git add -u
 git add VERSION checksums.sh lib/init.sh docs/CHANGELOG.md
 
@@ -226,7 +254,7 @@ else
   echo "Nothing to commit"
 fi
 
-# Create annotated tag for the release (handle local and remote conflicts)
+# Create annotated tag for the release (handle local conflicts)
 if git rev-parse "refs/tags/v${NEW_VER}" >/dev/null 2>&1; then
   git tag -d "v${NEW_VER}" || true
 fi
@@ -250,8 +278,8 @@ if git ls-remote --tags origin "refs/tags/v${NEW_VER}" | grep -q "refs/tags/v${N
     echo "==> Remote tag exists; deleting remote tag (FORCE_TAG_UPDATE=1)"
     git push --delete origin "v${NEW_VER}" || true
     TAG_TO_USE="v${NEW_VER}"
-    git push origin "${CURRENT_BRANCH}"
-    git push origin "${TAG_TO_USE}"
+    git push origin "${CURRENT_BRANCH}" --force-with-lease
+    git push origin "${TAG_TO_USE}" --force-with-lease
   else
     echo "==> Remote tag v${NEW_VER} already exists; creating unique CI tag instead"
     # Prefer CI run number if available, else short SHA, else timestamp
@@ -264,14 +292,14 @@ if git ls-remote --tags origin "refs/tags/v${NEW_VER}" | grep -q "refs/tags/v${N
     fi
     TAG_TO_USE="v${NEW_VER}-${id}"
     echo "==> Creating and pushing tag ${TAG_TO_USE}"
-    git push origin "${CURRENT_BRANCH}"
+    git push origin "${CURRENT_BRANCH}" --force-with-lease
     git tag -a "${TAG_TO_USE}" -m "Release ${TAG_TO_USE}"
-    git push origin "${TAG_TO_USE}"
+    git push origin "${TAG_TO_USE}" --force-with-lease
   fi
 else
   TAG_TO_USE="v${NEW_VER}"
-  git push origin "${CURRENT_BRANCH}"
-  git push origin "${TAG_TO_USE}"
+  git push origin "${CURRENT_BRANCH}" --force-with-lease
+  git push origin "${TAG_TO_USE}" --force-with-lease
 fi
 
 # Step 8: generate grouped changelog notes for GitHub release
