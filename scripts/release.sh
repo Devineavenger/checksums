@@ -212,7 +212,8 @@ echo "==> Building dist tarball"
 make dist
 
 # Step 6: commit and tag locally (include all changes)
-git add -A
+git add -u
+git add VERSION checksums.sh lib/init.sh docs/CHANGELOG.md
 
 # Ensure commit author is set
 git config user.name "${GIT_USER_NAME:-$(git config user.name || echo "release-bot")}"
