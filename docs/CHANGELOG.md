@@ -1,3 +1,5 @@
+## [Unreleased]
+
 # SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
 # Copyright (c) 2025 Alexandru Barbu
 #
@@ -55,3 +57,5 @@
 
 
 
+
+## v3.7.9 - 2025-11-26

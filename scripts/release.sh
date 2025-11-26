@@ -160,30 +160,24 @@ else
   echo "==> lib/init.sh not found; skipping init version update"
 fi
 
-# Step 4: promote [Unreleased] in docs/CHANGELOG.md and reinsert a fresh one
+## Step 4: promote [Unreleased] in docs/CHANGELOG.md and reinsert a fresh one
 DATE="$(date +"%Y-%m-%d")"
 CHANGELOG_PATH="docs/CHANGELOG.md"
 
 if [ -f "$CHANGELOG_PATH" ]; then
   echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
   tmp="$(mktemp changelog.tmp.XXXXXX)"
-  # Print a fresh Unreleased header at the top, then when we encounter the first
-  # existing "## [Unreleased]" header in the file, promote it to the release header
-  # and continue printing the original Unreleased content under the new release.
+  # Use index() instead of /.../ regex delimiters to avoid unterminated-regexp issues
   awk -v ver="$NEW_VER" -v date="$DATE" '
     BEGIN {
       promoted = 0
-      # Insert a fresh Unreleased header at the top of the file
+      # Insert a fresh Unreleased header at the top
       print "## [Unreleased]"
       print ""
     }
     {
-      if (!promoted && $0 ~ /^## 
-
-\[Unreleased\]
-
-/) {
-        # Skip the original Unreleased header and insert the promoted release header
+      # Use index() to match the header at the start of the line (no /.../ delimiters)
+      if (!promoted && index($0, "## [Unreleased]") == 1) {
         print "## v" ver " - " date
         promoted = 1
         next
@@ -191,7 +185,6 @@ if [ -f "$CHANGELOG_PATH" ]; then
       print
     }
     END {
-      # If no Unreleased header was found, append a release header at the end
       if (!promoted) {
         print ""
         print "## v" ver " - " date
