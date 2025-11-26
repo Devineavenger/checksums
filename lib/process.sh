@@ -279,7 +279,7 @@ process_single_directory() {
   # Derive paths now (but do NOT create logs yet)
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
-  log "Starting directory: $d"
+  vlog "Starting directory: $d"
   log "sumfile: $sumf  metafile: $metaf  logfile: $logf"
 
   # Remove stale legacy lock if found (best-effort)
@@ -371,7 +371,7 @@ process_single_directory() {
   LOG_FILEPATH=""
   if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
     LOG_FILEPATH="$logf"
-    log "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
+    dbg "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
     rotate_log "$LOG_FILEPATH"
     : > "$LOG_FILEPATH"
     log_run_header "$LOG_FILEPATH"

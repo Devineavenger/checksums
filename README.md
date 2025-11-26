@@ -105,15 +105,27 @@ It ensures individuals and teams can benefit internally, while the author retain
 
 ## 🚀 Installation
 
-Developer-style install:
-    make install
-
 Friendly user install:
+	make user-install
+	or
     ./scripts/install.sh
 
-Uninstall:
-    make uninstall
+Friendly user uninstall:
+    make user-uninstall
+	or
     ./scripts/uninstall.sh
+	
+Reinstall with new Version:
+    make user-reinstall
+	or
+	./scripts/uninstall.sh
+	./scripts/install.sh
+
+Developer-style install:
+    make install
+	
+Developer-style uninstall:
+    make uninstall
 
 ---
 

@@ -176,25 +176,57 @@ rotate_log() {
 
   # Simplify rotation cleanup: keep only the 2 most recent rotated logs.
   # Portable approach:
-  # - On GNU systems: use stat --format '%Y %n' for mtime + path.
-  # - On BSD/macOS: use stat -f '%m %N'.
-  # Avoid 'ls' to safely handle special characters in filenames (ShellCheck SC2012).
+  # - We avoid fragile awk/xargs field-splitting by sorting on the basename
+  #   (your timestamps are embedded in the filename as YYYYMMDD-HHMMSS).
+  # - This block preserves debug output and explanatory comments.
+  # - Works on GNU and BSD/macOS without relying on stat output parsing.
+
+  # Prune rotated logs: keep newest 2, delete the rest
   if find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 | grep -q .; then
-    if stat --version >/dev/null 2>&1; then
-      # GNU stat path
-      find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
-        | xargs -0 stat --format '%Y %n' \
-        | sort -nr \
-        | awk 'NR>2 {print $2}' \
-        | xargs -r rm -f --
-    else
-      # BSD/macOS stat path
-      find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 \
-        | xargs -0 stat -f '%m %N' \
-        | sort -nr \
-        | awk 'NR>2 {print $2}' \
-        | xargs -r rm -f --
+    dbg "ROTATE: candidates before prune: $(find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -printf '%f ' 2>/dev/null)"
+
+    # Build a sorted list of rotated log full paths, newest first.
+    # Use find -print0 -> tr to newline to be robust to NUL-delimited output,
+    # then sort by the full path reversed (basename timestamp sorts lexicographically).
+    # We avoid stat entirely to keep behavior consistent across platforms.
+    mapfile -t _all < <(
+      find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -print0 2>/dev/null \
+        | tr '\0' '\n' \
+        | LC_ALL=C sort -r
+    )
+
+    # If there are more than 2 rotated logs, delete the older ones (everything after index 1)
+    if [ "${#_all[@]}" -gt 2 ]; then
+      _to_delete=("${_all[@]:2}")
+      dbg "ROTATE: deleting: $(printf '%s ' "${_to_delete[@]##*/}")"
+
+      for _p in "${_to_delete[@]}"; do
+        # safety: ensure path is non-empty
+        if [ -n "$_p" ]; then
+          # Use absolute rm to avoid aliases and check result for diagnostics
+          /bin/rm -f -- "$_p"
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            dbg "ROTATE: rm failed for '$_p' rc=$rc"
+            # extra checks to help diagnose permission/attribute issues
+            if [ ! -e "$_p" ]; then
+              dbg "ROTATE: file already missing: $_p"
+            else
+              # stat -c is GNU; fall back to stat -f on BSD/macOS for diagnostics
+              if stat --version >/dev/null 2>&1; then
+                dbg "ROTATE: file exists but rm failed: $_p (owner=$(stat -c '%U:%G' "$_p" 2>/dev/null) writable=$(test -w "$_p" && echo yes || echo no))"
+              else
+                dbg "ROTATE: file exists but rm failed: $_p (owner=$(stat -f '%Su:%Sg' "$_p" 2>/dev/null) writable=$(test -w "$_p" && echo yes || echo no))"
+              fi
+            fi
+          fi
+        fi
+      done
+      unset _to_delete
     fi
+
+    dbg "ROTATE: survivors after prune: $(find "$dir" -maxdepth 1 -type f -name "$base_noext.*.log" -printf '%f ' 2>/dev/null)"
+    unset _all
   fi
 }
 

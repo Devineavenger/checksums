@@ -251,7 +251,7 @@ run_checksums() {
       else
         exists_yesno=no
       fi
-      log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
+      vlog "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
       if [ "$exists_yesno" = yes ]; then
         if process_single_directory "$d"; then
           # mark that at least one overwrite actually ran
@@ -358,7 +358,7 @@ run_checksums() {
     else
       exists_yesno=no
     fi
-    log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
+    vlog "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
     if [ "$exists_yesno" = yes ]; then
       process_single_directory "$d"
       count_processed=$((count_processed+1))
