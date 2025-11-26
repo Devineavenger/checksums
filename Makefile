@@ -125,8 +125,8 @@ changelog-draft:
 
 clean:
 	@echo "🧹 Cleaning build artifacts and temporary files"
-	@echo "-> removing dist directory"
-	@rm -rf dist
+	@echo "-> removing distribution files"
+	@find dist -maxdepth 1 -type f -name '*.tar.gz' -print -exec rm -f -- {} \; 2>/dev/null || true
 	@echo "-> removing backup files (*.bak, *~)"
 	@find . -type f \( -name '*.bak' -o -name '*~' \) -print -exec rm -f -- {} \;
 	@echo "-> removing changelog temp files"

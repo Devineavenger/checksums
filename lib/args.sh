@@ -44,21 +44,11 @@
 # for maintainers. Keep comments near the code they document so future edits stay clear.
 
 parse_args() {
-  # -------------------------
-  # Defensive initialization
-  # -------------------------
-  # Initialize a few variables here so tests and callers can rely on them being set.
-  # init.sh is expected to set canonical defaults; these are safe fallbacks.
-  LOG_BASE=""
-  LOG_FORMAT="${LOG_FORMAT:-text}"   # text (default), json, csv
-  VERIFY_ONLY=0
-  ASSUME_NO=0
-  CONFIG_FILE=""
-  # Enable optional detailed MD5 verification on .md5-only dirs during planning.
-  # This flag controls whether the planner will perform extra MD5 checks when it
-  # encounters directories that only have an .md5 manifest (no .meta/.log).
-  VERIFY_MD5_DETAILS="${VERIFY_MD5_DETAILS:-1}"
-
+  # NOTE: Global defaults (BASE_NAME, LOG_BASE, LOG_FORMAT, VERIFY_ONLY, ASSUME_NO,
+  # CONFIG_FILE, FIRST_RUN_KEEP, VERIFY_MD5_DETAILS, etc.) are declared and
+  # initialized in lib/init.sh. This function should only parse CLI options and
+  # apply overrides. Do not re-declare global defaults here to avoid surprising
+  # overrides and to keep a single source of truth for runtime defaults.
   # -------------------------
   # getopts setup
   # -------------------------
@@ -67,8 +57,8 @@ parse_args() {
   # when a long option is encountered, getopts sets opt='-' and OPTARG to the
   # long option name; we handle it in the '-' branch below.
   #
-  # Short flags included: f a m l n d v r R F C z p b o y V h
-  while getopts "f:a:m:l:ndvrRFC:p:b:o:yVhzb:-:" opt 2>/dev/null; do
+  # Short flags included: f a m l n d v r R F C z p b o y V h K
+  while getopts "f:a:m:l:ndvrRFC:p:b:o:yVhKzb:-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -86,6 +76,7 @@ parse_args() {
       R) NO_REUSE=1 ;;                   # -R : disable reuse heuristics
       F) FIRST_RUN=1 ;;                  # -F : first-run verification/bootstrap mode
       C) FIRST_RUN_CHOICE=$OPTARG ;;     # -C choice : skip|overwrite|prompt for first-run
+      K) FIRST_RUN_KEEP=1 ;;             # -K : keep first-run log after overwrites (audit)
       z) VERIFY_MD5_DETAILS=0 ;;         # -z : disable md5-details (no-md5-details)
       p) PARALLEL_JOBS=$OPTARG ;;        # -p N : number of parallel hashing jobs
       b) BATCH_RULES=$OPTARG ;;          # -b RULES : adaptive batching rules string
@@ -138,6 +129,9 @@ parse_args() {
             ;;
           first-run)
             FIRST_RUN=1
+            ;;
+          first-run-keep)
+            FIRST_RUN_KEEP=1
             ;;
           skip-empty)
             # Affirmative: ensure SKIP_EMPTY enabled (default already 1 in init.sh)

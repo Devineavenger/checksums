@@ -105,10 +105,11 @@ if [ -f checksums.sh ]; then
   if grep -q '^# Version:' checksums.sh; then
     # portable: write to temp then move
     tmp="$(mktemp checksums.sh.tmp.XXXXXX)"
-    awk -v v="$NEW_VER" '{
-      if (NR==1 && $0 ~ /^# Version:/) { sub(/^# Version:.*/, "# Version: " v) }
-      print
-    }' checksums.sh > "$tmp" && mv "$tmp" checksums.sh
+      # Replace the first occurrence of a "# Version:" header anywhere in the file.
+      awk -v v="$NEW_VER" '{
+        if (!done && $0 ~ /^# Version:/) { print "# Version: " v; done=1; next }
+        print
+      }' checksums.sh > "$tmp" && mv "$tmp" checksums.sh
   else
     # insert header after shebang if present, else at top
     tmp="$(mktemp checksums.sh.tmp.XXXXXX)"

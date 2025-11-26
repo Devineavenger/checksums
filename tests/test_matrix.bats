@@ -132,12 +132,60 @@ dump_log_on_fail() {
     fail "checksums.sh failed when running -F (exit $status)"
   fi
 
-  # explicit check and helpful failure output
+  # Default behavior: when scheduled overwrites are executed, the first-run log
+  # is removed by the orchestrator. Assert that the log is absent by default.
+  if [ -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
+    echo "=== DIR LIST ==="
+    ls -la "$TMPDIR"
+    dump_log_on_fail
+    fail "expected first-run log to be removed by default after overwrites: $TMPDIR/$BASE_NAME.first-run.log"
+  fi
+}
+
+@test "first-run keeps log with -K / FIRST_RUN_KEEP=1" {
+  # create two files so the initial manifest has real entries
+  echo "hello" > "$TMPDIR/file1"
+  echo "world" > "$TMPDIR/file2"
+
+  # Run once to create manifests
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
+  [ -f "$TMPDIR/$BASE_NAME.md5" ]    # ensure md5 exists
+
+  # Remove meta/log and run log to simulate 'md5-only' state
+  rm -f "$TMPDIR/$BASE_NAME.meta" "$TMPDIR/$BASE_NAME.log" "$TMPDIR/$BASE_NAME.run.log"
+
+  # Run first-run mode with keep flag via CLI short option -K
+  run "$CHECKSUMS" -y -F -K --allow-root-sidefiles -d "$TMPDIR"
+  if [ "$status" -ne 0 ]; then
+    dump_log_on_fail
+    fail "checksums.sh failed when running -F -K (exit $status)"
+  fi
+
+  # The keep flag should preserve the detailed first-run log for auditing
   if [ ! -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
     echo "=== DIR LIST ==="
     ls -la "$TMPDIR"
     dump_log_on_fail
-    fail "expected first-run log missing: $TMPDIR/$BASE_NAME.first-run.log"
+    fail "expected first-run log to be kept when -K is provided: $TMPDIR/$BASE_NAME.first-run.log"
+  fi
+
+  # Cleanup and also test env alias variant
+  rm -f "$TMPDIR/$BASE_NAME.first-run.log" "$TMPDIR/$BASE_NAME.run.log"
+  # Ensure we simulate the same md5-only state as the CLI -K run:
+  rm -f "$TMPDIR/$BASE_NAME.meta" "$TMPDIR/$BASE_NAME.log" "$TMPDIR/$BASE_NAME.run.log"
+
+  # Run again using environment variable alias FIRST_RUN_KEEP=1
+  FIRST_RUN_KEEP=1 run "$CHECKSUMS" -y -F --allow-root-sidefiles -d "$TMPDIR"
+  if [ "$status" -ne 0 ]; then
+    dump_log_on_fail
+    fail "checksums.sh failed when running FIRST_RUN_KEEP=1 -F (exit $status)"
+  fi
+
+  if [ ! -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
+    echo "=== DIR LIST ==="
+    ls -la "$TMPDIR"
+    dump_log_on_fail
+    fail "expected first-run log to be kept when FIRST_RUN_KEEP=1 is set: $TMPDIR/$BASE_NAME.first-run.log"
   fi
 }
 

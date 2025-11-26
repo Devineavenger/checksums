@@ -230,6 +230,7 @@ run_checksums() {
   # Perform scheduled overwrites now
   if [ "${#first_run_overwrite[@]}" -gt 0 ]; then
     log "First-run: performing ${#first_run_overwrite[@]} scheduled overwrite(s)"
+    local did_overwrite=0
     for d in "${first_run_overwrite[@]}"; do
       # Evaluate existence exactly once to avoid mismatched subshell checks or races
       if [ -d "$d" ]; then
@@ -239,7 +240,13 @@ run_checksums() {
       fi
       log "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
       if [ "$exists_yesno" = yes ]; then
-        process_single_directory "$d"
+        if process_single_directory "$d"; then
+          # mark that at least one overwrite actually ran
+          did_overwrite=1
+        else
+          # process_single_directory returned non-zero; record and continue
+          record_error "First-run scheduled overwrite failed for: $d"
+        fi
         # After processing, remove from the scheduled lookup so SKIP_EMPTY resumes normal behavior
         if [ -n "$d" ]; then
           if [ "${USE_ASSOC:-0}" -eq 1 ]; then
@@ -258,6 +265,23 @@ run_checksums() {
       fi
     done
     first_run_overwrite=()
+
+    # After performing scheduled overwrites, handle first-run log lifecycle.
+    # Default: delete stale first-run log so it doesn't mislead subsequent runs.
+    # Honor audit flag FIRST_RUN_KEEP=1 or --first-run-keep to preserve it.
+    if [ -n "${FIRST_RUN_LOG:-}" ] && [ -f "$FIRST_RUN_LOG" ]; then
+      if [ "${FIRST_RUN_KEEP:-0}" -eq 1 ]; then
+        log "DEBUG: keeping first-run log $FIRST_RUN_LOG (FIRST_RUN_KEEP=1)"
+      else
+        # Delete only if we actually overwrote something; schedule-only flows keep the log.
+        if [ "${did_overwrite:-0}" -eq 1 ]; then
+          rm -f "$FIRST_RUN_LOG"
+          log "DEBUG: removed first-run log $FIRST_RUN_LOG after ${count_overwritten} overwrite(s)"
+        else
+          log "DEBUG: no overwrites executed; keeping first-run log $FIRST_RUN_LOG"
+        fi
+      fi
+    fi
   fi
 
   # ----------------------------
@@ -287,6 +311,16 @@ run_checksums() {
       count_skipped=$((count_skipped+1)); continue
     fi
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$d"; then
+      count_skipped=$((count_skipped+1)); continue
+    fi
+
+    # If first-run log is being kept for this run and belongs to TARGET_DIR,
+    # suppress skip-log emission to avoid confusing rotations right after overwrite.
+    # (Keeps logs stable when FIRST_RUN_KEEP=1.)
+    if [ "${FIRST_RUN_KEEP:-0}" -eq 1 ] \
+       && [ -n "${FIRST_RUN_LOG:-}" ] \
+       && [ -f "$FIRST_RUN_LOG" ] \
+       && [ "$d" = "${TARGET_DIR%/}" ]; then
       count_skipped=$((count_skipped+1)); continue
     fi
 

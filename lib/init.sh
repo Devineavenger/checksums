@@ -9,7 +9,7 @@
 # arising from its use.
 
 # shellcheck disable=SC2034
-# Version: 3.7.16
+# Version: 3.8.1
 #
 # init.sh
 #
@@ -86,7 +86,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.7.16"
+  printf '%s' "3.8.1"
 }
 
 # Populate VER using the robust lookup
@@ -116,6 +116,7 @@ ME="$(basename "$0")"
 : "${CONFIG_FILE:=}"                           # --config FILE explicit config path
 : "${VERIFY_MD5_DETAILS:=1}"                   # When non-zero, planner will run per-directory md5 verification on .md5-only dirs and emit MISSING/MISMATCH lines into the run log (enabled by default). Use --md5-details / -z to explicitly toggle; default = 1
 : "${BATCH_RULES:=0-1M:20,1M-80M:5,>80M:1}"    # -b | --batch Adaptive batching defaults. Format string: "LOW-HIGH:COUNT,LOW-HIGH:COUNT,>HIGH:COUNT" Units: suffix K/M/G supported (e.g. 2M = 2 megabytes). Default: 0–2M → 20 files, 2M–50M → 10 files, >50M → 1 file
+: "${FIRST_RUN_KEEP:=0}"                       # Preserve first-run log after overwrites when set (CLI or env). Default off: delete the stale log post-overwrite.
 
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default

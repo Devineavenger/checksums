@@ -64,6 +64,11 @@ First-run Options:
   -F, --first-run    bootstrap mode: verify existing .md5 files lacking .meta/.log
   -C CHOICE, --first-run-choice CHOICE
                      first-run choice: skip | overwrite | prompt (default prompt)
+  -K, --first-run-keep
+                     Keep the first-run log after overwrites (audit trail).
+                     Default: delete stale first-run log post-overwrite.
+
++Environment: FIRST_RUN_KEEP=1 is equivalent to --first-run-keep.
 
 Verification Options:
   -V, --verify-only  audit mode (no writes)
