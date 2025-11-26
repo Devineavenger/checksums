@@ -125,18 +125,20 @@ changelog-draft:
 
 clean:
 	@echo "🧹 Cleaning build artifacts and temporary files"
+	@echo "-> removing dist directory"
 	@rm -rf dist
-	@find . -name '*.bak' -delete
-	@find . -name '*~' -delete
-	@find . -name 'CHANGELOG.tmp' -delete
-	@find . -name 'changelog.tmp.*' -delete
-	@find . -name '*.tmp' -not -path './dist/*' -delete
-	@find . -name 'checksums.sh.tmp.*' -delete
-	@find . -name 'lib.init.tmp.*' -delete
-	@find . -name '.license.tmp.*' -delete
-	@find . -name '.license.new.*' -delete
+	@echo "-> removing backup files (*.bak, *~)"
+	@find . -type f \( -name '*.bak' -o -name '*~' \) -print -exec rm -f -- {} \;
+	@echo "-> removing changelog temp files"
+	@find . -type f \( -name 'CHANGELOG.tmp' -o -name 'changelog.tmp.*' \) -print -exec rm -f -- {} \;
+	@echo "-> removing generic .tmp files (excluding dist)"
+	@find . -type f -name '*.tmp' -not -path './dist/*' -print -exec rm -f -- {} \;
+	@echo "-> removing specific temp patterns"
+	@find . -type f \( -name 'checksums.sh.tmp.*' -o -name 'lib.init.tmp.*' -o -name '.license.tmp.*' -o -name '.license.new.*' \) -print -exec rm -f -- {} \;
+	@echo "-> removing lock directories (attempt rmdir then rm -rf)"
 	@find . -type d -name '*.lock' -print -exec rmdir {} \; 2>/dev/null || true
-	@find . -type d -name '*.lock' -print -exec rm -rf {} \; 2>/dev/null || true
+	@find . -type d -name '*.lock' -print -exec rm -rf -- {} \; 2>/dev/null || true
+	@echo "-> removing .build"
 	@rm -rf .build || true
 	@echo "🧹 Done"
 
