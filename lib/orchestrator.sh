@@ -263,10 +263,10 @@ run_checksums() {
         # After processing, remove from the scheduled lookup so SKIP_EMPTY resumes normal behavior
         if [ -n "$d" ]; then
           if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-            log "DEBUG: removing scheduled overwrite entry for d='$d'"
+            dbg "DEBUG: removing scheduled overwrite entry for d='$d'"
             unset "first_run_overwrite_set[$d]"
           else
-		    log "DEBUG: post-process cleanup for d='${d}' USE_ASSOC=${USE_ASSOC}"
+		    dbg "DEBUG: post-process cleanup for d='${d}' USE_ASSOC=${USE_ASSOC}"
             map_del "$MAP_first_run_overwrite" "$d"
           fi
         fi
@@ -284,14 +284,14 @@ run_checksums() {
     # Honor audit flag FIRST_RUN_KEEP=1 or --first-run-keep to preserve it.
     if [ -n "${FIRST_RUN_LOG:-}" ] && [ -f "$FIRST_RUN_LOG" ]; then
       if [ "${FIRST_RUN_KEEP:-0}" -eq 1 ]; then
-        log "DEBUG: keeping first-run log $FIRST_RUN_LOG (FIRST_RUN_KEEP=1)"
+        dbg "DEBUG: keeping first-run log $FIRST_RUN_LOG (FIRST_RUN_KEEP=1)"
       else
         # Delete only if we actually overwrote something; schedule-only flows keep the log.
         if [ "${did_overwrite:-0}" -eq 1 ]; then
           rm -f "$FIRST_RUN_LOG"
-          log "DEBUG: removed first-run log $FIRST_RUN_LOG after ${count_overwritten} overwrite(s)"
+          dbg "DEBUG: removed first-run log $FIRST_RUN_LOG after ${count_overwritten} overwrite(s)"
         else
-          log "DEBUG: no overwrites executed; keeping first-run log $FIRST_RUN_LOG"
+          dbg "DEBUG: no overwrites executed; keeping first-run log $FIRST_RUN_LOG"
         fi
       fi
     fi
