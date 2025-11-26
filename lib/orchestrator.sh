@@ -51,9 +51,11 @@
 #    initialized by init.sh or via CLI/config handling performed earlier.
 
 run_checksums() {
-  RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
-  LOG_FILEPATH="$RUN_LOG"
-  : > "$RUN_LOG"
+  # Defer run-log creation until TARGET_DIR is validated and normalized.
+  # This prevents accidental creation of a run log in the current working dir
+  # or repository root when callers (tests) haven't set TARGET_DIR.
+  RUN_LOG=""
+  LOG_FILEPATH=""
 
   if [ "$DEBUG" -gt 0 ]; then
     log_level=3
@@ -81,6 +83,17 @@ run_checksums() {
       RUN_LOG="$safe_log"
     fi
     return 1
+  fi
+
+  # Now that TARGET_DIR is normalized, initialize the run log in the target dir.
+  # Only create the run log if TARGET_DIR is non-empty and writable.
+  if [ -n "${TARGET_DIR:-}" ]; then
+    RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
+    LOG_FILEPATH="$RUN_LOG"
+    # Create/truncate run log only if we can write into the target directory.
+    if mkdir -p "$(dirname "$RUN_LOG")" 2>/dev/null || true; then
+      : > "$RUN_LOG" 2>/dev/null || true
+    fi
   fi
 
   # Load config before parsing CLI so CLI overrides config values.
