@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+load 'test_helper/bats-support/load'
 
 # Guard: ensure this file is executed by the Bats harness, not a plain shell.
 # If the test is accidentally executed by /bin/sh or bash, exit with a clear error.

@@ -74,8 +74,13 @@ run_checksums() {
   cd - >/dev/null 2>&1 || true
   if [ "$TARGET_DIR" = "/" ]; then
     _global_log 0 "Refusing to run on system root"
+    # Ensure the run log records the refusal
+    if [ -n "$RUN_LOG" ]; then
+      echo "Refusing to run on system root" >> "$RUN_LOG"
+    fi
     return 1   # return instead of fatal/exit so tests can assert
   fi
+
 
   # Load config before parsing CLI so CLI overrides config values.
   if [ -n "$CONFIG_FILE" ]; then
