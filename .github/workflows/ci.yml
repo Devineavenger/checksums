@@ -27,7 +27,18 @@ jobs:
       - name: Install test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats-core shellcheck make jq
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg jq shellcheck make git
+
+          # Prefer distro package bats-core if available, otherwise install from upstream
+          if apt-cache show bats-core >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats-core
+          elif apt-cache show bats >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats
+          else
+            git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+            sudo /tmp/bats-core/install.sh /usr/local
+            rm -rf /tmp/bats-core
+          fi
 
       - name: Run pre-flight checks
         run: make check

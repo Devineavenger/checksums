@@ -17,6 +17,10 @@ on:
         description: 'Create draft release?'
         required: false
         default: 'false'
+      force:
+        description: 'Overwrite remote tag if it exists? Set to true to allow destructive update.'
+        required: false
+        default: 'false'
   push:
     branches:
       - main
@@ -50,6 +54,7 @@ jobs:
           VERSION="${{ github.event.inputs.version || '' }}"
           PRERELEASE="${{ github.event.inputs.prerelease || 'false' }}"
           DRAFT="${{ github.event.inputs.draft || 'false' }}"
+          FORCE_INPUT="${{ github.event.inputs.force || 'false' }}"
 
           # Build args array
           args=()
@@ -61,6 +66,11 @@ jobs:
           fi
           if [ "$DRAFT" = "true" ]; then
             args+=(--draft)
+          fi
+
+          # Set FORCE_TAG_UPDATE only if the workflow input 'force' is true
+          if [ "$FORCE_INPUT" = "true" ]; then
+            export FORCE_TAG_UPDATE=1
           fi
 
           # Call the canonical script path

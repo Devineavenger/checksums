@@ -243,19 +243,35 @@ fi
 # Step 7: push commit and tag to origin with safety for existing remote tag
 echo "==> Pushing commit and tag to origin (branch: ${CURRENT_BRANCH})"
 
-# If remote tag exists, require FORCE_TAG_UPDATE=1 to overwrite
+# If remote tag exists, require FORCE_TAG_UPDATE=1 to overwrite; otherwise create a unique CI tag
 if git ls-remote --tags origin "refs/tags/v${NEW_VER}" | grep -q "refs/tags/v${NEW_VER}"; then
   if [ "${FORCE_TAG_UPDATE:-0}" = "1" ]; then
     echo "==> Remote tag exists; deleting remote tag (FORCE_TAG_UPDATE=1)"
     git push --delete origin "v${NEW_VER}" || true
+    TAG_TO_USE="v${NEW_VER}"
+    git push origin "${CURRENT_BRANCH}"
+    git push origin "${TAG_TO_USE}"
   else
-    echo "ERROR: remote tag v${NEW_VER} already exists; set FORCE_TAG_UPDATE=1 to overwrite"
-    exit 1
+    echo "==> Remote tag v${NEW_VER} already exists; creating unique CI tag instead"
+    # Prefer CI run number if available, else short SHA, else timestamp
+    if [ -n "${GITHUB_RUN_NUMBER:-}" ]; then
+      id="ci${GITHUB_RUN_NUMBER}"
+    elif [ -n "${GITHUB_SHA:-}" ]; then
+      id="sha${GITHUB_SHA:0:7}"
+    else
+      id="$(date +%Y%m%d%H%M%S)"
+    fi
+    TAG_TO_USE="v${NEW_VER}-${id}"
+    echo "==> Creating and pushing tag ${TAG_TO_USE}"
+    git push origin "${CURRENT_BRANCH}"
+    git tag -a "${TAG_TO_USE}" -m "Release ${TAG_TO_USE}"
+    git push origin "${TAG_TO_USE}"
   fi
+else
+  TAG_TO_USE="v${NEW_VER}"
+  git push origin "${CURRENT_BRANCH}"
+  git push origin "${TAG_TO_USE}"
 fi
-
-git push origin "${CURRENT_BRANCH}"
-git push origin "v${NEW_VER}"
 
 # Step 8: generate grouped changelog notes for GitHub release
 echo "==> Generating grouped changelog notes"
@@ -305,10 +321,11 @@ if [ -n "$GHTOKEN" ]; then
   if [ -n "$PRERELEASE_FLAG" ]; then PRERELEASE_JSON=true; fi
   if [ -n "$DRAFT_FLAG" ]; then DRAFT_JSON=true; fi
 
+  # Use TAG_TO_USE for the release tag (may be unique CI tag)
   PAYLOAD=$(cat <<EOF
 {
-  "tag_name":"v${NEW_VER}",
-  "name":"v${NEW_VER}",
+  "tag_name":"${TAG_TO_USE}",
+  "name":"${TAG_TO_USE}",
   "body":"${NOTES}",
   "draft": ${DRAFT_JSON},
   "prerelease": ${PRERELEASE_JSON}
@@ -352,8 +369,8 @@ EOF
   rm -f "$resp"
 else
   echo "==> No GH_TOKEN/GITHUB_TOKEN provided; skipping API release step"
-  echo "Changelog for v${NEW_VER}:"
+  echo "Changelog for ${TAG_TO_USE}:"
   printf "%b\n" "$CHANGELOG"
 fi
 
-echo "✅ Release ${NEW_VER} complete"
+echo "✅ Release ${TAG_TO_USE} complete"
