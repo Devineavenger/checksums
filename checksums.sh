@@ -9,7 +9,7 @@
 # arising from its use.
 
 # checksums.sh (v3.0 entrypoint)
-# Version: 3.8.7
+# Version: 3.8.9
 #
 # Minimal entrypoint that sources the new modular lib and runs main.
 # Preserves the original CLI, usage, and behavior by delegating to lib.

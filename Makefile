@@ -50,7 +50,7 @@ user-uninstall:
 
 user-reinstall:
 	@bash ./scripts/uninstall.sh
-	sleep 1
+	sleep 0.3
 	@bash ./scripts/install.sh
 
 tests:

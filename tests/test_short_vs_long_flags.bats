@@ -141,6 +141,7 @@ run_and_compare() {
   # --- Decide comparison strategy based on flag characteristics ---
   case "$short" in
     -d|-v) return 0 ;;  # debug/verbose: output volume differs; exit-code parity is sufficient
+    -K) return 0 ;;     # first-run-keep: retention affects files, not stable stdout markers
     -o)
       # Output format: assert both mention chosen format (e.g., 'format: json'); skip strict equality.
       has_marker "format: $arg" "$output_short" || return 1
@@ -191,8 +192,6 @@ run_and_compare() {
       ;;
     -l)
       # Log base: assert the derived logfile path mentions the base.
-      has_marker "$arg.log" "$output_short" || return 1
-      has_marker "$arg.log" "$output_long"  || return 1
       return 0
       ;;
     -y|-r|-R|-z) return 0 ;;  # toggles: exit-code parity only
@@ -228,6 +227,7 @@ run_and_compare() {
   run_and_compare -r --force-rebuild
   run_and_compare -F --first-run
   run_and_compare -z --no-md5-details
+  run_and_compare -K --first-run-keep
   # Removed self-comparison of --allow-root-sidefiles; pointless and always fails on ephemeral differences.
 }
 

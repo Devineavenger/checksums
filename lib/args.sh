@@ -281,4 +281,5 @@ parse_args() {
   META_FILENAME="${BASE_NAME}.meta"
   LOG_BASE="${LOG_BASE:-$BASE_NAME}"
   LOG_FILENAME="${LOG_BASE}.log"
+  
 }

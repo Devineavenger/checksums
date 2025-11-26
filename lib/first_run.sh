@@ -61,6 +61,7 @@ verify_md5_file() {
     if [ ! -e "$fpath" ]; then
       missing=1
       [ -n "$FIRST_RUN_LOG" ] && printf 'MISSING: %s\n' "$fpath" >> "$FIRST_RUN_LOG"
+      [ -n "$RUN_LOG" ] && printf 'MISSING: %s\n' "$fpath" >> "$RUN_LOG"
       continue
     fi
 
@@ -69,6 +70,8 @@ verify_md5_file() {
       bad=1
       [ -n "$FIRST_RUN_LOG" ] && \
         printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >> "$FIRST_RUN_LOG"
+      [ -n "$RUN_LOG" ] && \
+        printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >> "$RUN_LOG"
     fi
   done < "$sumf"
 

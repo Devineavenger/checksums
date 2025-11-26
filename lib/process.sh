@@ -280,7 +280,7 @@ process_single_directory() {
   local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
 
   vlog "Starting directory: $d"
-  log "sumfile: $sumf  metafile: $metaf  logfile: $logf"
+  dbg "sumfile: $sumf  metafile: $metaf  logfile: $logf"
 
   # Remove stale legacy lock if found (best-effort)
   if [ -f "${metaf}${LOCK_SUFFIX}" ]; then
@@ -363,7 +363,7 @@ process_single_directory() {
 
   # If there are no candidate files, return early before creating logs or other side-effects.
   if [ "$total_files" -eq 0 ]; then
-    log "No candidate files in $d; skipping manifest creation"
+    vlog "No candidate files in $d; skipping manifest creation"
     return 0
   fi
 
@@ -625,7 +625,7 @@ process_single_directory() {
       log "Wrote $sumf and $metaf"
       count_created=$((count_created+1))
     else
-      log "Skipped writing manifests for $d (no local files)"
+      vlog "Skipped writing manifests for $d (no local files)"
       LOG_FILEPATH=""
       _proc_cleanup
       return 0
