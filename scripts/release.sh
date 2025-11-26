@@ -64,6 +64,12 @@ if [ "$STASHED" -eq 1 ]; then
   fi
 fi
 
+# Ensure we don’t continue with a dirty tree after stash pop
+if [ -n "$(git status --porcelain)" ]; then
+  echo "==> Post-rebase changes detected; staging to keep release consistent"
+  git add -A
+fi
+
 # If no version argument provided, derive from VERSION file or latest tag
 if [ -z "$NEW_VER" ]; then
   if [ -f VERSION ]; then
