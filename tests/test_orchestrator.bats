@@ -31,5 +31,11 @@ teardown() {
   [ "$status" -eq 1 ]
   # The function writes to $TARGET_DIR/${BASE_NAME}.run.log
   logfile="${TARGET_DIR}/${BASE_NAME}.run.log"
-  grep -q "Refusing to run on system root" "$logfile"
+  if [ -f "$logfile" ]; then
+    grep -q "Refusing to run on system root" "$logfile"
+  else
+    # CI runners usually cannot write to '/', so the log might be absent.
+    # In that case, assert the refusal message was emitted to output.
+    echo "$output" | grep -q "Refusing to run on system root"
+  fi
 }
