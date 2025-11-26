@@ -34,8 +34,31 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$NEW_VER" ]; then
-  echo "Usage: $0 <new-version> [--prerelease] [--draft]"
-  exit 1
+  # If no version was provided, try to determine one automatically:
+  # 1) Use VERSION file if present
+  # 2) Else derive from latest git tag (vMAJOR.MINOR.PATCH) and bump patch
+  if [ -f VERSION ]; then
+    NEW_VER="$(tr -d ' \t\n\r' < VERSION)"
+    echo "No version argument provided; using VERSION file: ${NEW_VER}"
+  else
+    # Try to get the latest tag and bump patch
+    latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+    if [ -n "$latest_tag" ]; then
+      # strip leading v if present
+      base="${latest_tag#v}"
+      IFS='.' read -r major minor patch <<< "$base"
+      major="${major:-0}"; minor="${minor:-0}"; patch="${patch:-0}"
+      # ensure numeric fallback
+      case "$patch" in ''|*[!0-9]*) patch=0 ;; esac
+      patch=$((patch + 1))
+      NEW_VER="${major}.${minor}.${patch}"
+      echo "No version argument provided; derived NEW_VER from latest tag ${latest_tag} -> ${NEW_VER}"
+    else
+      echo "ERROR: no version provided, no VERSION file, and no git tags to derive a version from." >&2
+      echo "Please provide a version argument (e.g. ./scripts/release.sh 1.2.3) or create a VERSION file." >&2
+      exit 1
+    fi
+  fi
 fi
 
 echo "==> Releasing version $NEW_VER"
@@ -141,30 +164,43 @@ fi
 DATE="$(date +"%Y-%m-%d")"
 CHANGELOG_PATH="docs/CHANGELOG.md"
 
-if [ -f "$CHANGELOG_PATH" ] && grep -q '^## 
-
-\[Unreleased\]
-
-' "$CHANGELOG_PATH" 2>/dev/null; then
+if [ -f "$CHANGELOG_PATH" ]; then
   echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
   tmp="$(mktemp changelog.tmp.XXXXXX)"
+  # Print a fresh Unreleased header at the top, then when we encounter the first
+  # existing "## [Unreleased]" header in the file, promote it to the release header
+  # and continue printing the original Unreleased content under the new release.
   awk -v ver="$NEW_VER" -v date="$DATE" '
-    BEGIN { promoted = 0 }
+    BEGIN {
+      promoted = 0
+      # Insert a fresh Unreleased header at the top of the file
+      print "## [Unreleased]"
+      print ""
+    }
     {
       if (!promoted && $0 ~ /^## 
 
 \[Unreleased\]
 
 /) {
+        # Skip the original Unreleased header and insert the promoted release header
         print "## v" ver " - " date
         promoted = 1
         next
       }
       print
     }
+    END {
+      # If no Unreleased header was found, append a release header at the end
+      if (!promoted) {
+        print ""
+        print "## v" ver " - " date
+      }
+    }
   ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
 else
-  echo "==> No [Unreleased] section found, creating new entries"
+  echo "==> No CHANGELOG.md found; creating docs/CHANGELOG.md with Unreleased and release entries"
+  mkdir -p "$(dirname "$CHANGELOG_PATH")"
   tmp="$(mktemp changelog.tmp.XXXXXX)"
   {
     echo "## [Unreleased]"
@@ -173,7 +209,6 @@ else
     echo ""
     git log --pretty=format:"* %s" --no-merges
     echo ""
-    cat "$CHANGELOG_PATH" 2>/dev/null || true
   } > "$tmp"
   mv "$tmp" "$CHANGELOG_PATH"
 fi
