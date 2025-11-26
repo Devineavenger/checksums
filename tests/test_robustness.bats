@@ -20,6 +20,7 @@ setup() {
   # ensure stable locale behavior
   export LC_ALL=C
 }
+
 teardown() { rm -rf "$TMPDIR"; }
 
 @test "find_file_expr handles filenames with spaces" {

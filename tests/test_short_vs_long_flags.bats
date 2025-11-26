@@ -23,21 +23,67 @@ setup() {
   CHECKSUMS="$(pwd)/checksums.sh"
   chmod +x "$CHECKSUMS" 2>/dev/null || true
   BASE_NAME="#####checksums#####"
+  # Snapshot pre-existing /tmp/tmp.* entries so we only remove new ones created by tests.
+  PRE_EXISTING_TMP="$(ls -1 /tmp/tmp.* 2>/dev/null || true)"
+  CREATED_TMPDIRS=""
 }
 
 teardown() {
-  # Clean up any leftover temporary directory created during the test.
-  [ -n "${TMPDIR:-}" ] && rm -rf "$TMPDIR"
+  # Remove every path (file or directory) we explicitly recorded.
+  for p in $CREATED_TMPDIRS; do
+    [ -z "$p" ] && continue
+    [ ! -e "$p" ] && continue
+    case "$p" in
+      /tmp/*|/var/tmp/*)
+        echo "teardown: removing recorded path $p" >&2
+        rm -rf -- "$p" || echo "teardown: failed to remove $p" >&2
+        ;;
+      *)
+        echo "teardown: refusing to remove non-temp path: $p" >&2
+        ;;
+    esac
+  done
+
+  # Also remove any new /tmp/tmp.* entries that were created during this test run
+  # (i.e., present now but not in PRE_EXISTING_TMP). This catches mktemp-created files.
+  for cur in $(ls -1 /tmp/tmp.* 2>/dev/null || true); do
+    # skip if it existed before the test run
+    case " $PRE_EXISTING_TMP " in
+      *" $cur "*) continue ;;
+    esac
+    # only remove safe paths
+    case "$cur" in
+      /tmp/*|/var/tmp/*)
+        echo "teardown: removing new tmp entry $cur" >&2
+        rm -rf -- "$cur" || echo "teardown: failed to remove $cur" >&2
+        ;;
+      *)
+        echo "teardown: refusing to remove non-temp path: $cur" >&2
+        ;;
+    esac
+  done
+
+  CREATED_TMPDIRS=""
+  unset TMPDIR || true
+
+  # Debug: list any remaining tmp.* entries (post-cleanup)
+  echo "teardown: remaining /tmp/tmp.* entries (post-cleanup):" >&2
+  ls -ld /tmp/tmp.* 2>/dev/null || true
 }
 
 # fresh_dir:
 #   Create a brand-new temporary directory and populate it with deterministic test files.
 #   We do this before EACH invocation (short and long) to avoid cross-run state influencing output.
 fresh_dir() {
-  rm -rf "${TMPDIR:-}" || true
-  TMPDIR="$(mktemp -d)"
-  echo "alpha" > "$TMPDIR/file1"
-  echo "beta"  > "$TMPDIR/file2"
+  # Create a fresh temp dir and remember it for teardown.
+  newtmp="$(mktemp -d -t checksums.XXXXXX)"
+  # populate deterministic files
+  echo "alpha" > "$newtmp/file1"
+  echo "beta"  > "$newtmp/file2"
+  # record and expose as TMPDIR for compatibility with existing tests
+  CREATED_TMPDIRS="${CREATED_TMPDIRS} ${newtmp}"
+  TMPDIR="$newtmp"
+  echo "fresh_dir: created $newtmp" >&2
 }
 
 # normalize_output:

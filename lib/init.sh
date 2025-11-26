@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
+# Copyright (c) 2025 Alexandru Barbu
+#
+# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
+# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
+#
+# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
+# arising from its use.
+
 # shellcheck disable=SC2034
-# Version: 3.7.7
+# Version: 3.7.8
 #
 # init.sh
 #
@@ -77,7 +86,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "3.7.7"
+  printf '%s' "3.7.8"
 }
 
 # Populate VER using the robust lookup

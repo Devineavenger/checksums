@@ -4,33 +4,25 @@ SHAREDIR      ?= $(PREFIX)/share/checksums
 LIBDIR        ?= $(SHAREDIR)/lib
 MAIN_SCRIPT   := checksums.sh
 VERSION_FILE  := VERSION
+DESTDIR       ?=
 
-# Positional args for FILE/DIR (e.g., make addheader CONTRIBUTING.md)
+# Positional args for FILE/DIR (e.g., make addheader docs/CONTRIBUTING.md)
 FILE ?= $(word 2,$(MAKECMDGOALS))
 DIR  ?= $(word 2,$(MAKECMDGOALS))
 
 # Deduplicate and consume positional goals so they aren't treated as targets
 ARGS := $(sort $(strip $(FILE) $(DIR)))
-$(ARGS):
-	@true
 
-# License header (multi-line, literal newlines)
-define LICENSE_HEADER
-# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
-# Copyright (c) 2025 Alexandru Barbu
-#
-# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
-# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
-#
-# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
-# arising from its use.
-endef
-
-export LICENSE_HEADER
+# Prefer reading the license header from a file to avoid exporting a large multi-line env var.
+LICENSE_HEADER_FILE := scripts/LICENSE
+export LICENSE_HEADER_FILE
 
 .PHONY: all install uninstall user-install user-uninstall \
 	tests lint dos2unix ci version dist release changelog changelog-draft \
-	clean check help newfile addheader addheaders addheaders-recursive
+	clean check help newfile addheader addheaders addheaders-recursive _positional
+
+_positional:
+	@true
 
 # Default target
 all: help
@@ -39,25 +31,30 @@ install:
 	install -d $(DESTDIR)$(BINDIR)
 	install -d $(DESTDIR)$(LIBDIR)
 	install -m 0755 $(MAIN_SCRIPT) $(DESTDIR)$(BINDIR)/checksums
-	install -m 0644 lib/*.sh $(DESTDIR)$(LIBDIR)/
+	# copy lib scripts if any exist
+	@if ls lib/*.sh >/dev/null 2>&1; then \
+	  install -m 0644 lib/*.sh $(DESTDIR)$(LIBDIR)/; \
+	else \
+	  true; \
+	fi
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/checksums
 	rm -rf $(DESTDIR)$(SHAREDIR)
 
 user-install:
-	./scripts/install.sh
+	@bash ./scripts/install.sh
 
 user-uninstall:
-	./scripts/uninstall.sh
+	@bash ./scripts/uninstall.sh
 
 user-reinstall:
-	./scripts/uninstall.sh
+	@bash ./scripts/uninstall.sh
 	sleep 1
-	./scripts/install.sh
+	@bash ./scripts/install.sh
 
 tests:
-	./tests/run-bats.sh
+	@bash ./tests/run-bats.sh
 
 lint:
 	shellcheck $(MAIN_SCRIPT) lib/*.sh
@@ -78,20 +75,22 @@ dist:
 	name="checksums-$$ver"; \
 	echo "📦 Building $$name.tar.gz"; \
 	mkdir -p dist; \
-	tar --exclude=dist -czf dist/$$name.tar.gz \
-	--transform "s,^,$$name/," \
-	$(MAIN_SCRIPT) $(VERSION_FILE) Makefile scripts lib tests .github
-
+	tmp=$$(mktemp -d); \
+	mkdir -p "$$tmp/$$name"; \
+	cp -a $(MAIN_SCRIPT) $(VERSION_FILE) Makefile README.md LICENSE.md docs scripts lib tests .github "$$tmp/$$name/" 2>/dev/null || true; \
+	tar -C "$$tmp" -czf dist/$$name.tar.gz "$$name"; \
+	rm -rf "$$tmp"
+	
 release:
 	@if [ -z "$(NEW_VER)" ]; then \
 	    echo "❌ Usage: make release NEW_VER=x.y.z [FLAGS='--prerelease --draft']"; \
 	    exit 1; \
 	fi
-	@if [ ! -x ./scripts/release.sh ]; then \
-	    echo "❌ release.sh not found or not executable"; \
+	@if [ ! -f ./scripts/release.sh ]; then \
+	    echo "❌ release.sh not found"; \
 	    exit 1; \
 	fi
-	./scripts/release.sh $(NEW_VER) $(FLAGS)
+	@bash ./scripts/release.sh $(NEW_VER) $(FLAGS)
 
 changelog:
 	@LAST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
@@ -113,21 +112,33 @@ changelog-draft:
 	    echo "==> Writing full changelog (no previous tags)"; \
 	    CHANGES=$$(git log --pretty=format:"* %s" --no-merges); \
 	fi; \
+	mkdir -p docs; \
 	{ \
 	    echo "## [Unreleased] - $$DATE"; \
 	    echo ""; \
 	    echo "$$CHANGES"; \
 	    echo ""; \
-	    cat CHANGELOG.md 2>/dev/null || true; \
+	    cat docs/CHANGELOG.md 2>/dev/null || true; \
 	} > CHANGELOG.tmp; \
-	mv CHANGELOG.tmp CHANGELOG.md; \
-	echo "✅ Draft changelog inserted at top of CHANGELOG.md"
+	mv CHANGELOG.tmp docs/CHANGELOG.md; \
+	echo "✅ Draft changelog inserted at top of docs/CHANGELOG.md"
 
 clean:
-	rm -rf dist
-	find . -name '*.bak' -delete
-	find . -name '*~' -delete
-	@echo "🧹 Cleaned build artifacts"
+	@echo "🧹 Cleaning build artifacts and temporary files"
+	@rm -rf dist
+	@find . -name '*.bak' -delete
+	@find . -name '*~' -delete
+	@find . -name 'CHANGELOG.tmp' -delete
+	@find . -name 'changelog.tmp.*' -delete
+	@find . -name '*.tmp' -not -path './dist/*' -delete
+	@find . -name 'checksums.sh.tmp.*' -delete
+	@find . -name 'lib.init.tmp.*' -delete
+	@find . -name '.license.tmp.*' -delete
+	@find . -name '.license.new.*' -delete
+	@find . -type d -name '*.lock' -print -exec rmdir {} \; 2>/dev/null || true
+	@find . -type d -name '*.lock' -print -exec rm -rf {} \; 2>/dev/null || true
+	@rm -rf .build || true
+	@echo "🧹 Done"
 
 # Meta‑target: run lint, tests, and changelog preview
 check: lint tests changelog
@@ -161,7 +172,7 @@ help:
 	@echo "  make dist                  - Build a versioned tarball in ./dist/"
 	@echo "  make release NEW_VER=x.y.z - Run ./scripts/release.sh with given version"
 	@echo "  make changelog             - Preview changelog entries since last tag"
-	@echo "  make changelog-draft       - Insert draft changelog into CHANGELOG.md"
+	@echo "  make changelog-draft       - Insert draft changelog into docs/CHANGELOG.md"
 	@echo "  make clean                 - Remove dist/ and temp files"
 	@echo "  make newfile FILE=...      - Create new file with license header"
 	@echo "  make addheader FILE=...    - Prepend license header to one file"

@@ -24,25 +24,45 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Provide token and default FORCE_TAG_UPDATE here so the script can read them
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FORCE_TAG_UPDATE: "0"
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Set up dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl git
 
       - name: Run release script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Set FORCE_TAG_UPDATE=1 only if you explicitly want CI to overwrite remote tags
-          FORCE_TAG_UPDATE: 0
+        # fail fast and show commands
         run: |
-          set -x
-          # prefer workflow_dispatch input; fall back to passing nothing (script will error if version missing)
-          if [ -n "${{ github.event.inputs.version || '' }}" ]; then
-            bash release.sh "${{ github.event.inputs.version }}" $( [ "${{ github.event.inputs.prerelease }}" = "true" ] && echo --prerelease ) $( [ "${{ github.event.inputs.draft }}" = "true" ] && echo --draft )
-          else
-            bash release.sh
+          set -xeuo pipefail
+
+          # Expand workflow inputs into shell variables (safe: evaluated before the run)
+          VERSION="${{ github.event.inputs.version || '' }}"
+          PRERELEASE="${{ github.event.inputs.prerelease || 'false' }}"
+          DRAFT="${{ github.event.inputs.draft || 'false' }}"
+
+          # Build args array
+          args=()
+          if [ -n "$VERSION" ]; then
+            args+=("$VERSION")
           fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            args+=(--draft)
+          fi
+
+          # Call the canonical script path
+          # Use bash explicitly to avoid /bin/sh differences
+          bash ./scripts/release.sh "${args[@]}"

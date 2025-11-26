@@ -1,3 +1,12 @@
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
+# Copyright (c) 2025 Alexandru Barbu
+#
+# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
+# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
+#
+# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
+# arising from its use.
+
 # checksums
 
 [![License: Source-Available, Non-Commercial](https://img.shields.io/badge/license-source--available%20(non--commercial)-orange)](LICENSE.md)
@@ -169,7 +178,7 @@ Debug helpers:
 
 Release automation (`release.sh`):
 - Updates VERSION, checksums.sh, lib/init.sh
-- Promotes `[Unreleased]` → versioned section in CHANGELOG.md
+- Promotes `[Unreleased]` → versioned section in docs/CHANGELOG.md
 - Reinserts fresh `[Unreleased]`
 - Builds dist tarball
 - Commits, tags, pushes
@@ -206,7 +215,7 @@ make version                 — Print current version
 make dist                    — Build versioned tarball in ./dist/
 make release NEW_VER=x.y.z   — Run release.sh with given version
 make changelog               — Preview changelog entries since last tag
-make changelog-draft         — Insert draft changelog into CHANGELOG.md
+make changelog-draft         — Insert draft changelog into docs/CHANGELOG.md
 make dos2unix                — Normalize CRLF → LF for common text files (runs ./scripts/dos2unix.sh)
 make clean                   — Remove dist/ and temp files
 make help                    — Show help message
@@ -219,7 +228,7 @@ make help                    — Show help message
        feat: add SHA512 support
        fix: correct checksum verification bug
 2. CI posts a sticky PR comment with grouped changelog preview.
-3. CI auto-updates `[Unreleased]` in CHANGELOG.md and commits it to the PR branch.
+3. CI auto-updates `[Unreleased]` in docs/CHANGELOG.md and commits it to the PR branch.
 4. Maintainer merges PR.
 5. Maintainer tags v3.7.5.
 6. `release.yml` runs `scripts/release.sh`, promotes changelog, reinserts `[Unreleased]`, builds tarball, and publishes GitHub Release.

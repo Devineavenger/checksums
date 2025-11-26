@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: '0 3 * * *' # nightly strict run at 03:00 UTC
 
+concurrency:
+  group: bats-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash
@@ -16,6 +20,7 @@ defaults:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         strict: [false] # default PR/CI run is non-strict
@@ -31,12 +36,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
-          # Install bats (bats-core) from package if available, otherwise install bats-core from GitHub
-          if apt-cache show bats >/dev/null 2>&1; then
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg jq shellcheck git
+
+          # Prefer distro package bats-core if available, otherwise install from upstream
+          if apt-cache show bats-core >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats-core
+          elif apt-cache show bats >/dev/null 2>&1; then
             sudo apt-get install -y --no-install-recommends bats
           else
-            # Install bats-core (portable installer)
             git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
             sudo /tmp/bats-core/install.sh /usr/local
             rm -rf /tmp/bats-core
@@ -44,16 +51,17 @@ jobs:
 
       - name: Run tests
         run: |
-          # Confirm bats is available
           if ! command -v bats >/dev/null 2>&1; then
             echo "bats not found after install; aborting" >&2
             exit 2
           fi
-          ./tests/test_matrix.bats
+          # Run the test suite via the installed bats binary to avoid relying on exec bits
+          bats ./tests/test_matrix.bats
 
   nightly-strict:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       CI_PARALLEL: 4
       CI_STRICT_LOGS: true
@@ -66,8 +74,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg
-          if apt-cache show bats >/dev/null 2>&1; then
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg jq shellcheck git
+          if apt-cache show bats-core >/dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends bats-core
+          elif apt-cache show bats >/dev/null 2>&1; then
             sudo apt-get install -y --no-install-recommends bats
           else
             git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
@@ -81,4 +91,4 @@ jobs:
             echo "bats not found after install; aborting" >&2
             exit 2
           fi
-          ./tests/test_matrix.bats
+          bats ./tests/test_matrix.bats

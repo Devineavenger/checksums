@@ -1,27 +1,21 @@
 #!/usr/bin/env bash
-#
-# release.sh — helper to cut a new checksums release
-#
+# scripts/release.sh — helper to cut a new checksums release
 # Usage:
-#   ./release.sh <version> [--prerelease] [--draft]
+#   ./scripts/release.sh <version> [--prerelease] [--draft]
 #
-# This script:
-#   1. Updates the VERSION file
-#   2. Updates the version header in checksums.sh (if present)
-#   3. Updates the version header and fallback in lib/init.sh (safely)
-#   4. Promotes the [Unreleased] section in CHANGELOG.md
-#   5. Builds the dist tarball
-#   6. Commits and tags the release
-#   7. Pushes branch and tag to origin
-#   8. Optionally creates a GitHub Release via API and uploads the tarball
-#
-# Safety notes:
-#   - lib/init.sh is edited with targeted sed replacements that only change
-#     the header and the numeric fallback inside the VER= line, preserving quoting.
-#   - A shell syntax check (bash -n) runs after edits; if it fails, changes are rolled back.
-#   - The script creates .bak backups before in-place edits.
-#
+# Notes:
+#  - Updates VERSION, checksums.sh header, lib/init.sh header/fallback
+#  - Promotes [Unreleased] in docs/CHANGELOG.md (moved to docs/)
+#  - Builds dist, commits, tags, pushes, and optionally creates a GitHub release
 set -euo pipefail
+
+# Canonical repo root (derive if not provided)
+BASE_DIR="${BASE_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
+# Quick tool checks
+for cmd in git curl tar mktemp awk sed grep; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: required tool '$cmd' not found"; exit 1; }
+done
 
 NEW_VER="${1:-}"
 shift || true
@@ -54,10 +48,26 @@ git add VERSION
 if [ -f checksums.sh ]; then
   echo "==> Updating checksums.sh header to ${NEW_VER}"
   if grep -q '^# Version:' checksums.sh; then
-    sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" checksums.sh
-    rm -f checksums.sh.bak
+    # portable: write to temp then move
+    tmp="$(mktemp checksums.sh.tmp.XXXXXX)"
+    awk -v v="$NEW_VER" '{
+      if (NR==1 && $0 ~ /^# Version:/) { sub(/^# Version:.*/, "# Version: " v) }
+      print
+    }' checksums.sh > "$tmp" && mv "$tmp" checksums.sh
   else
-    awk -v new="# Version: ${NEW_VER}" 'NR==1{print;print new;next}1' checksums.sh > checksums.sh.tmp && mv checksums.sh.tmp checksums.sh
+    # insert header after shebang if present, else at top
+    tmp="$(mktemp checksums.sh.tmp.XXXXXX)"
+    first="$(head -n1 checksums.sh || true)"
+    if [ "${first#\#!}" != "$first" ]; then
+      # has shebang
+      printf '%s\n' "$first" > "$tmp"
+      printf '# Version: %s\n' "$NEW_VER" >> "$tmp"
+      tail -n +2 checksums.sh >> "$tmp"
+    else
+      printf '# Version: %s\n' "$NEW_VER" > "$tmp"
+      cat checksums.sh >> "$tmp"
+    fi
+    mv "$tmp" checksums.sh
   fi
   git add checksums.sh
 fi
@@ -69,47 +79,48 @@ if [ -f lib/init.sh ]; then
 
   # 3a: update or insert header line "# Version: X.Y.Z"
   if grep -q '^# Version:' lib/init.sh; then
-    sed -i.bak "s/^# Version:.*/# Version: ${NEW_VER}/" lib/init.sh
+    tmp="$(mktemp lib.init.tmp.XXXXXX)"
+    awk -v v="$NEW_VER" '{
+      if ($0 ~ /^# Version:/ && !done) { print "# Version: " v; done=1; next }
+      print
+    }' lib/init.sh > "$tmp" && mv "$tmp" lib/init.sh
   else
-    # Insert header after shebang (line 1)
-    awk -v v="${NEW_VER}" 'NR==1{print; print "# Version: " v; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+    tmp="$(mktemp lib.init.tmp.XXXXXX)"
+    first="$(head -n1 lib/init.sh || true)"
+    if [ "${first#\#!}" != "$first" ]; then
+      # insert after shebang
+      printf '%s\n' "$first" > "$tmp"
+      printf '# Version: %s\n' "$NEW_VER" >> "$tmp"
+      tail -n +2 lib/init.sh >> "$tmp"
+    else
+      printf '# Version: %s\n' "$NEW_VER" > "$tmp"
+      cat lib/init.sh >> "$tmp"
+    fi
+    mv "$tmp" lib/init.sh
   fi
 
-  # 3b: reliably replace the final printf fallback line:
-  #    printf '%s' "3.3.1"
-  # with the new version. Update only the first matching occurrence.
+  # 3b: replace the first printf fallback line like: printf '%s' "1.2.3"
   echo "==> Patching lib/init.sh printf fallback to ${NEW_VER}"
-  cp lib/init.sh lib/init.sh.bak
-
-  # Use awk to replace the first matching printf '%s' "x.y.z" line.
-  # This is portable and avoids sed dialect issues.
-  awk -v new="${NEW_VER}" '
+  tmp="$(mktemp lib.init.fallback.tmp.XXXXXX)"
+  awk -v new="$NEW_VER" '
     BEGIN { replaced = 0 }
     {
-      if (!replaced) {
-        # match lines containing: printf '%s' "digits.digits.digits" (allow surrounding spaces)
-        if ($0 ~ /printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/) {
-          # perform replacement preserving leading/trailing text
-          sub(/printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/,
-              "printf '\''%s'\'' \"" new "\"")
-          replaced = 1
-        }
+      if (!replaced && $0 ~ /printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/) {
+        sub(/printf[[:space:]]+'\''%s'\''[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"/, "printf '\''%s'\'' \"" new "\"")
+        replaced = 1
       }
       print
     }
-    END {
-      # exit code nonzero if nothing was replaced (so caller can handle fallback)
-      if (replaced == 0) exit 2
-    }
-  ' lib/init.sh > lib/init.sh.tmp 2>/dev/null || awk_exit=$? || true
+    END { if (replaced==0) exit 2 }
+  ' lib/init.sh > "$tmp" 2>/dev/null || awk_exit=$? || true
 
   if [ "${awk_exit:-0}" -eq 0 ]; then
-    mv lib/init.sh.tmp lib/init.sh
+    mv "$tmp" lib/init.sh
   else
-    # No printf fallback found; restore temp file away and insert a conservative fallback near top.
-    rm -f lib/init.sh.tmp
-    echo "==> No printf fallback line found; inserting conservative VER fallback near top"
-    awk -v v="${NEW_VER}" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"$(cat \\\"$BASE_DIR/VERSION\\\" 2>/dev/null || echo \"" v "\")\""; next}1' lib/init.sh > lib/init.sh.tmp && mv lib/init.sh.tmp lib/init.sh
+    rm -f "$tmp"
+    echo "==> No printf fallback found; inserting conservative VER fallback near top"
+    tmp="$(mktemp lib.init.insert.tmp.XXXXXX)"
+    awk -v v="$NEW_VER" 'NR==1{print; print "# (Inserted VER fallback)"; print "VER=\"'"$NEW_VER"'\""; next}1' lib/init.sh > "$tmp" && mv "$tmp" lib/init.sh
   fi
 
   # 3c: validate syntax; roll back on failure
@@ -120,32 +131,41 @@ if [ -f lib/init.sh ]; then
     exit 1
   fi
 
-  rm -f lib/init.sh.bak
+  rm -f lib/init.sh.bak || true
   git add lib/init.sh
 else
   echo "==> lib/init.sh not found; skipping init version update"
 fi
 
-# Step 4: promote [Unreleased] in CHANGELOG.md and reinsert a fresh one
-DATE=$(date +"%Y-%m-%d")
+# Step 4: promote [Unreleased] in docs/CHANGELOG.md and reinsert a fresh one
+DATE="$(date +"%Y-%m-%d")"
+CHANGELOG_PATH="docs/CHANGELOG.md"
 
-if [ -f CHANGELOG.md ] && grep -q '^## 
+if [ -f "$CHANGELOG_PATH" ] && grep -q '^## 
 
 \[Unreleased\]
 
-' CHANGELOG.md 2>/dev/null; then
+' "$CHANGELOG_PATH" 2>/dev/null; then
   echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
+  tmp="$(mktemp changelog.tmp.XXXXXX)"
   awk -v ver="$NEW_VER" -v date="$DATE" '
     BEGIN { promoted = 0 }
-    promoted == 0 && index($0, "## [Unreleased]") == 1 {
-      print "## v" ver " - " date
-      promoted = 1
-      next
+    {
+      if (!promoted && $0 ~ /^## 
+
+\[Unreleased\]
+
+/) {
+        print "## v" ver " - " date
+        promoted = 1
+        next
+      }
+      print
     }
-    { print }
-  ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+  ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
 else
   echo "==> No [Unreleased] section found, creating new entries"
+  tmp="$(mktemp changelog.tmp.XXXXXX)"
   {
     echo "## [Unreleased]"
     echo ""
@@ -153,11 +173,11 @@ else
     echo ""
     git log --pretty=format:"* %s" --no-merges
     echo ""
-    cat CHANGELOG.md 2>/dev/null || true
-  } > CHANGELOG.tmp
-  mv CHANGELOG.tmp CHANGELOG.md
+    cat "$CHANGELOG_PATH" 2>/dev/null || true
+  } > "$tmp"
+  mv "$tmp" "$CHANGELOG_PATH"
 fi
-git add CHANGELOG.md
+git add "$CHANGELOG_PATH"
 
 # Step 5: build dist tarball BEFORE committing so artifacts are included
 echo "==> Building dist tarball"
@@ -177,7 +197,7 @@ else
   echo "Nothing to commit"
 fi
 
-# Create annotated tag for the release (overwrite if tag already exists locally)
+# Create annotated tag for the release (handle local and remote conflicts)
 if git rev-parse "refs/tags/v${NEW_VER}" >/dev/null 2>&1; then
   git tag -d "v${NEW_VER}" || true
 fi
@@ -192,28 +212,39 @@ if [ "$CURRENT_BRANCH" = "HEAD" ] || [ -z "$CURRENT_BRANCH" ]; then
   CURRENT_BRANCH="${RELEASE_BRANCH}"
 fi
 
-# Step 7: push commit and tag to origin
+# Step 7: push commit and tag to origin with safety for existing remote tag
 echo "==> Pushing commit and tag to origin (branch: ${CURRENT_BRANCH})"
+
+# If remote tag exists, require FORCE_TAG_UPDATE=1 to overwrite
+if git ls-remote --tags origin "refs/tags/v${NEW_VER}" | grep -q "refs/tags/v${NEW_VER}"; then
+  if [ "${FORCE_TAG_UPDATE:-0}" = "1" ]; then
+    echo "==> Remote tag exists; deleting remote tag (FORCE_TAG_UPDATE=1)"
+    git push --delete origin "v${NEW_VER}" || true
+  else
+    echo "ERROR: remote tag v${NEW_VER} already exists; set FORCE_TAG_UPDATE=1 to overwrite"
+    exit 1
+  fi
+fi
+
 git push origin "${CURRENT_BRANCH}"
 git push origin "v${NEW_VER}"
 
 # Step 8: generate grouped changelog notes for GitHub release
 echo "==> Generating grouped changelog notes"
 CHANGELOG=""
-
 add_section() {
   local type="$1"
   local title="$2"
   local entries
-  entries=$(git log "${LAST_TAG}"..HEAD --grep="^${type}" --pretty=format:"* %s" --no-merges || true)
+  entries="$(git log "${LAST_TAG}"..HEAD --grep="^${type}" --pretty=format:"* %s" --no-merges || true)"
   if [ -n "$entries" ]; then
     CHANGELOG="${CHANGELOG}\n### ${title}\n${entries}\n"
   fi
 }
 
-LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
 if [ -z "$LAST_TAG" ]; then
-  LAST_TAG=$(git rev-list --max-parents=0 HEAD)
+  LAST_TAG="$(git rev-list --max-parents=0 HEAD)"
 fi
 
 add_section "feat:" "Features"
@@ -224,7 +255,7 @@ add_section "refactor:" "Refactoring"
 add_section "test:" "Tests"
 
 if [ -z "$CHANGELOG" ]; then
-  CHANGELOG=$(git log "${LAST_TAG}"..HEAD --pretty=format:"* %s" --no-merges)
+  CHANGELOG="$(git log "${LAST_TAG}"..HEAD --pretty=format:"* %s" --no-merges)"
 fi
 
 # Step 9: create GitHub release via REST API if token present and upload artifact
@@ -239,13 +270,14 @@ if [ -n "$GHTOKEN" ]; then
     REPO="$(echo "$ORIGIN_URL" | sed -n 's#.*github.com[:/]\([^/]*\)/\([^/.]*\)\(\.git\)\?$#\1/\2#p')"
   fi
 
-  NOTES="$(printf "%b\n" "$CHANGELOG" | sed 's/"/\\"/g')"
+  # Escape double quotes in notes
+  NOTES="$(printf "%b" "$CHANGELOG" | sed 's/"/\\"/g')"
   PRERELEASE_JSON=false
   DRAFT_JSON=false
   if [ -n "$PRERELEASE_FLAG" ]; then PRERELEASE_JSON=true; fi
   if [ -n "$DRAFT_FLAG" ]; then DRAFT_JSON=true; fi
 
-  read -r -d '' PAYLOAD <<EOF || true
+  PAYLOAD=$(cat <<EOF
 {
   "tag_name":"v${NEW_VER}",
   "name":"v${NEW_VER}",
@@ -254,8 +286,10 @@ if [ -n "$GHTOKEN" ]; then
   "prerelease": ${PRERELEASE_JSON}
 }
 EOF
+)
 
-  HTTP_STATUS="$(curl -s -o /tmp/gh_release_response.json -w "%{http_code}" -X POST "https://api.github.com/repos/${REPO}/releases" \
+  resp="$(mktemp)"
+  HTTP_STATUS="$(curl -s -o "$resp" -w "%{http_code}" -X POST "https://api.github.com/repos/${REPO}/releases" \
     -H "Authorization: token ${GHTOKEN}" \
     -H "Content-Type: application/json" \
     -d "${PAYLOAD}")"
@@ -263,7 +297,12 @@ EOF
   if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
     echo "==> GitHub release created successfully"
     if [ -f "dist/checksums-${NEW_VER}.tar.gz" ]; then
-      UPLOAD_URL="$(jq -r '.upload_url' /tmp/gh_release_response.json | sed -e 's/{?name,label}//')"
+      if command -v jq >/dev/null 2>&1; then
+        UPLOAD_URL="$(jq -r '.upload_url // empty' "$resp" | sed -e 's/{?name,label}//')"
+      else
+        UPLOAD_URL="$(sed -n 's/.*"upload_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$resp" | sed -e 's/{?name,label}//')"
+      fi
+
       if [ -n "$UPLOAD_URL" ] && [ "$UPLOAD_URL" != "null" ]; then
         echo "==> Uploading dist/checksums-${NEW_VER}.tar.gz"
         curl --silent --output /dev/null -X POST "${UPLOAD_URL}?name=checksums-${NEW_VER}.tar.gz" \
@@ -278,10 +317,11 @@ EOF
       echo "==> dist/checksums-${NEW_VER}.tar.gz not found; skipping asset upload"
     fi
   else
-    echo "==> GitHub release creation failed (status: $HTTP_STATUS); response saved to /tmp/gh_release_response.json"
+    echo "==> GitHub release creation failed (status: $HTTP_STATUS); response saved to $resp"
     echo "Response preview:"
-    head -n 100 /tmp/gh_release_response.json || true
+    head -n 200 "$resp" || true
   fi
+  rm -f "$resp"
 else
   echo "==> No GH_TOKEN/GITHUB_TOKEN provided; skipping API release step"
   echo "Changelog for v${NEW_VER}:"

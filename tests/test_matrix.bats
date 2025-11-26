@@ -1,5 +1,12 @@
 #!/usr/bin/env bats
 
+# Guard: ensure this file is executed by the Bats harness, not a plain shell.
+# If the test is accidentally executed by /bin/sh or bash, exit with a clear error.
+if [ -z "${BATS_VERSION:-}" ]; then
+  echo "ERROR: tests/test_matrix.bats must be run with 'bats' (bats-core). Aborting." >&2
+  exit 2
+fi
+
 # tests/test_matrix.bats
 # Integration test matrix for checksums.sh
 # - All runs use -y to skip the interactive prompt.

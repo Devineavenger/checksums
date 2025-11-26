@@ -5,6 +5,14 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,17 +22,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Set up Bats (for tests)
-        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats-core shellcheck make jq
 
       - name: Run pre-flight checks
         run: make check
 
       - name: Capture changelog preview
         id: changelog
+        continue-on-error: true
         run: |
-          preview="$(make changelog)"
+          preview="$(make changelog 2>/dev/null || true)"
           preview="${preview//'%'/'%25'}"
           preview="${preview//$'\n'/'%0A'}"
           preview="${preview//$'\r'/'%0D'}"
@@ -48,9 +60,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
-      - name: Set up dependencies
-        run: sudo apt-get update && sudo apt-get install -y bats shellcheck make
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats-core shellcheck make jq
 
       - name: Generate draft changelog
         run: make changelog-draft
@@ -58,5 +73,6 @@ jobs:
       - name: Commit draft changelog
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update CHANGELOG.md with draft entries"
+          commit_message: "chore: update docs/CHANGELOG.md with draft entries"
           branch: ${{ github.head_ref }}
+          file_pattern: docs/CHANGELOG.md

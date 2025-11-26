@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
+# Copyright (c) 2025 Alexandru Barbu
+#
+# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
+# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
+#
+# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
+# arising from its use.
+
 # planner.sh
 # shellcheck source=lib/init.sh
 # shellcheck source=lib/meta.sh

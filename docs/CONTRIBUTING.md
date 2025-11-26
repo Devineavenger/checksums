@@ -59,7 +59,7 @@ This project welcomes improvements, but please follow these rules so everything 
    CI will:
    - Run tests and lint  
    - Post a changelog preview as a PR comment  
-   - Auto-update `CHANGELOG.md` with draft entries  
+   - Auto-update `docs/CHANGELOG.md` with draft entries  
 
 ---
 
