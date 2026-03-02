@@ -2,6 +2,15 @@
 
 ## v3.9.2 - 2026-03-02
 
+### Documentation
+* docs: changelog for v3.9.2
+
+### Chores
+* chore: auto-generate changelog from commits when [Unreleased] is empty
+
+
+## v3.9.2 - 2026-03-02
+
 ### Changes
 * chore: release.sh — auto-populate [Unreleased] from conventional commits when section is empty; no manual changelog commit needed before make release
 
