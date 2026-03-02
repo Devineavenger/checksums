@@ -2,6 +2,8 @@
 
 ## v3.9.3 - 2026-03-02
 
+## v3.9.3 - 2026-03-02
+
 ### Fixes
 * fix: release.sh — record PREV_TAG before new tag is created; exclude CI tags from baseline
 
