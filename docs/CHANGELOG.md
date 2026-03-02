@@ -2,6 +2,8 @@
 
 ## v3.9.2 - 2026-03-02
 
+## v3.9.2 - 2026-03-02
+
 ### Documentation
 * docs: changelog for v3.9.2
 
