@@ -4,6 +4,8 @@
 
 ## v3.9.1 - 2026-03-02
 
+## v3.9.1 - 2026-03-02
+
 ### Fixes
 * fix: args.sh — add pre-scan loop before getopts so config file is loaded before CLI flags are parsed; CLI flags now always override config values
 
