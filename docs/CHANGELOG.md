@@ -2,6 +2,8 @@
 
 ## v3.9.0 - 2026-03-02
 
+## v3.9.0 - 2026-03-02
+
 ### Fixes
 * fix: stat.sh — split STAT_FLAG from format string; stat fields are now clean integers with no leading whitespace
 * fix: process.sh — flush last partial batch to worker before waiting; all files in a directory are now hashed in parallel
