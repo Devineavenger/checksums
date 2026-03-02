@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## v3.9.3 - 2026-03-02
+
+### Fixes
+* fix: release.sh — record PREV_TAG before new tag is created; use --exclude '*-*' so CI tags (v3.9.x-ciN) are never used as the commit baseline; auto-changelog and grouped notes now always reference the correct previous release
+* fix: Makefile — replace echo -n with printf for POSIX portability; add missing closing quote on addheaders-recursive help line
+
 ## v3.9.2 - 2026-03-02
 
 ## v3.9.2 - 2026-03-02
