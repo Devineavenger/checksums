@@ -66,7 +66,7 @@ ci: lint tests
 	@echo "✅ Local CI checks passed"
 
 version:
-	@echo -n "checksums version: "
+	@printf 'checksums version: '
 	@if [ -f $(VERSION_FILE) ]; then cat $(VERSION_FILE); \
 	else grep -m1 '^# Version:' $(MAIN_SCRIPT) | awk '{print $$3}'; fi
 
@@ -179,4 +179,4 @@ help:
 	@echo "  make newfile FILE=...      - Create new file with license header"
 	@echo "  make addheader FILE=...    - Prepend license header to one file"
 	@echo "  make addheaders DIR=...    - Prepend license header to all files in a directory"
-	@echo "  make addheaders-recursive DIR=... - Prepend license header to all .md/.sh/Makefile files recursively
+	@echo "  make addheaders-recursive DIR=... - Prepend license header to all .md/.sh/Makefile files recursively"

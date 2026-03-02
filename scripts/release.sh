@@ -70,6 +70,14 @@ if [ -n "$(git status --porcelain)" ]; then
   git add -A
 fi
 
+# Record the previous release tag before we create the new one.
+# --exclude '*-*' skips CI tags (e.g. v3.9.1-ci80) so only clean semver
+# tags (v3.9.1) are considered. Used in Step 4 (auto-changelog baseline)
+# and Step 8 (grouped notes) to get the correct commit range.
+PREV_TAG="$(git describe --tags --abbrev=0 --exclude '*-*' 2>/dev/null \
+  || git rev-list --max-parents=0 HEAD 2>/dev/null || true)"
+echo "==> Previous release tag: ${PREV_TAG:-none (first release)}"
+
 # If no version argument provided, derive from VERSION file or latest tag
 if [ -z "$NEW_VER" ]; then
   if [ -f VERSION ]; then
@@ -202,7 +210,7 @@ if [ -f "$CHANGELOG_PATH" ]; then
   # This lets you run "make release NEW_VER=x.y.z" without writing or committing
   # the changelog first; entries are generated from conventional-commit prefixes.
   # If you have manually written content under [Unreleased], it is used as-is.
-  _last_tag="$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD 2>/dev/null || true)"
+  _last_tag="${PREV_TAG:-$(git rev-list --max-parents=0 HEAD 2>/dev/null || true)}"
   _unreleased_body="$(awk '
     /^## \[Unreleased\]/ { found=1; next }
     found && /^## /      { exit }
@@ -359,10 +367,7 @@ add_section() {
   fi
 }
 
-LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
-if [ -z "$LAST_TAG" ]; then
-  LAST_TAG="$(git rev-list --max-parents=0 HEAD)"
-fi
+LAST_TAG="${PREV_TAG:-$(git rev-list --max-parents=0 HEAD 2>/dev/null || true)}"
 
 add_section "feat:" "Features"
 add_section "fix:" "Fixes"
