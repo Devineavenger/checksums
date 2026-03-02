@@ -147,11 +147,13 @@ init_batch_thresholds() {
       high_bytes="$(_to_bytes "$high")"
       case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
 
-      # Store open-ended as "<high_bytes>-"
+      # Store open-ended as ">$high_bytes" so the classify_batch_size lookup's
+      # ">"* case branch can match it. The previous format "$high_bytes-" matched
+      # the "*-*" branch instead, where ${key##*-} is empty → rule was skipped.
       if declare -p -A >/dev/null 2>&1; then
-        BATCH_THRESHOLDS["$high_bytes-"]="$count"
+        BATCH_THRESHOLDS[">$high_bytes"]="$count"
       else
-        THRESHOLDS_LIST+="$high_bytes- $count"$'\n'
+        THRESHOLDS_LIST+="> $high_bytes $count"$'\n'
       fi
 
     else
@@ -423,7 +425,8 @@ process_single_directory() {
   fi
 
   _proc_cleanup() {
-    rm -f -- "${tmp_sum:-}" "${tmp_meta:-}" "${results_file:-}" 2>/dev/null || true
+    rm -f -- "${tmp_sum:-}" "${tmp_meta:-}" 2>/dev/null || true
+    [ -n "${results_dir:-}" ] && rm -rf -- "${results_dir}" 2>/dev/null || true
   }
 
   declare -A path_to_hash path_to_inode path_to_meta
@@ -556,6 +559,21 @@ process_single_directory() {
       fi
     fi
   done
+
+  # Flush any remaining files that did not fill the last batch threshold.
+  # Without this, the last partial batch is never dispatched to a worker and
+  # those files fall through to sequential file_hash() fallback calls, silently
+  # defeating parallelism for every directory whose file count isn't an exact
+  # multiple of the batch size (i.e. almost every directory).
+  if (( DRY_RUN == 0 )) && [ "${#batch_files[@]}" -gt 0 ]; then
+    _par_maybe_wait
+    local worker_out="$results_dir/batch_${batch_id}.out"
+    _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+    HASH_PIDS+=("$!")
+    HASH_PIDS_COUNT=${#HASH_PIDS[@]}
+    batch_files=()
+    batch_id=$((batch_id+1))
+  fi
 
   if (( DRY_RUN == 0 )); then
     _par_wait_all

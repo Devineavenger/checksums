@@ -76,12 +76,6 @@ run_checksums() {
   cd - >/dev/null 2>&1 || true
   if [ "$TARGET_DIR" = "/" ]; then
     _global_log 0 "Refusing to run on system root"
-    # Redirect run log to current working dir if root
-    if [ -n "$RUN_LOG" ]; then
-      safe_log="${PWD}/${LOG_BASE:-$BASE_NAME}.run.log"
-      echo "Refusing to run on system root" >> "$safe_log"
-      RUN_LOG="$safe_log"
-    fi
     return 1
   fi
 
@@ -125,6 +119,18 @@ run_checksums() {
   # Build exclusions again after CLI/config to reflect any changes to BASE_NAME/LOG_BASE.
   # This keeps derived basenames aligned with user-provided flags.
   build_exclusions
+
+  # Re-sync RUN_LOG after config may have changed BASE_NAME or LOG_BASE.
+  # The initial RUN_LOG was created before config was sourced, so its path may
+  # now be wrong. If the correct path differs, remove the orphaned file and
+  # (re)create the log at the right location.
+  local _correct_run_log="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
+  if [ "$_correct_run_log" != "$RUN_LOG" ]; then
+    rm -f "$RUN_LOG" 2>/dev/null || true
+    RUN_LOG="$_correct_run_log"
+    LOG_FILEPATH="$RUN_LOG"
+    : > "$RUN_LOG" 2>/dev/null || true
+  fi
 
   # Initialize adaptive batch thresholds once per run to avoid repeated numfmt conversions.
   # This reduces overhead when classifying batch sizes for many files.

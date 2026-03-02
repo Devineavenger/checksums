@@ -58,7 +58,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p b o y V h K
-  while getopts "f:a:m:l:ndvrRFC:p:b:o:yVhKzb:-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:b:o:yVhKz-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)

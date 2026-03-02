@@ -19,30 +19,38 @@
 # Combined format string: fetch inode, dev, mtime, size in a single stat call.
 # This reduces per-file subprocess overhead (4 calls -> 1 call).
 STAT_STYLE=""     # "gnu" or "bsd" or "fallback"
-STAT_FMT=""       # combined format string for inode:dev:mtime:size
-STAT_INODE=""     # single-field formats retained for compatibility
+STAT_FLAG=""      # option flag: -c (GNU) or -f (BSD)
+STAT_FMT=""       # combined format string for inode:dev:mtime:size (no flag)
+STAT_INODE=""     # single-field format strings (no flag)
 STAT_DEV=""
 STAT_MTIME=""
 STAT_SIZE=""
 
 detect_stat() {
-  # Prefer feature probes over --version, but use the same format strings
+  # Prefer feature probes over --version, but use the same format strings.
+  # STAT_FLAG is stored separately from the format string so each call site
+  # passes them as two distinct arguments: stat "$STAT_FLAG" "$STAT_FMT" ...
+  # Bundling them into one variable and quoting it would pass a single arg
+  # with a leading space in the format, corrupting inode/dev parsing.
   if stat -c %i . >/dev/null 2>&1; then
     STAT_STYLE="gnu"
-    STAT_FMT="-c %i:%d:%Y:%s"
-    STAT_INODE="-c %i"
-    STAT_DEV="-c %d"
-    STAT_MTIME="-c %Y"
-    STAT_SIZE="-c %s"
+    STAT_FLAG="-c"
+    STAT_FMT="%i:%d:%Y:%s"
+    STAT_INODE="%i"
+    STAT_DEV="%d"
+    STAT_MTIME="%Y"
+    STAT_SIZE="%s"
   elif stat -f %i . >/dev/null 2>&1; then
     STAT_STYLE="bsd"
-    STAT_FMT="-f %i:%d:%m:%z"
-    STAT_INODE="-f %i"
-    STAT_DEV="-f %d"
-    STAT_MTIME="-f %m"
-    STAT_SIZE="-f %z"
+    STAT_FLAG="-f"
+    STAT_FMT="%i:%d:%m:%z"
+    STAT_INODE="%i"
+    STAT_DEV="%d"
+    STAT_MTIME="%m"
+    STAT_SIZE="%z"
   else
     STAT_STYLE="fallback"
+    STAT_FLAG=""
     STAT_FMT=""
   fi
   dbg "Detected stat style: $STAT_STYLE"
@@ -66,7 +74,7 @@ stat_all_fields() {
   case "$STAT_STYLE" in
     gnu|bsd)
       local out inode dev mtime size
-      out=$(stat "$STAT_FMT" -- "$file" 2>/dev/null) || out=""
+      out=$(stat "$STAT_FLAG" "$STAT_FMT" -- "$file" 2>/dev/null) || out=""
       if [ -z "$out" ]; then
         inode=$(stat_field "$file" inode 2>/dev/null || echo 0)
         dev=$(stat_field   "$file" dev   2>/dev/null || echo 0)
@@ -96,10 +104,10 @@ stat_all_fields() {
 stat_field() {
   local file="$1" field="$2"
   case "$field" in
-    inode) stat "$STAT_INODE" -- "$file" 2>/dev/null ;;
-    dev)   stat "$STAT_DEV"   -- "$file" 2>/dev/null ;;
-    mtime) stat "$STAT_MTIME" -- "$file" 2>/dev/null ;;
-    size)  stat "$STAT_SIZE"  -- "$file" 2>/dev/null ;;
+    inode) stat "$STAT_FLAG" "$STAT_INODE" -- "$file" 2>/dev/null ;;
+    dev)   stat "$STAT_FLAG" "$STAT_DEV"   -- "$file" 2>/dev/null ;;
+    mtime) stat "$STAT_FLAG" "$STAT_MTIME" -- "$file" 2>/dev/null ;;
+    size)  stat "$STAT_FLAG" "$STAT_SIZE"  -- "$file" 2>/dev/null ;;
     *) echo "unknown field '$field'" >&2; return 1 ;;
   esac
 }

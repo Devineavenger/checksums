@@ -4,14 +4,32 @@ load '../lib/logging.sh'
 load '../lib/tools.sh'
 load '../lib/stat.sh'
 load '../lib/compat.sh'
+load '../lib/hash.sh'
+load '../lib/fs.sh'
+load '../lib/meta.sh'
+load '../lib/first_run.sh'
+load '../lib/planner.sh'
+load '../lib/process.sh'
 load '../lib/orchestrator.sh'
 
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
+  MD5_FILENAME="${BASE_NAME}.md5"
+  META_FILENAME="${BASE_NAME}.meta"
+  LOG_FILENAME="${BASE_NAME}.log"
+  LOG_BASE=""
   TARGET_DIR="$TMPDIR"
   VERBOSE=2
   log_level=3
+  RUN_LOG=""
+  LOG_FILEPATH=""
+  errors=()
+  count_errors=0
+  detect_tools
+  detect_stat
+  check_bash_version
+  build_exclusions
 }
 
 teardown() {
@@ -38,4 +56,25 @@ teardown() {
     # In that case, assert the refusal message was emitted to output.
     echo "$output" | grep -q "Refusing to run on system root"
   fi
+}
+
+@test "run log uses correct name when config overrides BASE_NAME" {
+  NEW_BASE="myproject"
+  printf 'BASE_NAME="%s"\n' "$NEW_BASE" > "$TMPDIR/${BASE_NAME}.conf"
+  mkdir "$TMPDIR/sub"
+  echo "data" > "$TMPDIR/sub/data.txt"
+  YES=1
+  run run_checksums
+  # Log must exist under the name the config declared
+  [ -f "$TMPDIR/${NEW_BASE}.run.log" ]
+  # Orphaned log from the original BASE_NAME must not exist
+  [ ! -f "$TMPDIR/${BASE_NAME}.run.log" ]
+}
+
+@test "run log is created in TARGET_DIR with the expected name" {
+  mkdir "$TMPDIR/sub"
+  echo "data" > "$TMPDIR/sub/data.txt"
+  YES=1
+  run run_checksums
+  [ -f "$TMPDIR/${BASE_NAME}.run.log" ]
 }

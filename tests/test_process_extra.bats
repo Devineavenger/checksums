@@ -122,3 +122,75 @@ teardown() {
   run process_single_directory "$TMPDIR/missing"
   [ "$status" -ne 0 ]
 }
+
+@test "classify_batch_size returns count for file within a fixed range" {
+  BATCH_RULES="0-1M:20,>1M:3"
+  unset BATCH_THRESHOLDS THRESHOLDS_LIST 2>/dev/null || true
+  declare -gA BATCH_THRESHOLDS=() 2>/dev/null || THRESHOLDS_LIST=""
+  init_batch_thresholds
+  # 512 KB falls in the 0–1M range → expect 20
+  run classify_batch_size $((512 * 1024))
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 20 ]
+}
+
+@test "classify_batch_size returns count for file matching open-ended rule" {
+  BATCH_RULES="0-1M:20,>1M:3"
+  unset BATCH_THRESHOLDS THRESHOLDS_LIST 2>/dev/null || true
+  declare -gA BATCH_THRESHOLDS=() 2>/dev/null || THRESHOLDS_LIST=""
+  init_batch_thresholds
+  # 5 MB exceeds 1M → open-ended rule applies, expect 3
+  run classify_batch_size $((5 * 1024 * 1024))
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 3 ]
+}
+
+@test "classify_batch_size returns 1 when no rule matches" {
+  BATCH_RULES="0-1K:5"
+  unset BATCH_THRESHOLDS THRESHOLDS_LIST 2>/dev/null || true
+  declare -gA BATCH_THRESHOLDS=() 2>/dev/null || THRESHOLDS_LIST=""
+  init_batch_thresholds
+  # 10 MB — above 1K, no open-ended rule → default 1
+  run classify_batch_size $((10 * 1024 * 1024))
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
+}
+
+@test "all files in a partial-batch directory are hashed correctly" {
+  # batch_size for small files is 20; 3 files form a partial batch that must
+  # still be dispatched and produce valid hashes
+  for i in 1 2 3; do printf 'content%d' "$i" > "$TMPDIR/file${i}.txt"; done
+  PARALLEL_JOBS=2
+  PER_FILE_ALGO="md5"
+  META_SIG_ALGO="sha256"
+  process_single_directory "$TMPDIR"
+  [ -f "$TMPDIR/$MD5_FILENAME" ]
+  grep -q "file1.txt" "$TMPDIR/$MD5_FILENAME"
+  grep -q "file2.txt" "$TMPDIR/$MD5_FILENAME"
+  grep -q "file3.txt" "$TMPDIR/$MD5_FILENAME"
+  # No entry should have an empty hash (two consecutive spaces followed by ./)
+  ! grep -qP '^  \.' "$TMPDIR/$MD5_FILENAME" 2>/dev/null || ! grep -q '^  \.' "$TMPDIR/$MD5_FILENAME"
+}
+
+@test "hashes written to manifest match direct file_hash output" {
+  printf 'hello world\n' > "$TMPDIR/a.txt"
+  printf 'foo bar\n'     > "$TMPDIR/b.txt"
+  PARALLEL_JOBS=2
+  PER_FILE_ALGO="md5"
+  META_SIG_ALGO="sha256"
+  process_single_directory "$TMPDIR"
+  expected_a=$(file_hash "$TMPDIR/a.txt" md5)
+  expected_b=$(file_hash "$TMPDIR/b.txt" md5)
+  grep -q "$expected_a" "$TMPDIR/$MD5_FILENAME"
+  grep -q "$expected_b" "$TMPDIR/$MD5_FILENAME"
+}
+
+@test "no hash results temp directory is left after processing completes" {
+  echo "hello" > "$TMPDIR/file.txt"
+  PARALLEL_JOBS=1
+  PER_FILE_ALGO="md5"
+  META_SIG_ALGO="sha256"
+  process_single_directory "$TMPDIR"
+  leaked=$(find /tmp -maxdepth 2 -type d -name 'hash_results_dir.*' 2>/dev/null | wc -l)
+  [ "$leaked" -eq 0 ]
+}

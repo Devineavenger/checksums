@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+## v3.9.0 - 2026-03-02
+
+### Fixes
+* fix: stat.sh — split STAT_FLAG from format string; stat fields are now clean integers with no leading whitespace
+* fix: process.sh — flush last partial batch to worker before waiting; all files in a directory are now hashed in parallel
+* fix: process.sh — open-ended batch rules (>HIGH:N) now stored and matched correctly in classify_batch_size
+* fix: args.sh — remove duplicate -b: entry in getopts optstring
+* fix: orchestrator.sh — re-sync RUN_LOG after config may override BASE_NAME/LOG_BASE; no orphaned log files
+* fix: orchestrator.sh — remove dead log-redirect block inside root guard (RUN_LOG was always empty there)
+* fix: process.sh — _proc_cleanup now removes results_dir and no longer references undefined results_file
+
+### Tests
+* test: test_stats.bats — stat_field and stat_all_fields return pure integers with no leading whitespace
+* test: test_process_extra.bats — classify_batch_size fixed/open-ended/fallback rule coverage; partial-batch hashing correctness; temp dir cleanup
+* test: test_orchestrator.bats — run log uses correct name when config overrides BASE_NAME
+
 ## v3.8.9 - 2025-11-26
 
 ## v3.8.9 - 2025-11-26
