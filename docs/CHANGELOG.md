@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## v3.9.1 - 2026-03-02
+
+### Fixes
+* fix: args.sh — add pre-scan loop before getopts so config file is loaded before CLI flags are parsed; CLI flags now always override config values
+
+### Tests
+* test: test_orchestrator.bats — call parse_args before run_checksums in config-override test to match corrected execution order; add usage.sh and args.sh loads
+
 ## v3.9.0 - 2026-03-02
 
 ## v3.9.0 - 2026-03-02
