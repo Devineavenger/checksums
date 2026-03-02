@@ -172,7 +172,7 @@ help:
 	@echo "  make check                 - Run lint + test + changelog preview"
 	@echo "  make version               - Print current tool version"
 	@echo "  make dist                  - Build a versioned tarball in ./dist/"
-	@echo "  make release NEW_VER=x.y.z - Run ./scripts/release.sh with given version"
+	@echo "  make release NEW_VER=x.y.z - Cut a release; changelog auto-generated from commits if [Unreleased] is empty"
 	@echo "  make changelog             - Preview changelog entries since last tag"
 	@echo "  make changelog-draft       - Insert draft changelog into docs/CHANGELOG.md"
 	@echo "  make clean                 - Remove dist/ and temp files"

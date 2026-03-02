@@ -198,6 +198,43 @@ DATE="$(date +"%Y-%m-%d")"
 CHANGELOG_PATH="docs/CHANGELOG.md"
 
 if [ -f "$CHANGELOG_PATH" ]; then
+  # Auto-populate [Unreleased] from commits if the section has no content.
+  # This lets you run "make release NEW_VER=x.y.z" without writing or committing
+  # the changelog first; entries are generated from conventional-commit prefixes.
+  # If you have manually written content under [Unreleased], it is used as-is.
+  _last_tag="$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD 2>/dev/null || true)"
+  _unreleased_body="$(awk '
+    /^## \[Unreleased\]/ { found=1; next }
+    found && /^## /      { exit }
+    found                { print }
+  ' "$CHANGELOG_PATH" | tr -d " \t\n\r")"
+
+  if [ -z "$_unreleased_body" ] && [ -n "$_last_tag" ]; then
+    echo "==> [Unreleased] is empty; auto-generating notes from commits since ${_last_tag}"
+    _auto_notes=""
+    for _spec in "feat:;Features" "fix:;Fixes" "docs:;Documentation" "test:;Tests" "chore:;Chores" "refactor:;Refactoring"; do
+      _prefix="${_spec%%;*}"
+      _title="${_spec##*;}"
+      _entries="$(git log "${_last_tag}..HEAD" --grep="^${_prefix}" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
+      if [ -n "$_entries" ]; then
+        _auto_notes="${_auto_notes}### ${_title}"$'\n'"${_entries}"$'\n\n'
+      fi
+    done
+    if [ -z "$_auto_notes" ]; then
+      # No conventional-commit prefixes — list every commit
+      _all="$(git log "${_last_tag}..HEAD" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
+      [ -n "$_all" ] && _auto_notes="${_all}"$'\n'
+    fi
+    if [ -n "$_auto_notes" ]; then
+      tmp="$(mktemp changelog.tmp.XXXXXX)"
+      awk -v notes="$_auto_notes" '
+        /^## \[Unreleased\]/ { print; print ""; printf "%s", notes; inserted=1; next }
+        { print }
+      ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+      echo "==> Auto-generated changelog notes inserted under [Unreleased]"
+    fi
+  fi
+
   echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
   tmp="$(mktemp changelog.tmp.XXXXXX)"
   # Use index() instead of /.../ regex delimiters to avoid unterminated-regexp issues
