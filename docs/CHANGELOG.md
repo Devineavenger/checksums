@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## v3.9.2 - 2026-03-02
+
+### Changes
+* chore: release.sh — auto-populate [Unreleased] from conventional commits when section is empty; no manual changelog commit needed before make release
+
 ## v3.9.1 - 2026-03-02
 
 ## v3.9.1 - 2026-03-02
