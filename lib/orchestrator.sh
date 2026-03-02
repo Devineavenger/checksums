@@ -90,24 +90,6 @@ run_checksums() {
     fi
   fi
 
-  # Load config before parsing CLI so CLI overrides config values.
-  if [ -n "$CONFIG_FILE" ]; then
-    if [ -f "$CONFIG_FILE" ]; then
-      log "Loading config from explicit file $CONFIG_FILE"
-      # shellcheck source=/dev/null
-      . "$CONFIG_FILE"
-    else
-      fatal "Config file specified but not found: $CONFIG_FILE"
-    fi
-  else
-    DEFAULT_CONF="$TARGET_DIR/${BASE_NAME}.conf"
-    if [ -f "$DEFAULT_CONF" ]; then
-      log "Loading config from default $DEFAULT_CONF"
-      # shellcheck source=/dev/null
-      . "$DEFAULT_CONF"
-    fi
-  fi
-
   # NOTE: Exclusion globals (MD5_EXCL/META_EXCL/LOG_EXCL/etc.) are required by fs helpers.
   # Ensure they are initialized even if build_exclusions hasn't run yet. This prevents
   # unset-variable issues when helpers are called before the standard build step.
@@ -116,21 +98,9 @@ run_checksums() {
     build_exclusions
   fi
 
-  # Build exclusions again after CLI/config to reflect any changes to BASE_NAME/LOG_BASE.
-  # This keeps derived basenames aligned with user-provided flags.
+  # Refresh exclusions to reflect the final BASE_NAME/LOG_BASE values (set by
+  # parse_args, which loads config then applies CLI flags in the correct order).
   build_exclusions
-
-  # Re-sync RUN_LOG after config may have changed BASE_NAME or LOG_BASE.
-  # The initial RUN_LOG was created before config was sourced, so its path may
-  # now be wrong. If the correct path differs, remove the orphaned file and
-  # (re)create the log at the right location.
-  local _correct_run_log="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
-  if [ "$_correct_run_log" != "$RUN_LOG" ]; then
-    rm -f "$RUN_LOG" 2>/dev/null || true
-    RUN_LOG="$_correct_run_log"
-    LOG_FILEPATH="$RUN_LOG"
-    : > "$RUN_LOG" 2>/dev/null || true
-  fi
 
   # Initialize adaptive batch thresholds once per run to avoid repeated numfmt conversions.
   # This reduces overhead when classifying batch sizes for many files.

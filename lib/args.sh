@@ -49,6 +49,82 @@ parse_args() {
   # initialized in lib/init.sh. This function should only parse CLI options and
   # apply overrides. Do not re-declare global defaults here to avoid surprising
   # overrides and to keep a single source of truth for runtime defaults.
+
+  # -------------------------
+  # Config pre-scan (must run before getopts)
+  # -------------------------
+  # We need TARGET_DIR and --config before the getopts loop so that the config
+  # file is sourced here — BEFORE getopts processes CLI flags. This guarantees
+  # that every CLI flag set by getopts overrides whatever the config file set,
+  # rather than the other way around.
+  #
+  # We also pick up -f/--base-name so a custom BASE_NAME is reflected in the
+  # default config path ($TARGET_DIR/${BASE_NAME}.conf).
+  #
+  # Only the two-token forms (-f VALUE, --base-name VALUE, --config VALUE) and
+  # the single-token = form (--config=VALUE, --base-name=VALUE) are handled.
+  # The rare concatenated form (-fVALUE) is not detected here; callers relying
+  # on that form for the default config path should use --config explicitly.
+  local _pi=1 _prescan_config="" _prescan_target=""
+  while [ "$_pi" -le "$#" ]; do
+    local _pa="${!_pi}"
+    case "$_pa" in
+      --config)
+        _pi=$(( _pi + 1 )); _prescan_config="${!_pi:-}"
+        ;;
+      --config=*)
+        _prescan_config="${_pa#--config=}"
+        ;;
+      -f)
+        _pi=$(( _pi + 1 )); BASE_NAME="${!_pi:-$BASE_NAME}"
+        ;;
+      --base-name)
+        _pi=$(( _pi + 1 )); BASE_NAME="${!_pi:-$BASE_NAME}"
+        ;;
+      --base-name=*)
+        BASE_NAME="${_pa#--base-name=}"
+        ;;
+      # Flags that consume the next token as their value — skip that token so
+      # a value that looks like a path is not mistaken for TARGET_DIR.
+      -a|-m|-l|-C|-p|-b|-o| \
+      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--batch|--output|--log-format)
+        _pi=$(( _pi + 1 ))
+        ;;
+      --)
+        # End-of-options sentinel — next token is TARGET_DIR
+        _pi=$(( _pi + 1 ))
+        [ "$_pi" -le "$#" ] && _prescan_target="${!_pi}"
+        break
+        ;;
+      -*)
+        # Single-token flag with no argument to consume
+        ;;
+      *)
+        # Positional argument — last one wins as TARGET_DIR candidate
+        _prescan_target="$_pa"
+        ;;
+    esac
+    _pi=$(( _pi + 1 ))
+  done
+
+  # Load the config file now so getopts below can override its values with CLI flags.
+  # Explicit --config takes priority over the per-directory default.
+  if [ -n "$_prescan_config" ]; then
+    CONFIG_FILE="$_prescan_config"
+    if [ -f "$CONFIG_FILE" ]; then
+      # shellcheck source=/dev/null
+      . "$CONFIG_FILE"
+    else
+      fatal "Config file specified but not found: $CONFIG_FILE"
+    fi
+  elif [ -n "$_prescan_target" ]; then
+    local _default_conf="$_prescan_target/${BASE_NAME}.conf"
+    if [ -f "$_default_conf" ]; then
+      # shellcheck source=/dev/null
+      . "$_default_conf"
+    fi
+  fi
+
   # -------------------------
   # getopts setup
   # -------------------------

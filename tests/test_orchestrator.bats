@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 load '../lib/init.sh'
 load '../lib/logging.sh'
+load '../lib/usage.sh'
+load '../lib/args.sh'
 load '../lib/tools.sh'
 load '../lib/stat.sh'
 load '../lib/compat.sh'
@@ -63,12 +65,17 @@ teardown() {
   printf 'BASE_NAME="%s"\n' "$NEW_BASE" > "$TMPDIR/${BASE_NAME}.conf"
   mkdir "$TMPDIR/sub"
   echo "data" > "$TMPDIR/sub/data.txt"
+  local _orig_base="$BASE_NAME"
+  # parse_args loads the config (changing BASE_NAME) then runs getopts so
+  # any CLI flags still win.  run_checksums then sees the already-resolved
+  # BASE_NAME and creates the run log with the correct name from the start.
   YES=1
+  parse_args "$TMPDIR"
   run run_checksums
   # Log must exist under the name the config declared
   [ -f "$TMPDIR/${NEW_BASE}.run.log" ]
   # Orphaned log from the original BASE_NAME must not exist
-  [ ! -f "$TMPDIR/${BASE_NAME}.run.log" ]
+  [ ! -f "$TMPDIR/${_orig_base}.run.log" ]
 }
 
 @test "run log is created in TARGET_DIR with the expected name" {
