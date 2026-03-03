@@ -2,6 +2,12 @@
 
 ## v3.9.7 - 2026-03-03
 
+### Fixes
+* fix: skip release workflow when push is already a release commit
+
+
+## v3.9.7 - 2026-03-03
+
 ## v3.9.7 - 2026-03-03
 
 ## v3.9.6 - 2026-03-03
