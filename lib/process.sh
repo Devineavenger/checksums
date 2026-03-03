@@ -681,6 +681,11 @@ process_single_directory() {
     rm -f "$MAP_old_path_by_inode" "$MAP_old_mtime" "$MAP_old_size" "$MAP_old_hash" "$MAP_inode_hash_cache" 2>/dev/null || true
   fi
 
+  # Clear stat cache to prevent unbounded memory growth across directories
+  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+    STAT_CACHE=()
+  fi
+
   log "Finished directory: $d"
   _proc_cleanup
   LOG_FILEPATH=""

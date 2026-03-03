@@ -206,11 +206,20 @@ decide_directories_plan() {
           emit_md5_detail "$d" "$vr"
         fi
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          # shellcheck disable=SC2154  # meta_mtime/meta_size defined in init.sh and populated by read_meta
+          # shellcheck disable=SC2154  # meta_mtime/meta_size/meta_inode_dev defined in init.sh and populated by read_meta
           if [ "${#meta_mtime[@]}" -gt 0 ]; then
             for p in "${!meta_mtime[@]}"; do
               if [ ! -e "$d/$p" ]; then changed=1; reason="meta-missing-path"; break; fi
-              if [ "$(stat_field "$d/$p" mtime)" != "${meta_mtime[$p]:-}" ] || [ "$(stat_field "$d/$p" size)" != "${meta_size[$p]:-}" ]; then changed=1; reason="meta-stat-changed"; break; fi
+              # Single stat_all_fields call (populates STAT_CACHE for processor reuse)
+              local _sl
+              _sl="$(stat_all_fields "$d/$p" 2>/dev/null)" || _sl=""
+              local _si _sd _sm _ss
+              IFS=$'\t' read -r _si _sd _sm _ss <<< "$_sl"
+              if [ "${_sm:-0}" != "${meta_mtime[$p]:-}" ] \
+                 || [ "${_ss:-0}" != "${meta_size[$p]:-}" ] \
+                 || [ "${_si:-0}:${_sd:-0}" != "${meta_inode_dev[$p]:-}" ]; then
+                changed=1; reason="meta-stat-changed"; break
+              fi
             done
           fi
         else
@@ -219,7 +228,15 @@ decide_directories_plan() {
             [ -z "$path" ] && continue
             case "$path" in \#meta|\#sig|\#run) continue ;; esac
             if [ ! -e "$d/$path" ]; then changed=1; reason="meta-missing-path"; break; fi
-            if [ "$(stat_field "$d/$path" mtime)" != "$mtime" ] || [ "$(stat_field "$d/$path" size)" != "$size" ]; then changed=1; reason="meta-stat-changed"; break; fi
+            local _sl
+            _sl="$(stat_all_fields "$d/$path" 2>/dev/null)" || _sl=""
+            local _si _sd _sm _ss
+            IFS=$'\t' read -r _si _sd _sm _ss <<< "$_sl"
+            if [ "${_sm:-0}" != "$mtime" ] \
+               || [ "${_ss:-0}" != "$size" ] \
+               || [ "${_si:-0}:${_sd:-0}" != "${_inode:-0}:${_dev:-0}" ]; then
+              changed=1; reason="meta-stat-changed"; break
+            fi
           done < "$metaf"
         fi
 

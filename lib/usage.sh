@@ -45,7 +45,8 @@ Hashing Options:
                      per-file checksum algorithm: md5 (default) or sha256
   -m ALGO, --meta-sig ALGO
                      meta signature algorithm: sha256 (default), md5, or none
-  -R, --no-reuse     disable reuse heuristics; always recompute file hashes
+  -R, --no-reuse     disable reuse heuristics; force rehash of all files
+                     (use with -r for a full forced rebuild)
   -p N, --parallel N number of parallel hashing jobs (default 1)
   -b RULES, --batch RULES
                      adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
