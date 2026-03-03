@@ -27,6 +27,14 @@ on:
 
 jobs:
   release:
+    # Skip when the triggering commit is itself a release commit (message starts with
+    # "Release v"). This prevents a push→CI→release→push→CI loop: when make release
+    # runs locally it pushes a "Release vX.Y.Z" commit which would otherwise trigger
+    # this workflow and produce a duplicate changelog entry + CI tag.
+    # workflow_dispatch runs are never skipped (github.event_name check ensures that).
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      !startsWith(github.event.head_commit.message, 'Release v')
     runs-on: ubuntu-latest
     env:
       # Provide token and default FORCE_TAG_UPDATE here so the script can read them
