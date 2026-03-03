@@ -2,6 +2,13 @@
 
 ## v3.9.10 - 2026-03-03
 
+### Documentation
+* docs: changelog for v3.9.10
+* docs: remove duplicate v3.9.8 heading (last CI bot artifact)
+
+
+## v3.9.10 - 2026-03-03
+
 ### Changes
 * chore: ci.yml — skip CI on "Release v" commits; tighten permissions to read-only; remove changelog-draft auto-commit job (side-effect prone); keep changelog preview as PR comment
 * chore: test.yml — remove push/PR triggers (duplicated ci.yml); keep nightly-only schedule with strict mode; run full test suite via run-bats.sh instead of test_matrix.bats alone
