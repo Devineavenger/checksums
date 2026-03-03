@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## v3.9.6 - 2026-03-03
+
+### Fixes
+* fix: resolve remaining codebase inconsistencies
+
+
 ## v3.9.5 - 2026-03-03
 
 ## v3.9.5 - 2026-03-03
