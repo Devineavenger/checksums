@@ -19,28 +19,34 @@ else
   CONVERTER="perl"
 fi
 
-# Patterns to convert
+# Patterns to convert (text source files only — no binaries or third-party files)
 patterns=(
   "*.bats"
   "*.sh"
   "Makefile"
   "*.yml"
   "*.bash"
-  "*.json"
-  "*.swp"
+  "*.md"
 )
 
-# Run conversion for each pattern, excluding .git
+# Run conversion for each pattern, excluding .git, dist, and third-party helpers
 for pat in "${patterns[@]}"; do
   if [ "$CONVERTER" = "dos2unix" ]; then
     # Use -print0 and xargs -0 to handle filenames with spaces/newlines
-    find . -type f -name "$pat" -not -path '*/.git/*' -print0 \
+    find . -type f -name "$pat" \
+      -not -path '*/.git/*' \
+      -not -path './dist/*' \
+      -not -path './tests/test_helper/*' \
+      -print0 \
       | xargs -0 --no-run-if-empty dos2unix --
   else
     # Perl fallback: replace CRLF with LF in-place
-    find . -type f -name "$pat" -not -path '*/.git/*' -print0 \
+    find . -type f -name "$pat" \
+      -not -path '*/.git/*' \
+      -not -path './dist/*' \
+      -not -path './tests/test_helper/*' \
+      -print0 \
       | while IFS= read -r -d '' file; do
-          # Use perl to convert CRLF -> LF safely
           perl -0777 -pe 's/\r\n/\n/g' -i -- "$file"
         done
   fi
