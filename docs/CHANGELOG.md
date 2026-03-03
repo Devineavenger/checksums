@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+## v3.9.11 - 2026-03-04
+
+### Fixes
+* fix: release.sh — guard against duplicate version headings in CHANGELOG
+
+### Documentation
+* docs: deduplicate v3.9.10 and v3.9.9 CHANGELOG headings
+
+
 ## v3.9.10 - 2026-03-03
 
 ### Changes
