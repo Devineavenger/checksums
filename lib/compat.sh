@@ -40,12 +40,12 @@ map_set() {
     with_lock "$mapfile.lock" sh -c '
       set -e
       mapfile="$1"; key="$2"; val="$3"
-      grep -v "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
+      grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
       mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
       printf "%s:%s\n" "$key" "$val" >> "$mapfile"
     ' _ "$mapfile" "$key" "$val"
   else
-    grep -v "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
+    grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
     mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
     printf "%s:%s\n" "$key" "$val" >> "$mapfile"
   fi
@@ -56,9 +56,9 @@ map_get() {
   if [ "${TOOL_flock:-0}" -eq 1 ]; then
     # Use lock for a consistent snapshot and print only once
     # shellcheck disable=SC2016
-    with_lock "$mapfile.lock" sh -c 'grep "^$1:" "$0" 2>/dev/null | cut -d: -f2-' "$mapfile" "$key"
+    with_lock "$mapfile.lock" sh -c 'grep -F "^$1:" "$0" 2>/dev/null | cut -d: -f2-' "$mapfile" "$key"
   else
-    grep "^$key:" "$mapfile" 2>/dev/null | cut -d: -f2-
+    grep -F "^$key:" "$mapfile" 2>/dev/null | cut -d: -f2-
   fi
 }
 
@@ -68,11 +68,11 @@ map_del() {
     # shellcheck disable=SC2016  # $1/$2 are for the child sh -c, not this shell
     with_lock "$mapfile.lock" sh -c '
       mapfile="$1"; key="$2"
-      grep -v "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
+      grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
       mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
     ' _ "$mapfile" "$key"
   else
-    grep -v "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
+    grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
     mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
   fi
 }

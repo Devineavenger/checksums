@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Fixes
+* fix: compat.sh — use grep -F for all key lookups in map_set/map_get/map_del to prevent directory paths with regex metacharacters (e.g. '.') from causing wrong matches
+* fix: first_run.sh — remove no-op count_overwritten+0 line in SKIP_EMPTY overwrite branch
+* fix: release.sh — add how-to comment explaining correct changelog pre-write workflow
+
+### Tests
+* test: test_integrations.bats — create file.txt in setup to fix file_hash on non-existent file; remove duplicate RUN_LOG reset lines
+* test: test_edgecases.bats — rename test to accurately describe verify_meta_sig behaviour (passes with no signature line)
+* test: test_units.bats — add missing status checks between multiple run calls in normalize_unit tests
+
 ## v3.9.3 - 2026-03-02
 
 ## v3.9.3 - 2026-03-02

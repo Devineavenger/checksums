@@ -175,7 +175,6 @@ first_run_verify() {
           if ! has_files "$d"; then
             first_run_log "SKIPPED scheduling overwrite for empty directory: $d"
             dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
-            count_overwritten=$((count_overwritten+0))
             continue
           fi
         fi

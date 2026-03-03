@@ -206,6 +206,31 @@ DATE="$(date +"%Y-%m-%d")"
 CHANGELOG_PATH="docs/CHANGELOG.md"
 
 if [ -f "$CHANGELOG_PATH" ]; then
+  # HOW TO PRE-WRITE CHANGELOG ENTRIES
+  # ------------------------------------
+  # Add your notes directly under the "## [Unreleased]" heading — do NOT add a
+  # version header yourself (e.g. do NOT write "## v3.9.4 - 2026-01-01").
+  # The script inserts the version and date automatically when promoting.
+  #
+  # Example — edit docs/CHANGELOG.md before running make release:
+  #
+  #   ## [Unreleased]
+  #
+  #   ### Fixes
+  #   * fix: describe the change here
+  #
+  #   ### Features
+  #   * feat: another change
+  #
+  #   ## v3.9.3 - 2026-03-02
+  #   ...
+  #
+  # You do NOT need to commit the changelog first; any uncommitted edits are
+  # stashed automatically at the start of this script and restored afterwards.
+  #
+  # If the [Unreleased] section is empty, the script auto-generates notes from
+  # conventional-commit prefixes (feat:, fix:, docs:, test:, chore:, refactor:).
+  # ------------------------------------
   # Auto-populate [Unreleased] from commits if the section has no content.
   # This lets you run "make release NEW_VER=x.y.z" without writing or committing
   # the changelog first; entries are generated from conventional-commit prefixes.

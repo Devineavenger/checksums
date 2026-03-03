@@ -16,7 +16,7 @@ setup() {
 
 teardown() { rm -rf "$TMPDIR"; }
 
-@test "verify_meta_sig fails on empty meta" {
+@test "verify_meta_sig passes when no signature line is present (unsigned meta)" {
   metaf="$TMPDIR/$META_FILENAME"
   echo "#meta   v1  2025-01-01T00:00:00Z" > "$metaf"
   run verify_meta_sig "$metaf"

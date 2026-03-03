@@ -8,11 +8,13 @@ load '../lib/fs.sh'
 
 setup() {
   TMPDIR=$(mktemp -d)
+  echo "hello world" > "$TMPDIR/file.txt"
   BASE_NAME="#####checksums#####"
   MD5_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   RUN_LOG="$TMPDIR/run.log"
+  : > "$RUN_LOG"
 }
 
 teardown() {
@@ -21,9 +23,7 @@ teardown() {
 
 @test "verify_md5_file returns 2 when manifest references missing file" {
   md5=$(file_hash "$TMPDIR/file.txt" md5)
-  # GNU format requires two spaces between hash and filename
-  # GNU format requires two spaces between hash and filename
-  # GNU md5sum format requires two spaces between hash and filename
+  # GNU md5sum format: two spaces between hash and filename
   printf '%s  %s\n' "$md5" "ghost.txt" > "$TMPDIR/$MD5_FILENAME"
   run verify_md5_file "$TMPDIR"
   # Expect return code 2 (missing file referenced in manifest)
@@ -42,9 +42,6 @@ teardown() {
   printf '%s  %s\n' "$md5foo" "foo.txt" > "$TMPDIR/$MD5_FILENAME"
   # Corrupt file
   echo "bar" > "$TMPDIR/foo.txt"
-  RUN_LOG="$TMPDIR/run.log"
-  : > "$RUN_LOG"
-  RUN_LOG="$TMPDIR/run.log"
   : > "$RUN_LOG"
   run emit_md5_file_details "$TMPDIR" "$TMPDIR/$MD5_FILENAME"
   [ "$status" -eq 1 ]
@@ -52,10 +49,9 @@ teardown() {
 }
 
 @test "emit_md5_file_details logs MISSING when file is absent" {
-  # Create manifest entry for a file that does not exist
+  # Record a valid hash for an existing file but point the manifest at a ghost path
   md5=$(file_hash "$TMPDIR/file.txt" md5)
   printf '%s  %s\n' "$md5" "ghost.txt" > "$TMPDIR/$MD5_FILENAME"
-  RUN_LOG="$TMPDIR/run.log"
   : > "$RUN_LOG"
   run emit_md5_file_details "$TMPDIR" "$TMPDIR/$MD5_FILENAME"
   [ "$status" -eq 2 ]
