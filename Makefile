@@ -17,7 +17,7 @@ ARGS := $(sort $(strip $(FILE) $(DIR)))
 LICENSE_HEADER_FILE := scripts/LICENSE
 export LICENSE_HEADER_FILE
 
-.PHONY: all install uninstall user-install user-uninstall \
+.PHONY: all install uninstall user-install user-uninstall user-reinstall \
 	tests lint dos2unix ci version dist release changelog changelog-draft \
 	clean check help newfile addheader addheaders addheaders-recursive _positional
 
@@ -58,9 +58,9 @@ tests:
 
 lint:
 	shellcheck $(MAIN_SCRIPT) lib/*.sh
-	
+
 dos2unix:
-	./scripts/dos2unix.sh
+	@./scripts/dos2unix.sh
 
 ci: lint tests
 	@echo "✅ Local CI checks passed"
@@ -80,7 +80,7 @@ dist:
 	cp -a $(MAIN_SCRIPT) $(VERSION_FILE) Makefile README.md LICENSE.md docs scripts lib tests .github "$$tmp/$$name/" 2>/dev/null || true; \
 	tar -C "$$tmp" -czf dist/$$name.tar.gz "$$name"; \
 	rm -rf "$$tmp"
-	
+
 release:
 	@if [ -z "$(NEW_VER)" ]; then \
 	    echo "❌ Usage: make release NEW_VER=x.y.z [FLAGS='--prerelease --draft']"; \
@@ -93,7 +93,7 @@ release:
 	@bash ./scripts/release.sh $(NEW_VER) $(FLAGS)
 
 changelog:
-	@LAST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
+	@LAST_TAG=$$(git describe --tags --abbrev=0 --exclude '*-*' 2>/dev/null || echo ""); \
 	if [ -n "$$LAST_TAG" ]; then \
 	    echo "==> Changelog since $$LAST_TAG"; \
 	    git log "$$LAST_TAG"..HEAD --pretty=format:"* %s" --no-merges; \
@@ -103,8 +103,7 @@ changelog:
 	fi
 
 changelog-draft:
-	@LAST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
-	DATE=$$(date +"%Y-%m-%d"); \
+	@LAST_TAG=$$(git describe --tags --abbrev=0 --exclude '*-*' 2>/dev/null || echo ""); \
 	if [ -n "$$LAST_TAG" ]; then \
 	    echo "==> Writing draft changelog since $$LAST_TAG"; \
 	    CHANGES=$$(git log "$$LAST_TAG"..HEAD --pretty=format:"* %s" --no-merges); \
@@ -113,15 +112,19 @@ changelog-draft:
 	    CHANGES=$$(git log --pretty=format:"* %s" --no-merges); \
 	fi; \
 	mkdir -p docs; \
-	{ \
-	    echo "## [Unreleased] - $$DATE"; \
-	    echo ""; \
-	    echo "$$CHANGES"; \
-	    echo ""; \
-	    cat docs/CHANGELOG.md 2>/dev/null || true; \
-	} > CHANGELOG.tmp; \
-	mv CHANGELOG.tmp docs/CHANGELOG.md; \
-	echo "✅ Draft changelog inserted at top of docs/CHANGELOG.md"
+	if grep -q '^\#\# \[Unreleased\]' docs/CHANGELOG.md 2>/dev/null; then \
+	    echo "==> [Unreleased] section already exists; skipping prepend"; \
+	else \
+	    { \
+	        echo "## [Unreleased]"; \
+	        echo ""; \
+	        echo "$$CHANGES"; \
+	        echo ""; \
+	        cat docs/CHANGELOG.md 2>/dev/null || true; \
+	    } > CHANGELOG.tmp; \
+	    mv CHANGELOG.tmp docs/CHANGELOG.md; \
+	    echo "✅ Draft changelog inserted at top of docs/CHANGELOG.md"; \
+	fi
 
 clean:
 	@echo "🧹 Cleaning build artifacts and temporary files"
@@ -161,22 +164,27 @@ addheaders-recursive:
 
 help:
 	@echo "Available targets:"
-	@echo "  make install               - Install checksums (developer style, quiet)"
-	@echo "  make uninstall             - Uninstall checksums (developer style)"
-	@echo "  make user-install          - Run friendly ./scripts/install.sh script"
-	@echo "  make user-uninstall        - Run friendly ./scripts/uninstall.sh script"
-	@echo "  make user-reinstall        - Run friendly ./scripts/uninstall.sh & ./scripts/install.sh script"
-	@echo "  make tests                 - Run unit tests (Bats)"
-	@echo "  make lint                  - Run shellcheck linting"
-	@echo "  make ci                    - Run lint + test (local CI check)"
-	@echo "  make check                 - Run lint + test + changelog preview"
-	@echo "  make version               - Print current tool version"
-	@echo "  make dist                  - Build a versioned tarball in ./dist/"
-	@echo "  make release NEW_VER=x.y.z - Cut a release; changelog auto-generated from commits if [Unreleased] is empty"
-	@echo "  make changelog             - Preview changelog entries since last tag"
-	@echo "  make changelog-draft       - Insert draft changelog into docs/CHANGELOG.md"
-	@echo "  make clean                 - Remove dist/ and temp files"
-	@echo "  make newfile FILE=...      - Create new file with license header"
-	@echo "  make addheader FILE=...    - Prepend license header to one file"
-	@echo "  make addheaders DIR=...    - Prepend license header to all files in a directory"
-	@echo "  make addheaders-recursive DIR=... - Prepend license header to all .md/.sh/Makefile files recursively"
+	@echo "  make install                      - Install checksums to PREFIX (default: /usr/local)"
+	@echo "  make uninstall                    - Uninstall checksums from PREFIX"
+	@echo "  make user-install                 - Run interactive ./scripts/install.sh"
+	@echo "  make user-uninstall               - Run interactive ./scripts/uninstall.sh"
+	@echo "  make user-reinstall               - Uninstall then reinstall (interactive)"
+	@echo "  make tests                        - Run unit tests (Bats)"
+	@echo "  make lint                         - Run shellcheck on all shell sources"
+	@echo "  make dos2unix                     - Normalise line endings in all sources"
+	@echo "  make ci                           - Run lint + tests (local CI gate)"
+	@echo "  make check                        - Run lint + tests + changelog preview"
+	@echo "  make version                      - Print current tool version"
+	@echo "  make dist                         - Build versioned tarball in ./dist/"
+	@echo "  make release NEW_VER=x.y.z        - Cut a release (bump version, promote"
+	@echo "                                      changelog, tag, push); pre-write entries"
+	@echo "                                      under ## [Unreleased] or leave empty for"
+	@echo "                                      auto-generated notes from commits"
+	@echo "  make changelog                    - Preview commits since last release tag"
+	@echo "  make changelog-draft              - Prepend [Unreleased] draft to CHANGELOG"
+	@echo "                                      (skipped if [Unreleased] already exists)"
+	@echo "  make clean                        - Remove dist tarballs and temp files"
+	@echo "  make newfile FILE=path            - Create new file with license header"
+	@echo "  make addheader FILE=path          - Prepend license header to one file"
+	@echo "  make addheaders DIR=path          - Add headers to all files in a directory"
+	@echo "  make addheaders-recursive DIR=path - Add headers recursively (.sh/.md/Makefile)"
