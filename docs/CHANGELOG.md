@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+## v4.0.0 - 2026-03-04
+
+### Features
+* feat: parallel verification — `emit_md5_file_details` now dispatches to parallel batch workers when `-p N` > 1, using the proven `_do_hash_batch` / `_par_wait_all` pattern; falls back to sequential when `-p 1`
+* feat: incremental update — planner uses single `stat_all_fields` call (populates `STAT_CACHE` for processor reuse) and adds inode:dev comparison to catch file replacements where mtime+size are preserved
+* feat: `-p` accepts `auto` (all CPU cores) and fractions (`3/4`, `1/2`, `1/4`, etc.) for CPU-based parallelism; `detect_cores()` added with portable detection (`nproc` / `sysctl` / `/proc/cpuinfo`)
+
+### Changes
+* chore: `STAT_CACHE` cleared at end of each `process_single_directory` to prevent unbounded memory growth
+* chore: `-R` / `--no-reuse` help text clarified as safety valve for forced rehash (use with `-r` for full rebuild)
+
+### Tests
+* test: 18 new tests — parallel verification (5), incremental update with inode tracking (5), `detect_cores` (2), `-p auto`/fraction parsing (6)
+
 ## v3.9.12 - 2026-03-04
 
 ### Fixes
