@@ -2,6 +2,12 @@
 
 ## v3.9.9 - 2026-03-03
 
+### Documentation
+* docs: remove duplicate v3.9.8 heading (last CI bot artifact)
+
+
+## v3.9.9 - 2026-03-03
+
 ### Fixes
 * fix: Makefile — add user-reinstall to .PHONY; use --exclude '*-*' on git describe in changelog/changelog-draft targets so CI tags are never used as baseline; fix changelog-draft header format and guard against stacking duplicate [Unreleased] headers; add @ to dos2unix target; remove trailing tabs; add missing dos2unix and user-reinstall to help text
 * fix: dos2unix.sh — remove *.swp (binary Vim swap files) and *.json (third-party bats packages) from conversion patterns; add *.md; exclude dist/ and tests/test_helper/ from all find expressions
