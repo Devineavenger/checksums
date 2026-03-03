@@ -289,13 +289,13 @@ parse_args() {
   # Defaults and validation
   # -------------------------
   # Provide a safe default for BATCH_RULES if none was supplied.
-  BATCH_RULES="${BATCH_RULES:-0-2M:20,2M-50M:10,>50M:1}"
+  BATCH_RULES="${BATCH_RULES:-0-1M:20,1M-40M:20,>40M:1}"
 
   # Validate BATCH_RULES format: comma-separated "LOW-HIGH:COUNT" or ">HIGH:COUNT"
   # Accept optional K/M/G suffixes. If invalid, record a warning and fall back.
   if ! [[ "$BATCH_RULES" =~ ^([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+,)*([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+|>[0-9]+[KMG]?:[0-9]+)$ ]]; then
     record_error "Invalid --batch/-b rules format: '$BATCH_RULES'. Falling back to default."
-    BATCH_RULES="0-2M:20,2M-50M:10,>50M:1"
+    BATCH_RULES="0-1M:20,1M-40M:20,>40M:1"
   fi
 
   # Ensure a target directory was provided (guard against set -u)

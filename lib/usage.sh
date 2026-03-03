@@ -48,7 +48,7 @@ Hashing Options:
   -R, --no-reuse     disable reuse heuristics; always recompute file hashes
   -p N, --parallel N number of parallel hashing jobs (default 1)
   -b RULES, --batch RULES
-                     adaptive batching rules (default: "0-2M:20,2M-50M:10,>50M:1")
+                     adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
                      format: "LOW-HIGH:COUNT,>HIGH:COUNT" with K/M/G suffixes
 
 Run Control Options:

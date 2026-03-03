@@ -193,15 +193,15 @@ build_exclusions() {
   MD5_EXCL=$(_safe_name "$(basename "$MD5_FILENAME")")
   META_EXCL=$(_safe_name "$(basename "$META_FILENAME")")
   LOG_EXCL=$(_safe_name "$(basename "$LOG_FILENAME")")
-  RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.run.log")"
-  FIRST_RUN_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")"
+  RUN_EXCL=$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.run.log")")
+  FIRST_RUN_EXCL=$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.first-run.log")")
   # ALT_LOG_EXCL is the log base without the .log suffix so rotated logs can be matched as:
   #   <ALT_LOG_EXCL>.<timestamp>.log
-  ALT_LOG_EXCL="$(basename "${LOG_BASE:-$BASE_NAME}")"
+  ALT_LOG_EXCL=$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}")")
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
 
-  # after computing MD5_EXCL, META_EXCL, LOG_EXCL, RUN_BASENAME, FIRST_RUN_BASENAME, ALT_LOG_EXCL, LOCK_EXCL
+  # after computing MD5_EXCL, META_EXCL, LOG_EXCL, RUN_EXCL, FIRST_RUN_EXCL, ALT_LOG_EXCL, LOCK_EXCL
   # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.
   # IMPORTANT: do not exclude bare ALT_LOG_EXCL or ALT_LOG_EXCL.* (could match user files).
   # Only exclude the actual rotated log patterns to avoid skipping real data.
