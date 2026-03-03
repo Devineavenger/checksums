@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## v3.9.12 - 2026-03-04
+
+### Fixes
+* fix: release.yml — add tag-push publish job for automatic GitHub Releases without re-running release.sh
+
+
 ## v3.9.11 - 2026-03-04
 
 ### Fixes
