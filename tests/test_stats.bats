@@ -47,3 +47,16 @@ teardown() { rm -rf "$TMPDIR"; }
   [[ "$inode" != " "* ]]
   [[ "$inode" =~ ^[0-9]+$ ]]
 }
+
+@test "detect_cores returns a positive integer" {
+  run detect_cores
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9]+$ ]]
+  [ "$output" -ge 1 ]
+}
+
+@test "detect_cores returns at least 1" {
+  # Even in minimal environments, detect_cores must return >= 1
+  cores=$(detect_cores)
+  [ "$cores" -ge 1 ]
+}
