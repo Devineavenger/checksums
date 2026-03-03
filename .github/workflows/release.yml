@@ -4,6 +4,11 @@ permissions:
   contents: write
 
 on:
+  # Trigger on semver tag pushes from "make release" (local)
+  push:
+    tags:
+      - 'v*'
+  # Manual trigger from GitHub UI (full release.sh)
   workflow_dispatch:
     inputs:
       version:
@@ -23,7 +28,46 @@ on:
         default: 'false'
 
 jobs:
+  # --- Job 1: publish GitHub Release on tag push from "make release" ---
+  # Builds dist, creates GitHub Release, uploads tarball.
+  # Skips CI tags (contain a hyphen, e.g. v3.9.9-ci91).
+  publish:
+    if: github.event_name == 'push' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build dist tarball
+        run: make dist
+
+      - name: Create GitHub Release and upload asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+
+          # Extract release notes from CHANGELOG (content between this version
+          # heading and the next version heading)
+          NOTES="$(awk '
+            /^## v'"$VER"' / { found=1; next }
+            found && /^## /  { exit }
+            found            { print }
+          ' docs/CHANGELOG.md)"
+
+          # Create the release with gh CLI
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "${NOTES:-Release $TAG}" \
+            "dist/checksums-${VER}.tar.gz"
+
+  # --- Job 2: full release via workflow_dispatch (GitHub UI) ---
   release:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
