@@ -331,12 +331,30 @@ parse_args() {
     esac
   fi
 
-  # parallel jobs must be a positive integer (if set); otherwise default to 1
+  # parallel jobs: integer, "auto" (all cores), or fraction (3/4, 2/3, 1/2, 1/4)
   if [ -n "${PARALLEL_JOBS:-}" ]; then
     case "$PARALLEL_JOBS" in
-      ''|*[!0-9]*) fatal "Invalid -p/--parallel value (must be integer)" ;;
-      *) [ "$PARALLEL_JOBS" -lt 1 ] && PARALLEL_JOBS=1 ;;
+      auto)
+        PARALLEL_JOBS=$(detect_cores)
+        ;;
+      [0-9]*/[0-9]*)
+        # Fraction of cores: e.g. 3/4, 1/2
+        local _num="${PARALLEL_JOBS%/*}"
+        local _den="${PARALLEL_JOBS#*/}"
+        if [ "${_den:-0}" -gt 0 ] && [ "${_num:-0}" -gt 0 ]; then
+          local _cores
+          _cores=$(detect_cores)
+          PARALLEL_JOBS=$(( (_cores * _num + _den - 1) / _den ))  # round up
+        else
+          fatal "Invalid -p/--parallel fraction: $PARALLEL_JOBS"
+        fi
+        ;;
+      ''|*[!0-9]*)
+        fatal "Invalid -p/--parallel value: $PARALLEL_JOBS (use integer, 'auto', or fraction like 3/4)" ;;
+      *)
+        ;;
     esac
+    [ "${PARALLEL_JOBS:-0}" -lt 1 ] && PARALLEL_JOBS=1
   else
     PARALLEL_JOBS="${PARALLEL_JOBS:-1}"
   fi

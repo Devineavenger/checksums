@@ -47,7 +47,8 @@ Hashing Options:
                      meta signature algorithm: sha256 (default), md5, or none
   -R, --no-reuse     disable reuse heuristics; force rehash of all files
                      (use with -r for a full forced rebuild)
-  -p N, --parallel N number of parallel hashing jobs (default 1)
+  -p N, --parallel N number of parallel hashing/verification jobs (default 1)
+                     accepts: integer, "auto" (all cores), or fraction (3/4, 1/2, etc.)
   -b RULES, --batch RULES
                      adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
                      format: "LOW-HIGH:COUNT,>HIGH:COUNT" with K/M/G suffixes

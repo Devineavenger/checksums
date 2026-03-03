@@ -111,3 +111,18 @@ stat_field() {
     *) echo "unknown field '$field'" >&2; return 1 ;;
   esac
 }
+
+# Detect the number of available CPU cores (portable).
+# Returns a positive integer; falls back to 1 if detection fails.
+detect_cores() {
+  local cores=1
+  if command -v nproc >/dev/null 2>&1; then
+    cores=$(nproc 2>/dev/null) || cores=1
+  elif command -v sysctl >/dev/null 2>&1; then
+    cores=$(sysctl -n hw.ncpu 2>/dev/null) || cores=1
+  elif [ -r /proc/cpuinfo ]; then
+    cores=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null) || cores=1
+  fi
+  [ "${cores:-0}" -lt 1 ] && cores=1
+  printf '%s' "$cores"
+}
