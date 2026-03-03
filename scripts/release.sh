@@ -235,6 +235,14 @@ if [ -f "$CHANGELOG_PATH" ]; then
   # This lets you run "make release NEW_VER=x.y.z" without writing or committing
   # the changelog first; entries are generated from conventional-commit prefixes.
   # If you have manually written content under [Unreleased], it is used as-is.
+  # Guard: if a heading for this version already exists (e.g. user wrote
+  # "## v3.9.10" manually, or a prior run already promoted), skip auto-gen
+  # and promotion entirely — just ensure a fresh [Unreleased] header exists.
+  _ver_heading_exists=0
+  if grep -q "^## v${NEW_VER} " "$CHANGELOG_PATH"; then
+    _ver_heading_exists=1
+  fi
+
   _last_tag="${PREV_TAG:-$(git rev-list --max-parents=0 HEAD 2>/dev/null || true)}"
   _unreleased_body="$(awk '
     /^## \[Unreleased\]/ { found=1; next }
@@ -242,58 +250,97 @@ if [ -f "$CHANGELOG_PATH" ]; then
     found                { print }
   ' "$CHANGELOG_PATH" | tr -d " \t\n\r")"
 
-  if [ -z "$_unreleased_body" ] && [ -n "$_last_tag" ]; then
-    echo "==> [Unreleased] is empty; auto-generating notes from commits since ${_last_tag}"
-    _auto_notes=""
-    for _spec in "feat:;Features" "fix:;Fixes" "docs:;Documentation" "test:;Tests" "chore:;Chores" "refactor:;Refactoring"; do
-      _prefix="${_spec%%;*}"
-      _title="${_spec##*;}"
-      _entries="$(git log "${_last_tag}..HEAD" --grep="^${_prefix}" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
-      if [ -n "$_entries" ]; then
-        _auto_notes="${_auto_notes}### ${_title}"$'\n'"${_entries}"$'\n\n'
-      fi
-    done
-    if [ -z "$_auto_notes" ]; then
-      # No conventional-commit prefixes — list every commit
-      _all="$(git log "${_last_tag}..HEAD" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
-      [ -n "$_all" ] && _auto_notes="${_all}"$'\n'
-    fi
-    if [ -n "$_auto_notes" ]; then
+  if [ "$_ver_heading_exists" -eq 1 ]; then
+    echo "==> v${NEW_VER} heading already exists in CHANGELOG; skipping auto-gen and promotion"
+    # Merge any [Unreleased] body into the existing version section, then
+    # replace the [Unreleased] header with a fresh empty one.
+    if [ -n "$_unreleased_body" ]; then
+      echo "==> Merging [Unreleased] content into existing v${NEW_VER} section"
       tmp="$(mktemp changelog.tmp.XXXXXX)"
-      awk -v notes="$_auto_notes" '
-        /^## \[Unreleased\]/ { print; print ""; printf "%s", notes; inserted=1; next }
+      awk -v ver="v${NEW_VER}" '
+        /^## \[Unreleased\]/ { in_unrel=1; next }
+        in_unrel && /^## /   { in_unrel=0 }
+        in_unrel             { buf = buf $0 "\n"; next }
+        {
+          # When we hit the existing version heading, prepend buffered content
+          if (index($0, "## " ver) == 1 && buf != "") {
+            print $0
+            printf "%s", buf
+            buf = ""
+            next
+          }
+          print
+        }
+      ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+    fi
+    # Ensure a fresh [Unreleased] header exists at the top
+    if ! grep -q '^\## \[Unreleased\]' "$CHANGELOG_PATH"; then
+      tmp="$(mktemp changelog.tmp.XXXXXX)"
+      { echo "## [Unreleased]"; echo ""; cat "$CHANGELOG_PATH"; } > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+    else
+      # [Unreleased] header exists but body was moved; clear it to empty
+      tmp="$(mktemp changelog.tmp.XXXXXX)"
+      awk '
+        /^## \[Unreleased\]/ { print; in_unrel=1; next }
+        in_unrel && /^## /   { in_unrel=0 }
+        in_unrel             { next }
         { print }
       ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
-      echo "==> Auto-generated changelog notes inserted under [Unreleased]"
     fi
-  fi
+  else
+    if [ -z "$_unreleased_body" ] && [ -n "$_last_tag" ]; then
+      echo "==> [Unreleased] is empty; auto-generating notes from commits since ${_last_tag}"
+      _auto_notes=""
+      for _spec in "feat:;Features" "fix:;Fixes" "docs:;Documentation" "test:;Tests" "chore:;Chores" "refactor:;Refactoring"; do
+        _prefix="${_spec%%;*}"
+        _title="${_spec##*;}"
+        _entries="$(git log "${_last_tag}..HEAD" --grep="^${_prefix}" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
+        if [ -n "$_entries" ]; then
+          _auto_notes="${_auto_notes}### ${_title}"$'\n'"${_entries}"$'\n\n'
+        fi
+      done
+      if [ -z "$_auto_notes" ]; then
+        # No conventional-commit prefixes — list every commit
+        _all="$(git log "${_last_tag}..HEAD" --pretty=format:"* %s" --no-merges 2>/dev/null || true)"
+        [ -n "$_all" ] && _auto_notes="${_all}"$'\n'
+      fi
+      if [ -n "$_auto_notes" ]; then
+        tmp="$(mktemp changelog.tmp.XXXXXX)"
+        awk -v notes="$_auto_notes" '
+          /^## \[Unreleased\]/ { print; print ""; printf "%s", notes; inserted=1; next }
+          { print }
+        ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+        echo "==> Auto-generated changelog notes inserted under [Unreleased]"
+      fi
+    fi
 
-  echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
-  tmp="$(mktemp changelog.tmp.XXXXXX)"
-  # Use index() instead of /.../ regex delimiters to avoid unterminated-regexp issues
-  awk -v ver="$NEW_VER" -v date="$DATE" '
-    BEGIN {
-      promoted = 0
-      # Insert a fresh Unreleased header at the top
-      print "## [Unreleased]"
-      print ""
-    }
-    {
-      # Use index() to match the header at the start of the line (no /.../ delimiters)
-      if (!promoted && index($0, "## [Unreleased]") == 1) {
-        print "## v" ver " - " date
-        promoted = 1
-        next
-      }
-      print
-    }
-    END {
-      if (!promoted) {
+    echo "==> Promoting [Unreleased] to v${NEW_VER} and reinserting [Unreleased]"
+    tmp="$(mktemp changelog.tmp.XXXXXX)"
+    # Use index() instead of /.../ regex delimiters to avoid unterminated-regexp issues
+    awk -v ver="$NEW_VER" -v date="$DATE" '
+      BEGIN {
+        promoted = 0
+        # Insert a fresh Unreleased header at the top
+        print "## [Unreleased]"
         print ""
-        print "## v" ver " - " date
       }
-    }
-  ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+      {
+        # Use index() to match the header at the start of the line (no /.../ delimiters)
+        if (!promoted && index($0, "## [Unreleased]") == 1) {
+          print "## v" ver " - " date
+          promoted = 1
+          next
+        }
+        print
+      }
+      END {
+        if (!promoted) {
+          print ""
+          print "## v" ver " - " date
+        }
+      }
+    ' "$CHANGELOG_PATH" > "$tmp" && mv "$tmp" "$CHANGELOG_PATH"
+  fi
 else
   echo "==> No CHANGELOG.md found; creating docs/CHANGELOG.md with Unreleased and release entries"
   mkdir -p "$(dirname "$CHANGELOG_PATH")"
