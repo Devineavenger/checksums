@@ -2,6 +2,12 @@
 
 ## v3.9.8 - 2026-03-03
 
+### Documentation
+* docs: clean up duplicate CHANGELOG headings introduced by CI bot loop
+
+
+## v3.9.8 - 2026-03-03
+
 ### Fixes
 * fix: release.yml — skip release job when push commit message starts with "Release v"; prevents CI loop where make release push triggered the workflow again, producing a duplicate changelog entry and a spurious CI tag (e.g. v3.9.7-ci86)
 
