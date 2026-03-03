@@ -2,6 +2,8 @@
 
 ## v3.9.4 - 2026-03-03
 
+## v3.9.4 - 2026-03-03
+
 ### Fixes
 * fix: compat.sh — use grep -F for all key lookups in map_set/map_get/map_del to prevent directory paths with regex metacharacters (e.g. '.') from causing wrong matches
 * fix: first_run.sh — remove no-op count_overwritten+0 line in SKIP_EMPTY overwrite branch
