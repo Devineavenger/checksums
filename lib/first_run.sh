@@ -183,7 +183,7 @@ first_run_verify() {
         dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
         if [ "$DRY_RUN" -eq 1 ]; then
           first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
-          log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+          vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
         else
           first_run_overwrite+=("$d")
           first_run_log "SCHEDULED OVERWRITE for $d"
@@ -221,6 +221,7 @@ first_run_verify() {
               first_run_log "CHOICE overwrite for $d"
               if [ "$DRY_RUN" -eq 1 ]; then
                 first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+                vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
               else
                 first_run_overwrite+=("$d")
                 first_run_log "SCHEDULED OVERWRITE for $d"

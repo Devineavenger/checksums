@@ -377,6 +377,8 @@ process_single_directory() {
     rotate_log "$LOG_FILEPATH"
     : > "$LOG_FILEPATH"
     log_run_header "$LOG_FILEPATH"
+  elif [ "$DRY_RUN" -eq 1 ]; then
+    log "DRYRUN: $total_files file(s) would be hashed in $d with $PER_FILE_ALGO (no changes made)"
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks).
@@ -537,7 +539,7 @@ process_single_directory() {
     fi
 
     if (( DRY_RUN == 1 )); then
-      log "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
+      vlog "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]=""
       else

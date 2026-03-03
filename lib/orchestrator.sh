@@ -126,26 +126,26 @@ run_checksums() {
   while IFS= read -r -d '' d; do preview_proc+=("$d"); done < "$preview_proc_file"
   while IFS= read -r -d '' d; do preview_skipped+=("$d"); done < "$preview_skipped_file"
 
-  echo "Found ${#preview_proc[@]} folder(s) to process (preview):"
+  log "Found ${#preview_proc[@]} folder(s) to process (preview):"
   local i=0 max_preview=200
   for d in "${preview_proc[@]}"; do
     [ "$i" -ge "$max_preview" ] && break
-    echo "  * $d"
+    vlog "  * $d"
     i=$((i+1))
   done
   if [ "${#preview_proc[@]}" -gt "$max_preview" ]; then
-    echo "  ... and $(( ${#preview_proc[@]} - max_preview )) more"
+    log "  ... and $(( ${#preview_proc[@]} - max_preview )) more"
   fi
 
-  echo "Skipping ${#preview_skipped[@]} folder(s) (preview):"
+  log "Skipping ${#preview_skipped[@]} folder(s) (preview):"
   i=0
   for d in "${preview_skipped[@]}"; do
     [ "$i" -ge "$max_preview" ] && break
-    echo "  * $d"
+    vlog "  * $d"
     i=$((i+1))
   done
   if [ "${#preview_skipped[@]}" -gt "$max_preview" ]; then
-    echo "  ... and $(( ${#preview_skipped[@]} - max_preview )) more"
+    log "  ... and $(( ${#preview_skipped[@]} - max_preview )) more"
   fi
 
   rm -f "$preview_proc_file" "$preview_skipped_file"
@@ -166,7 +166,7 @@ run_checksums() {
   else
     total_files_preview=0
   fi
-  echo "total files (preview): $total_files_preview"
+  log "total files (preview): $total_files_preview"
 
   # ----------------------------
   # Prompt (after preview)

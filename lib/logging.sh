@@ -251,7 +251,7 @@ emit_md5_detail() {
   local d="$1" vr="$2"
   case "$vr" in
     0)
-      vlog "MD5-DETAIL: verified OK for $d"
+      log "MD5-DETAIL: verified OK for $d"
       [ -n "${RUN_LOG:-}" ] && printf 'VERIFIED: %s\n' "$d" >>"${RUN_LOG}"
       ;;
     1)
