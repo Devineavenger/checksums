@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v3.9.5 - 2026-03-03
+
 ### Fixes
 * fix: logging.sh — elevate emit_md5_detail "verified OK" from vlog to log so all MD5 detail results are at the same level (consistent with mismatch/missing)
 * fix: process.sh — demote per-file "DRYRUN: would hash" from log to vlog (prevents per-file console spam at scale); add directory-level DRYRUN summary at log level so the marker remains visible without verbose
