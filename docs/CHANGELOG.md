@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.4.0 - 2026-03-04
+
 ### Features
 * feat: safe key=value config parser — `_load_config()` replaces shell-sourced `.conf` files with a line-by-line key=value parser; no code execution; strips comments, blank lines, and matching quotes; maps 25 known keys to globals; unknown keys produce a warning; old bash array syntax detected and rejected with migration hint
 
