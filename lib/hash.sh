@@ -128,7 +128,7 @@ _sem_destroy() {
 
 _sem_acquire() {
   local _tok
-  read -n 1 _tok <&7
+  read -r -n 1 _tok <&7
 }
 
 _sem_release() {

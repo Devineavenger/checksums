@@ -8,6 +8,7 @@
 # This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
 # arising from its use.
 
+# shellcheck disable=SC2034
 #
 # first_run.sh
 #

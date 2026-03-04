@@ -12,7 +12,7 @@
 # shellcheck source=lib/init.sh
 # shellcheck source=lib/logging.sh
 # shellcheck source=lib/process.sh
-# shellcheck disable=SC2034,SC2154
+# shellcheck disable=SC2034,SC2154,SC2030,SC2031,SC2329
 #
 # Orchestrator: top-level run orchestration for checksums tool.
 #

@@ -400,6 +400,7 @@ _verify_md5_parallel() {
         _par_maybe_wait
         _do_hash_batch "md5" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
         HASH_PIDS+=("$!")
+        # shellcheck disable=SC2034
         HASH_PIDS_COUNT=${#HASH_PIDS[@]}
         batch_files=()
         current_batch_size=0
@@ -411,6 +412,7 @@ _verify_md5_parallel() {
       _par_maybe_wait
       _do_hash_batch "md5" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
       HASH_PIDS+=("$!")
+      # shellcheck disable=SC2034
       HASH_PIDS_COUNT=${#HASH_PIDS[@]}
     fi
 

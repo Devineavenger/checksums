@@ -9,6 +9,7 @@
 # arising from its use.
 
 # planner.sh
+# shellcheck disable=SC2030,SC2031,SC2034
 # shellcheck source=lib/init.sh
 # shellcheck source=lib/meta.sh
 # shellcheck source=lib/stat.sh
@@ -288,7 +289,6 @@ _plan_parallel() {
     _dir_par_maybe_wait
     local _pw="$_plan_results_dir/worker_${_plan_idx}"
     (
-      # Redirect plan files and RUN_LOG to per-worker temps
       plan_to_process_file="$_pw.proc"
       plan_skipped_file="$_pw.skip"
       RUN_LOG="$_pw.runlog"
