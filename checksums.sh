@@ -61,7 +61,11 @@ fi
 
 main() {
   parse_args "$@"
-  run_checksums
+  if [ "${STATUS_ONLY:-0}" -eq 1 ]; then
+    run_status
+  else
+    run_checksums
+  fi
 }
 
 main "$@"

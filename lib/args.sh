@@ -134,7 +134,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKz-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzS-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -160,6 +160,7 @@ parse_args() {
       o) LOG_FORMAT=$OPTARG ;;           # -o FORMAT : text | json | csv
       y) YES=1 ;;                        # -y : assume-yes (non-interactive)
       V) VERIFY_ONLY=1 ;;                # -V : verify-only audit mode (no writes)
+      S) STATUS_ONLY=1 ;;                # -S : status/diff mode (read-only)
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -228,6 +229,9 @@ parse_args() {
             ;;
           verify-only)
             VERIFY_ONLY=1
+            ;;
+          status)
+            STATUS_ONLY=1
             ;;
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
@@ -300,6 +304,13 @@ parse_args() {
   if ! [[ "$BATCH_RULES" =~ ^([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+,)*([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+|>[0-9]+[KMG]?:[0-9]+)$ ]]; then
     record_error "Invalid --batch/-b rules format: '$BATCH_RULES'. Falling back to default."
     BATCH_RULES="0-1M:20,1M-40M:20,>40M:1"
+  fi
+
+  # STATUS_ONLY is read-only; conflicts with write-oriented modes
+  if [ "${STATUS_ONLY:-0}" -eq 1 ]; then
+    if [ "${DRY_RUN:-0}" -eq 1 ] || [ "${FORCE_REBUILD:-0}" -eq 1 ] || [ "${FIRST_RUN:-0}" -eq 1 ]; then
+      fatal "--status is read-only and cannot be combined with --dry-run, --force-rebuild, or --first-run"
+    fi
   fi
 
   # Ensure a target directory was provided (guard against set -u)

@@ -114,6 +114,7 @@ ME="$(basename "$0")"
 : "${PARALLEL_DIRS:=1}"                        # -P N parallel directory processing
 : "${LOG_FORMAT:=text}"                        # -o text (default), json, csv
 : "${VERIFY_ONLY:=0}"                          # -V audit only (no writes)
+: "${STATUS_ONLY:=0}"                          # -S status/diff mode (read-only)
 : "${CONFIG_FILE:=}"                           # --config FILE explicit config path
 : "${VERIFY_MD5_DETAILS:=1}"                   # When non-zero, planner will run per-directory md5 verification on .md5-only dirs and emit MISSING/MISMATCH lines into the run log (enabled by default). Use --md5-details / -z to explicitly toggle; default = 1
 : "${BATCH_RULES:=0-1M:20,1M-40M:20,>40M:1}"    # -b | --batch Adaptive batching defaults. Format string: "LOW-HIGH:COUNT,LOW-HIGH:COUNT,>HIGH:COUNT" Units: suffix K/M/G supported (e.g. 2M = 2 megabytes). Default: 0–1M → 20 files, 1M–40M → 20 files, >40M → 1 file

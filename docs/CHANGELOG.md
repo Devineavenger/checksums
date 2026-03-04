@@ -1,4 +1,17 @@
 ## [Unreleased]
+## v4.2.0 - 2026-03-04
+
+### Features
+* feat: status/diff mode (`-S` / `--status`) — read-only diff against existing manifests showing new (A), deleted (D), modified (M), and unchanged files per directory; color-coded output with TTY detection and `NO_COLOR` support; exits 0 if clean, 1 if changes found (CI-friendly)
+* feat: stat-based fast path — compares mtime, size, and inode:dev from `.meta` without rehashing; use `-R` to force hash verification of stat-changed files
+
+### Changes
+* chore: status mode respects `SKIP_EMPTY` but still checks directories with manifests (catches all-files-deleted case)
+* chore: `--status` is mutually exclusive with `--dry-run`, `--force-rebuild`, and `--first-run`
+
+### Tests
+* test: 18 new tests — status classification (11), run_status integration (4), args parsing (3)
+
 ## v4.1.2 - 2026-03-04
 
 ### Documentation

@@ -82,6 +82,12 @@ Verification Options:
                      disable per-directory md5 verification in planning
   --md5-details      enable md5 verification in planning (default)
 
+Status Options:
+  -S, --status       show what changed since the last manifest (diff mode)
+                     reads .md5/.meta manifests and compares against disk state
+                     exits 0 if nothing changed, 1 if changes found
+                     use with -R to rehash and confirm changes (slower)
+
 Directory Handling Options:
   --skip-empty       skip directories with no files (default)
   --no-skip-empty    process empty/container-only directories too
@@ -157,9 +163,15 @@ Common Usage Patterns:
      * Logs "would hash" messages and decisions without creating .md5/.meta/.log
      * Perfect for validating config files, exclude/include patterns, and batch rules safely
 
+4. Status/Diff Check (show what changed since last manifest)
+   $ME -S --skip-empty /data/project
+   -S enables status mode: read-only diff against existing manifests
+   No files written; exits 0 if clean, 1 if changes exist (CI-friendly)
+   Add -R to rehash and confirm changes (slower, avoids false positives)
+
 Exit Codes:
   0   Success (also: user abort, --help, --version, --assume-no)
-  1   Error (validation failure, runtime error, missing tools)
+  1   Error (validation failure, runtime error, missing tools); also: changes found in --status mode
   2   Missing prerequisite (library files not found at startup)
   130  Interrupted (SIGINT / Ctrl-C)
   143  Terminated (SIGTERM)
