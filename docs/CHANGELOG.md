@@ -1,4 +1,9 @@
 ## [Unreleased]
+## v4.1.2 - 2026-03-04
+
+### Documentation
+* docs: add exit codes section to `--help` output (0, 1, 2, 130, 143)
+
 ## v4.1.1 - 2026-03-04
 
 ### Fixes

@@ -156,5 +156,12 @@ Common Usage Patterns:
      * Accurate planning checks meta signatures, file counts, newer-file detection
      * Logs "would hash" messages and decisions without creating .md5/.meta/.log
      * Perfect for validating config files, exclude/include patterns, and batch rules safely
+
+Exit Codes:
+  0   Success (also: user abort, --help, --version, --assume-no)
+  1   Error (validation failure, runtime error, missing tools)
+  2   Missing prerequisite (library files not found at startup)
+  130  Interrupted (SIGINT / Ctrl-C)
+  143  Terminated (SIGTERM)
 EOF
 }
