@@ -173,7 +173,7 @@ _first_run_verify_one() {
     prompt)
       # Prompt mode always runs sequentially; this path is only called from sequential.
       while true; do
-        printf 'Directory %s has mismatched checksums. Choose action: [s]kip, [o]verwrite, [a]bort: ' "$d"
+        printf '%bDirectory %s has mismatched checksums. Choose action: [s]kip, [o]verwrite, [a]bort:%b ' "${_C_BOLD}" "$d" "${_C_RST}"
         if ! IFS= read -r choice; then choice="s"; fi
         case "$choice" in
           s|S)
@@ -212,7 +212,7 @@ _first_run_verify_one() {
             log "User aborted at first-run mismatch in $d"
             exit 2
             ;;
-          *) printf 'Please enter s, o, or a\n' ;;
+          *) printf '%bPlease enter s, o, or a%b\n' "${_C_DIM}" "${_C_RST}" ;;
         esac
       done
       ;;

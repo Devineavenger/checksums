@@ -139,6 +139,13 @@ LOG_FILENAME="${LOG_BASE:-$BASE_NAME}.log"
 # === Filenames (secondary) ===
 : "${LOCK_SUFFIX:=.lock}"
 
+# === Color variable defaults (overridden by color.sh when loaded via loader) ===
+# Declared here so modules work safely under set -u even when color.sh is not sourced
+# (e.g. in test harnesses that load individual modules directly).
+: "${_C_BOLD:=}" "${_C_DIM:=}" "${_C_RST:=}"
+: "${_C_RED:=}" "${_C_GREEN:=}" "${_C_YELLOW:=}" "${_C_BLUE:=}"
+: "${_C_MAGENTA:=}" "${_C_CYAN:=}" "${_C_WHITE:=}"
+
 # === Exclusions (patterns to skip when scanning a directory) ===
 MD5_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""
 

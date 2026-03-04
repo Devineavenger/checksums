@@ -308,7 +308,7 @@ process_single_directory() {
     # If there are no candidate files anywhere under this dir, treat as skipped.
     # If there are files but no MD5 manifest, record an error.
     if ! has_files "$d"; then
-      log "Verify-only: skipped empty/container-only directory $d"
+      log "${_C_CYAN}Verify-only:${_C_RST} skipped empty/container-only directory $d"
       vmd5=0
     elif [ -f "$sumf" ]; then
       emit_md5_file_details "$d" "$sumf"
@@ -322,19 +322,19 @@ process_single_directory() {
         vmd5=2
         record_error "Verify-only: MD5 file missing in $d"
       else
-        log "Verify-only: no local files in $d and no MD5 present; skipping"
+        log "${_C_CYAN}Verify-only:${_C_RST} no local files in $d and no MD5 present; skipping"
         vmd5=0
       fi
     fi
 
     if [ -f "$metaf" ]; then
       if verify_meta_sig "$metaf"; then
-        log "Verify-only: META signature OK for $d"
+        log "${_C_CYAN}Verify-only:${_C_RST} ${_C_GREEN}META signature OK${_C_RST} for $d"
       else
         record_error "Verify-only: META signature invalid for $d"
       fi
     else
-      log "Verify-only: META file missing in $d"
+      log "${_C_CYAN}Verify-only:${_C_RST} ${_C_YELLOW}META file missing${_C_RST} in $d"
     fi
 
     count_verified=$((count_verified+1))
@@ -378,7 +378,7 @@ process_single_directory() {
     : > "$LOG_FILEPATH"
     log_run_header "$LOG_FILEPATH"
   elif [ "$DRY_RUN" -eq 1 ]; then
-    log "DRYRUN: $total_files file(s) would be hashed in $d with $PER_FILE_ALGO (no changes made)"
+    log "${_C_YELLOW}DRYRUN:${_C_RST} $total_files file(s) would be hashed in $d with $PER_FILE_ALGO (no changes made)"
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks).
@@ -539,7 +539,7 @@ process_single_directory() {
     fi
 
     if (( DRY_RUN == 1 )); then
-      vlog "DRYRUN: would hash $fpath with $PER_FILE_ALGO"
+      vlog "${_C_YELLOW}DRYRUN:${_C_RST} would hash $fpath with $PER_FILE_ALGO"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]=""
       else

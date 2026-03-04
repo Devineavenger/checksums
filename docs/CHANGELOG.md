@@ -1,4 +1,22 @@
 ## [Unreleased]
+
+### Features
+* feat: global color system — new shared `lib/color.sh` module with 10-variable palette (bold, dim, reset, red, green, yellow, blue, magenta, cyan, white); TTY detection and `NO_COLOR` support; auto-sourced before all other modules
+* feat: colored logging — ERROR prefix in red, VERBOSE/DEBUG output dimmed; INFO unchanged; colors apply to text format only (JSON/CSV unaffected); log files never colored
+* feat: colored orchestrator — summary counts colored by category (green processed, yellow skipped, red errors, magenta counts); preview counts colored; interactive prompts bold; completion message green
+* feat: colored planner — `PLAN: skip` in yellow, `PLAN: process` in green (verbose output)
+* feat: colored process — `DRYRUN:` prefix in yellow, `Verify-only:` prefix in cyan, META signature results colored
+* feat: colored first-run prompts — bold prompt text, dim input hint
+* feat: colored help text — all section headings bold via `--help`
+
+### Changes
+* refactor: status.sh — removed local `_status_use_color`/`_status_init_colors`, replaced `_C_NEW`/`_C_DEL`/`_C_MOD` with shared `_C_GREEN`/`_C_RED`/`_C_YELLOW` from color.sh
+* chore: init.sh — color variable defaults (empty strings) declared for `set -u` safety when color.sh is not loaded (test harnesses)
+* chore: run-bats.sh — increase `CI_PARALLEL` default from 4 to 32 for faster test execution
+
+### Tests
+* test: 6 new tests — `_color_init` variable population, `NO_COLOR` clearing, idempotency, empty `NO_COLOR`, escape sequence format, auto-init at source time
+
 ## v4.2.0 - 2026-03-04
 
 ### Features

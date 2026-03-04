@@ -18,25 +18,7 @@
 #  - status_single_directory(): classify every file in one directory as NEW,
 #    DELETED, MODIFIED, or UNCHANGED relative to the stored .md5/.meta manifest.
 #  - run_status(): top-level orchestrator for status mode.
-#  - Color helpers with TTY detection and NO_COLOR support.
-
-# === Color helpers ===
-
-_status_use_color() {
-  [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && return 0 || return 1
-}
-
-_status_init_colors() {
-  if _status_use_color; then
-    _C_BOLD='\033[1m'
-    _C_NEW='\033[32m'
-    _C_DEL='\033[31m'
-    _C_MOD='\033[33m'
-    _C_RST='\033[0m'
-  else
-    _C_BOLD='' _C_NEW='' _C_DEL='' _C_MOD='' _C_RST=''
-  fi
-}
+#  - Uses shared color palette from color.sh (_C_GREEN, _C_RED, _C_YELLOW, etc.).
 
 # === Per-directory result accumulators (Bash 3.2 safe — no namerefs) ===
 
@@ -235,13 +217,13 @@ _status_print_directory() {
     printf "${_C_BOLD}%s/${_C_RST}\n" "$rel"
     local f
     for f in "${_STATUS_DIR_NEW[@]}"; do
-      printf "  ${_C_NEW}A${_C_RST}  %s\n" "$f"
+      printf "  ${_C_GREEN}A${_C_RST}  %s\n" "$f"
     done
     for f in "${_STATUS_DIR_DEL[@]}"; do
-      printf "  ${_C_DEL}D${_C_RST}  %s\n" "$f"
+      printf "  ${_C_RED}D${_C_RST}  %s\n" "$f"
     done
     for f in "${_STATUS_DIR_MOD[@]}"; do
-      printf "  ${_C_MOD}M${_C_RST}  %s\n" "$f"
+      printf "  ${_C_YELLOW}M${_C_RST}  %s\n" "$f"
     done
     if [ "${VERBOSE:-0}" -gt 0 ]; then
       for f in "${_STATUS_DIR_UNCH[@]}"; do
@@ -260,7 +242,7 @@ _status_print_untracked() {
   rel="${d#"$TARGET_DIR"}"
   rel="${rel#/}"
   [ -z "$rel" ] && rel="."
-  printf "  ${_C_MOD}?${_C_RST}  %s/\n" "$rel"
+  printf "  ${_C_YELLOW}?${_C_RST}  %s/\n" "$rel"
 }
 
 _status_print_summary() {
@@ -268,9 +250,9 @@ _status_print_summary() {
   local dword
   [ "$dirs" -eq 1 ] && dword="directory" || dword="directories"
   printf "Summary: %d %s checked" "$dirs" "$dword"
-  [ "$new" -gt 0 ] && printf ", ${_C_NEW}%d new${_C_RST}" "$new"
-  [ "$del" -gt 0 ] && printf ", ${_C_DEL}%d deleted${_C_RST}" "$del"
-  [ "$mod" -gt 0 ] && printf ", ${_C_MOD}%d modified${_C_RST}" "$mod"
+  [ "$new" -gt 0 ] && printf ", ${_C_GREEN}%d new${_C_RST}" "$new"
+  [ "$del" -gt 0 ] && printf ", ${_C_RED}%d deleted${_C_RST}" "$del"
+  [ "$mod" -gt 0 ] && printf ", ${_C_YELLOW}%d modified${_C_RST}" "$mod"
   printf ", %d unchanged" "$unch"
   [ "$untracked" -gt 0 ] && printf ", %d untracked" "$untracked"
   printf '\n'
@@ -307,7 +289,6 @@ run_status() {
   LOG_FILEPATH=""
 
   build_exclusions
-  _status_init_colors
 
   local st_new=0 st_del=0 st_mod=0 st_unch=0 st_untracked=0 st_dirs=0
   local any_changes=0

@@ -149,7 +149,7 @@ run_checksums() {
   while IFS= read -r -d '' d; do preview_proc+=("$d"); done < "$preview_proc_file"
   while IFS= read -r -d '' d; do preview_skipped+=("$d"); done < "$preview_skipped_file"
 
-  log "Found ${#preview_proc[@]} folder(s) to process (preview):"
+  log "Found ${_C_GREEN}${#preview_proc[@]}${_C_RST} folder(s) to process (preview):"
   local i=0 max_preview=200
   for d in "${preview_proc[@]}"; do
     [ "$i" -ge "$max_preview" ] && break
@@ -160,7 +160,7 @@ run_checksums() {
     log "  ... and $(( ${#preview_proc[@]} - max_preview )) more"
   fi
 
-  log "Skipping ${#preview_skipped[@]} folder(s) (preview):"
+  log "Skipping ${_C_YELLOW}${#preview_skipped[@]}${_C_RST} folder(s) (preview):"
   i=0
   for d in "${preview_skipped[@]}"; do
     [ "$i" -ge "$max_preview" ] && break
@@ -195,7 +195,7 @@ run_checksums() {
   # Prompt (after preview)
   # ----------------------------
   if [ "$YES" -eq 0 ] && [ "$ASSUME_NO" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
-    printf 'About to process directories under %s. Continue? [y/N]: ' "$TARGET_DIR"
+    printf '%bAbout to process directories under %s. Continue? [y/N]:%b ' "${_C_BOLD}" "$TARGET_DIR" "${_C_RST}"
     if ! IFS= read -r ans; then exit 1; fi
     case "$ans" in [Yy]*) ;; *) log "Aborted by user"; exit 0 ;; esac
   elif [ "$ASSUME_NO" -eq 1 ]; then
@@ -433,20 +433,24 @@ run_checksums() {
   cleanup_leftover_locks "$TARGET_DIR"
 
   # === Central summary report ===
-  log "Summary:"
-  vlog "  Verified (existing manifests): $count_verified_existing"
-  vlog "  New manifests created:         $count_created"
-  log "  Processed (total):             $count_processed"
-  log "  Skipped:     $count_skipped"
-  log "  Overwritten: $count_overwritten"
-  log "  Errors:      $count_errors"
+  log "${_C_BOLD}Summary:${_C_RST}"
+  vlog "  Verified (existing manifests): ${_C_MAGENTA}$count_verified_existing${_C_RST}"
+  vlog "  New manifests created:         ${_C_MAGENTA}$count_created${_C_RST}"
+  log "  Processed (total):             ${_C_GREEN}$count_processed${_C_RST}"
+  log "  Skipped:     ${_C_YELLOW}$count_skipped${_C_RST}"
+  log "  Overwritten: ${_C_MAGENTA}$count_overwritten${_C_RST}"
+  if [ "$count_errors" -gt 0 ]; then
+    log "  Errors:      ${_C_RED}$count_errors${_C_RST}"
+  else
+    log "  Errors:      $count_errors"
+  fi
 
   if [ "${#errors[@]}" -gt 0 ]; then
-    log "Completed with ${#errors[@]} errors. See run log ${RUN_LOG} and first-run log ${FIRST_RUN_LOG:-none}"
+    log "${_C_RED}Completed with ${#errors[@]} errors.${_C_RST} See run log ${RUN_LOG} and first-run log ${FIRST_RUN_LOG:-none}"
     for e in "${errors[@]}"; do _global_log 0 "ERR: $e"; done
     exit 1
   fi
 
-  log "Completed successfully."
+  log "${_C_GREEN}Completed successfully.${_C_RST}"
   exit 0
 }

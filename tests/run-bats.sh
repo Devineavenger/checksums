@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # Defaults (override in CI or environment)
-: "${CI_PARALLEL:=4}"
+: "${CI_PARALLEL:=32}"
 : "${CI_STRICT_LOGS:=false}"
 
 export CI_PARALLEL

@@ -118,14 +118,14 @@ _plan_one_directory() {
 
   # Skip hidden folders
   case "$base_name" in
-    .*) reason="hidden"; printf '%s\0' "$d" >> "$plan_skipped_file"; vlog "PLAN: skip $d reason=$reason"; return ;;
+    .*) reason="hidden"; printf '%s\0' "$d" >> "$plan_skipped_file"; vlog "PLAN: ${_C_YELLOW}skip${_C_RST} $d reason=$reason"; return ;;
   esac
 
   # When NO_ROOT_SIDEFILES is set, never schedule the base directory itself
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ "$d" = "$base" ]; then
     reason="root-protected"
     printf '%s\0' "$d" >> "$plan_skipped_file"
-    vlog "PLAN: skip $d reason=$reason"
+    vlog "PLAN: ${_C_YELLOW}skip${_C_RST} $d reason=$reason"
     return
   fi
 
@@ -133,7 +133,7 @@ _plan_one_directory() {
   if [ "$VERIFY_ONLY" -eq 1 ]; then
     reason="verify-only"
     printf '%s\0' "$d" >> "$plan_to_process_file"
-    vlog "PLAN: process $d reason=$reason"
+    vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
     return
   fi
 
@@ -145,7 +145,7 @@ _plan_one_directory() {
        && has_local_files "$d"; then
       reason="first-run-md5-only"
       printf '%s\0' "$d" >> "$plan_to_process_file"
-      vlog "PLAN: process $d reason=$reason"
+      vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
       return
     fi
   fi
@@ -154,7 +154,7 @@ _plan_one_directory() {
   if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_files "$d"; then
     reason="no-user-files"
     printf '%s\0' "$d" >> "$plan_skipped_file"
-    vlog "PLAN: skip $d reason=$reason"
+    vlog "PLAN: ${_C_YELLOW}skip${_C_RST} $d reason=$reason"
     return
   fi
 
@@ -171,7 +171,7 @@ _plan_one_directory() {
          -newer "$sumf" -print -quit 2>/dev/null | grep -q .; then
       reason="newer-file-detected"
       printf '%s\0' "$d" >> "$plan_to_process_file"
-      vlog "PLAN: process $d reason=$reason"
+      vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
       local md5_details="${VERIFY_MD5_DETAILS:-1}"
       if [ "$md5_details" -eq 1 ] && [ -f "$sumf" ]; then
         local vr
@@ -187,7 +187,7 @@ _plan_one_directory() {
     if [ "$fcount" -ne "$sumlines" ]; then
       reason="filecount-mismatch"
       printf '%s\0' "$d" >> "$plan_to_process_file"
-      vlog "PLAN: process $d reason=$reason"
+      vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
       if [ "${VERIFY_MD5_DETAILS:-1}" -eq 1 ] && [ -f "$sumf" ]; then
         local vr
         vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
@@ -241,7 +241,7 @@ _plan_one_directory() {
 
       if [ "$changed" -eq 0 ]; then
         printf '%s\0' "$d" >> "$plan_skipped_file"
-        vlog "PLAN: skip $d reason=$reason"
+        vlog "PLAN: ${_C_YELLOW}skip${_C_RST} $d reason=$reason"
         return
       fi
     else
@@ -260,11 +260,11 @@ _plan_one_directory() {
 
     reason="${reason:-needs-recompute}"
     printf '%s\0' "$d" >> "$plan_to_process_file"
-    vlog "PLAN: process $d reason=$reason"
+    vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
   else
     reason="no-sumfile"
     printf '%s\0' "$d" >> "$plan_to_process_file"
-    vlog "PLAN: process $d reason=$reason"
+    vlog "PLAN: ${_C_GREEN}process${_C_RST} $d reason=$reason"
   fi
 }
 

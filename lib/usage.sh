@@ -8,15 +8,20 @@
 # This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
 # arising from its use.
 
+# shellcheck disable=SC2059
+
 # usage.sh
 #
 # Prints CLI usage, grouped by category and aligned with args.sh parsing.
 
 usage() {
-  cat <<EOF
-$ME Version $VER
+  # Pre-build bold markers for headings; printf '%b' interprets \033 escapes.
+  local B; B=$(printf '%b' "${_C_BOLD:-}") R; R=$(printf '%b' "${_C_RST:-}")
 
-Quick Start (no flags):
+  cat <<EOF
+${B}$ME Version $VER${R}
+
+${B}Quick Start (no flags):${R}
   Running "checksums DIRECTORY" with no options will:
     - Use md5 for per-file hashes and sha256 for meta signatures
     - Create sidecar files: #####checksums#####.md5, #####checksums#####.meta, #####checksums#####.log
@@ -27,20 +32,20 @@ Quick Start (no flags):
     - Prompt for confirmation before processing
     - Write a run log: #####checksums#####.run.log
 
-Usage: $ME [options] DIRECTORY
+${B}Usage:${R} $ME [options] DIRECTORY
 
-General Options:
+${B}General Options:${R}
   -h, --help         show this help
   --version          show version and exit
   --config FILE      load configuration from FILE (overrides default)
 
-File Naming Options:
+${B}File Naming Options:${R}
   -f NAME, --base-name NAME
                      base name for sidecar files (.md5/.meta/.log) [default: ${BASE_NAME}]
   -l LOGNAME, --log-base LOGNAME
                      log base name (default: same as -f)
 
-Hashing Options:
+${B}Hashing Options:${R}
   -a ALGO, --per-file-algo ALGO
                      per-file checksum algorithm: md5 (default) or sha256
   -m ALGO, --meta-sig ALGO
@@ -57,7 +62,7 @@ Hashing Options:
                      adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
                      format: "LOW-HIGH:COUNT,>HIGH:COUNT" with K/M/G suffixes
 
-Run Control Options:
+${B}Run Control Options:${R}
   -n, --dry-run      dry-run (no writes)
   -d, --debug        increase debug verbosity (repeatable)
   -v, --verbose      increase verbosity (repeatable)
@@ -66,7 +71,7 @@ Run Control Options:
   -y, --assume-yes   assume "yes" for all prompts (non-interactive)
   --assume-no        assume "no" for all prompts (non-interactive)
 
-First-run Options:
+${B}First-run Options:${R}
   -F, --first-run    bootstrap mode: verify existing .md5 files lacking .meta/.log
   -C CHOICE, --first-run-choice CHOICE
                      first-run choice: skip | overwrite | prompt (default prompt)
@@ -76,46 +81,46 @@ First-run Options:
 
 +Environment: FIRST_RUN_KEEP=1 is equivalent to --first-run-keep.
 
-Verification Options:
+${B}Verification Options:${R}
   -V, --verify-only  audit mode (no writes)
   -z, --no-md5-details
                      disable per-directory md5 verification in planning
   --md5-details      enable md5 verification in planning (default)
 
-Status Options:
+${B}Status Options:${R}
   -S, --status       show what changed since the last manifest (diff mode)
                      reads .md5/.meta manifests and compares against disk state
                      exits 0 if nothing changed, 1 if changes found
                      use with -R to rehash and confirm changes (slower)
 
-Directory Handling Options:
+${B}Directory Handling Options:${R}
   --skip-empty       skip directories with no files (default)
   --no-skip-empty    process empty/container-only directories too
   --allow-root-sidefiles
                      allow sidecar files (.md5/.meta/.log) in root DIRECTORY
                      (default: root sidefiles disabled)
 
-Logging Options:
+${B}Logging Options:${R}
   -o FORMAT, --output FORMAT
                      log format: text (default), json, csv
 
-Config file:
+${B}Config file:${R}
   By default, the tool looks for "<BASE_NAME>.conf" in the root DIRECTORY.
   With default BASE_NAME ("#####checksums#####"), this is "#####checksums#####.conf".
   Use --config FILE to specify an alternate path.
   CLI arguments always override config settings.
 
-Patterns:
+${B}Patterns:${R}
   INCLUDE_PATTERNS, EXCLUDE_PATTERNS accept shell globs (e.g., "*.tmp").
   If INCLUDE_PATTERNS is non-empty, only matching files are considered.
 
-Quick Examples:
+${B}Quick Examples:${R}
   $ME -a sha256 -o json --assume-yes /data/project
   $ME --config /data/project/custom.conf -V /data/project
   $ME --allow-root-sidefiles /data/project
   $ME -F -C overwrite /data/project
 
-Common Usage Patterns:
+${B}Common Usage Patterns:${R}
 
 1. First-run Bootstrap (initialize meta/logs from existing .md5 files)
    $ME -F -C overwrite -a md5 -m sha256 -p 4 --md5-details --skip-empty /data/project
@@ -169,7 +174,7 @@ Common Usage Patterns:
    No files written; exits 0 if clean, 1 if changes exist (CI-friendly)
    Add -R to rehash and confirm changes (slower, avoids false positives)
 
-Exit Codes:
+${B}Exit Codes:${R}
   0   Success (also: user abort, --help, --version, --assume-no)
   1   Error (validation failure, runtime error, missing tools); also: changes found in --status mode
   2   Missing prerequisite (library files not found at startup)

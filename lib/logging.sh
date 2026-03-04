@@ -55,7 +55,9 @@ _global_log() {
         ;;
       *)
         if [ "$level" -eq 0 ]; then
-          printf '%s ERROR: %s\n' "$ts" "$msg" >&2
+          printf '%s %bERROR:%b %s\n' "$ts" "${_C_RED:-}" "${_C_RST:-}" "$msg" >&2
+        elif [ "$level" -ge 2 ]; then
+          printf '%b%s %s%b\n' "${_C_DIM:-}" "$ts" "$msg" "${_C_RST:-}"
         else
           printf '%s %s\n' "$ts" "$msg"
         fi
