@@ -86,8 +86,8 @@ parse_args() {
         ;;
       # Flags that consume the next token as their value — skip that token so
       # a value that looks like a path is not mistaken for TARGET_DIR.
-      -a|-m|-l|-C|-p|-b|-o| \
-      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--batch|--output|--log-format)
+      -a|-m|-l|-C|-p|-P|-b|-o| \
+      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format)
         _pi=$(( _pi + 1 ))
         ;;
       --)
@@ -133,8 +133,8 @@ parse_args() {
   # when a long option is encountered, getopts sets opt='-' and OPTARG to the
   # long option name; we handle it in the '-' branch below.
   #
-  # Short flags included: f a m l n d v r R F C z p b o y V h K
-  while getopts "f:a:m:l:ndvrRFC:p:b:o:yVhKz-:" opt 2>/dev/null; do
+  # Short flags included: f a m l n d v r R F C z p P b o y V h K
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKz-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -155,6 +155,7 @@ parse_args() {
       K) FIRST_RUN_KEEP=1 ;;             # -K : keep first-run log after overwrites (audit)
       z) VERIFY_MD5_DETAILS=0 ;;         # -z : disable md5-details (no-md5-details)
       p) PARALLEL_JOBS=$OPTARG ;;        # -p N : number of parallel hashing jobs
+      P) PARALLEL_DIRS=$OPTARG ;;        # -P N : number of parallel directory workers
       b) BATCH_RULES=$OPTARG ;;          # -b RULES : adaptive batching rules string
       o) LOG_FORMAT=$OPTARG ;;           # -o FORMAT : text | json | csv
       y) YES=1 ;;                        # -y : assume-yes (non-interactive)
@@ -259,6 +260,9 @@ parse_args() {
           parallel)
             PARALLEL_JOBS="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
+          parallel-dirs)
+            PARALLEL_DIRS="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            ;;
           batch)
             BATCH_RULES="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
@@ -357,6 +361,33 @@ parse_args() {
     [ "${PARALLEL_JOBS:-0}" -lt 1 ] && PARALLEL_JOBS=1
   else
     PARALLEL_JOBS="${PARALLEL_JOBS:-1}"
+  fi
+
+  # parallel dirs: integer, "auto" (all cores), or fraction (3/4, 1/2, 1/4)
+  if [ -n "${PARALLEL_DIRS:-}" ]; then
+    case "$PARALLEL_DIRS" in
+      auto)
+        PARALLEL_DIRS=$(detect_cores)
+        ;;
+      [0-9]*/[0-9]*)
+        local _num="${PARALLEL_DIRS%/*}"
+        local _den="${PARALLEL_DIRS#*/}"
+        if [ "${_den:-0}" -gt 0 ] && [ "${_num:-0}" -gt 0 ]; then
+          local _cores
+          _cores=$(detect_cores)
+          PARALLEL_DIRS=$(( (_cores * _num + _den - 1) / _den ))  # round up
+        else
+          fatal "Invalid -P/--parallel-dirs fraction: $PARALLEL_DIRS"
+        fi
+        ;;
+      ''|*[!0-9]*)
+        fatal "Invalid -P/--parallel-dirs value: $PARALLEL_DIRS (use integer, 'auto', or fraction like 3/4)" ;;
+      *)
+        ;;
+    esac
+    [ "${PARALLEL_DIRS:-0}" -lt 1 ] && PARALLEL_DIRS=1
+  else
+    PARALLEL_DIRS="${PARALLEL_DIRS:-1}"
   fi
 
   # log format must be text | json | csv

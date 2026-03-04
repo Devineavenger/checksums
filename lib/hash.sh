@@ -54,7 +54,13 @@ _par_wait_one() {
 }
 
 _par_maybe_wait() {
-  # If we have reached PARALLEL_JOBS in-flight, wait for one to finish.
+  # When semaphore is active (parallel dirs), acquire a token instead of
+  # PID-based throttling. The token blocks until a worker slot is available.
+  if [ -n "${SEM_FD:-}" ]; then
+    _sem_acquire
+    return
+  fi
+  # Standard PID-based throttling for single-directory mode.
   while [ "${HASH_PIDS_COUNT:-0}" -ge "$PARALLEL_JOBS" ]; do _par_wait_one; done
 }
 
@@ -71,6 +77,64 @@ _par_wait_all() {
   HASH_PIDS_COUNT=0
 }
 
+# Directory-level parallel dispatch (separate PID pool from HASH_PIDS)
+DIR_PIDS=()
+DIR_PIDS_COUNT=0
+
+_dir_par_wait_one() {
+  local pid="${DIR_PIDS[0]}"
+  if [ -n "$pid" ]; then
+    wait "$pid" 2>/dev/null || true
+    DIR_PIDS=("${DIR_PIDS[@]:1}")
+    DIR_PIDS_COUNT=${#DIR_PIDS[@]}
+  fi
+}
+
+_dir_par_maybe_wait() {
+  while [ "${DIR_PIDS_COUNT:-0}" -ge "${PARALLEL_DIRS:-1}" ]; do _dir_par_wait_one; done
+}
+
+_dir_par_wait_all() {
+  if [ "${#DIR_PIDS[@]}" -gt 0 ]; then
+    for pid in "${DIR_PIDS[@]}"; do
+      [ -n "$pid" ] && wait "$pid" 2>/dev/null || true
+    done
+  fi
+  DIR_PIDS=()
+  DIR_PIDS_COUNT=0
+}
+
+# === FIFO semaphore for shared worker pool across parallel directories ===
+# When PARALLEL_DIRS > 1, all directories share a single pool of PARALLEL_JOBS
+# hash worker slots. The semaphore is a named pipe filled with tokens.
+
+_sem_init() {
+  SEM_FIFO="$(mktemp -u "${TMPDIR:-/tmp}/checksums_sem.XXXXXX")"
+  mkfifo "$SEM_FIFO"
+  eval "exec 7<>\"$SEM_FIFO\""
+  SEM_FD=7
+  local i
+  for ((i=0; i<PARALLEL_JOBS; i++)); do printf 'x' >&7; done
+}
+
+_sem_destroy() {
+  if [ -n "${SEM_FD:-}" ]; then
+    eval "exec 7>&-" 2>/dev/null || true
+  fi
+  [ -n "${SEM_FIFO:-}" ] && rm -f "$SEM_FIFO" 2>/dev/null || true
+  SEM_FD=""
+  SEM_FIFO=""
+}
+
+_sem_acquire() {
+  local _tok
+  read -n 1 _tok <&7
+}
+
+_sem_release() {
+  printf 'x' >&7
+}
+
 _do_hash_task() {
   # Worker invoked in background: compute hash and append to results file.
   local path="$1" algo="$2" results_file="$3"
@@ -82,6 +146,9 @@ _do_hash_task() {
 # New: batch worker — hashes multiple files sequentially and writes all results.
 # Usage: _do_hash_batch <algo> <results_file> <file1> <file2> ...
 _do_hash_batch() {
+  # Release semaphore token on exit when parallel dirs are active.
+  # The trap fires on success, error, or crash — token is always returned.
+  [ -n "${SEM_FD:-}" ] && trap '_sem_release' EXIT
   local algo="$1" results_file="$2"
   shift 2
   for path in "$@"; do

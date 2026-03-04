@@ -1,4 +1,18 @@
 ## [Unreleased]
+## v4.1.0 - 2026-03-04
+
+### Features
+* feat: parallel directory processing (`-P N` / `--parallel-dirs N`) — process up to N directories simultaneously with a shared FIFO semaphore pool of `-p` hash worker slots; dynamic workload balancing across directories of varying size
+* feat: parallel planning — `decide_directories_plan()` dispatches directory analysis to parallel workers when `-p N` > 1, with ordered result aggregation
+* feat: parallel first-run verification — `first_run_verify()` dispatches directory verification to parallel workers when `-p N` > 1 and choice is not `prompt`
+
+### Changes
+* chore: FIFO semaphore uses FD 7 (avoids conflicts with testing frameworks on FD 3)
+* chore: directory-level PID pool (`DIR_PIDS`) separated from file-level (`HASH_PIDS`)
+
+### Tests
+* test: 17 new tests — parallel directory processing (7), parallel first-run verification (5), parallel planning (5)
+
 ## v4.0.0 - 2026-03-04
 
 ### Features

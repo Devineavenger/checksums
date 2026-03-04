@@ -327,22 +327,78 @@ run_checksums() {
 
   # Process planned directories
   log "Directories to process: ${#plan_to_process[@]}"
-  for d in "${plan_to_process[@]}"; do
-    # Evaluate existence once for logging and action
-    if [ -d "$d" ]; then
-      exists_yesno=yes
-    else
-      exists_yesno=no
-    fi
-    vlog "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
-    if [ "$exists_yesno" = yes ]; then
-      process_single_directory "$d"
+  if [ "${PARALLEL_DIRS:-1}" -gt 1 ] && [ "${#plan_to_process[@]}" -gt 1 ]; then
+    # --- Parallel directory processing ---
+    _sem_init
+    DIR_PIDS=(); DIR_PIDS_COUNT=0
+    local _proc_results_dir
+    _proc_results_dir="$(mktemp -d "${TMPDIR:-/tmp}/proc_par.XXXXXX")"
+    local _proc_idx=0
+
+    for d in "${plan_to_process[@]}"; do
+      if [ ! -d "$d" ]; then
+        record_error "Planned processing target missing: $d"
+        continue
+      fi
+      _dir_par_maybe_wait
+      local _proc_out="$_proc_results_dir/worker_${_proc_idx}.result"
+      (
+        count_verified=0; count_verified_existing=0; count_created=0
+        count_errors=0; errors=()
+        record_error() { errors+=("$*"); count_errors=$((count_errors+1)); }
+
+        process_single_directory "$d"
+
+        {
+          printf 'COUNTER:count_verified:%d\n' "$count_verified"
+          printf 'COUNTER:count_verified_existing:%d\n' "$count_verified_existing"
+          printf 'COUNTER:count_created:%d\n' "$count_created"
+          for e in "${errors[@]}"; do printf 'ERROR:%s\n' "$e"; done
+        } > "$_proc_out"
+      ) &
+      DIR_PIDS+=("$!")
+      DIR_PIDS_COUNT=${#DIR_PIDS[@]}
       count_processed=$((count_processed+1))
       processed_dirs+=("$d")
-    else
-      record_error "Planned processing target missing: $d"
-    fi
-  done
+      _proc_idx=$((_proc_idx+1))
+    done
+
+    _dir_par_wait_all
+    _sem_destroy
+
+    # Aggregate results from workers
+    local i
+    for (( i=0; i<_proc_idx; i++ )); do
+      local _proc_out="$_proc_results_dir/worker_${i}.result"
+      [ -f "$_proc_out" ] || continue
+      while IFS= read -r _line; do
+        case "$_line" in
+          COUNTER:count_verified:*)          count_verified=$((count_verified + ${_line##*:})) ;;
+          COUNTER:count_verified_existing:*) count_verified_existing=$((count_verified_existing + ${_line##*:})) ;;
+          COUNTER:count_created:*)           count_created=$((count_created + ${_line##*:})) ;;
+          ERROR:*)                           record_error "${_line#ERROR:}" ;;
+        esac
+      done < "$_proc_out"
+    done
+    rm -rf "$_proc_results_dir" 2>/dev/null || true
+  else
+    # --- Sequential path (existing behavior, unchanged) ---
+    for d in "${plan_to_process[@]}"; do
+      if [ -d "$d" ]; then
+        exists_yesno=yes
+      else
+        exists_yesno=no
+      fi
+      vlog "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
+      if [ "$exists_yesno" = yes ]; then
+        process_single_directory "$d"
+        count_processed=$((count_processed+1))
+        processed_dirs+=("$d")
+      else
+        record_error "Planned processing target missing: $d"
+      fi
+    done
+  fi
 
   rm -f "$plan_to_process_file" "$plan_skipped_file"
 

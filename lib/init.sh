@@ -111,6 +111,7 @@ ME="$(basename "$0")"
 : "${FIRST_RUN:=0}"                            # -F first-run verification/bootstrap mode
 : "${FIRST_RUN_CHOICE:=prompt}"                # -C skip | overwrite | prompt (on mismatch)
 : "${PARALLEL_JOBS:=1}"                        # -p N parallel hashing jobs
+: "${PARALLEL_DIRS:=1}"                        # -P N parallel directory processing
 : "${LOG_FORMAT:=text}"                        # -o text (default), json, csv
 : "${VERIFY_ONLY:=0}"                          # -V audit only (no writes)
 : "${CONFIG_FILE:=}"                           # --config FILE explicit config path
@@ -146,6 +147,10 @@ TOOL_sha256=""                    # sha256sum
 TOOL_shasum=""                    # shasum -a 256
 TOOL_stat_gnu=0                   # GNU stat detected (1) vs BSD (0)
 TOOL_flock=0                      # flock availability: 1/0
+
+# === Semaphore state (parallel directory processing) ===
+SEM_FIFO=""                                    # FIFO path for shared worker pool
+SEM_FD=""                                      # File descriptor for semaphore
 
 # === Logging state (globals declared for ShellCheck visibility) ===
 declare -g RUN_LOG=""             # Path to run-level log

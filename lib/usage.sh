@@ -49,6 +49,10 @@ Hashing Options:
                      (use with -r for a full forced rebuild)
   -p N, --parallel N number of parallel hashing/verification jobs (default 1)
                      accepts: integer, "auto" (all cores), or fraction (3/4, 1/2, etc.)
+  -P N, --parallel-dirs N
+                     number of directories to process in parallel (default 1)
+                     accepts: integer, "auto" (all cores), or fraction (3/4, 1/2, etc.)
+                     when > 1, -p controls the shared worker pool across all dirs
   -b RULES, --batch RULES
                      adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
                      format: "LOW-HIGH:COUNT,>HIGH:COUNT" with K/M/G suffixes

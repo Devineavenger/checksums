@@ -84,6 +84,204 @@ verify_md5_file() {
   fi
 }
 
+# Worker: process a single directory for first-run verification.
+# When results_file is non-empty, writes structured results to it (parallel mode).
+# When results_file is empty, mutates globals directly (sequential mode).
+_first_run_verify_one() {
+  local d="$1" results_file="$2"
+
+  first_run_log "Verifying directory: $d"
+  dir_log_append "$d" "Verifying existing checksums in: $d"
+  if verify_md5_file "$d"; then
+    first_run_log "Verified OK: $d"
+    dir_log_append "$d" "Verified OK: $d"
+    if [ -n "$results_file" ]; then
+      printf 'COUNTER:count_verified:1\n' >> "$results_file"
+    else
+      count_verified=$((count_verified+1))
+    fi
+
+    if has_files "$d"; then
+      if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
+        first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
+      else
+        first_run_log "SCHEDULED: would create meta/log for $d"
+        if [ -n "$results_file" ]; then
+          printf 'OVERWRITE:%s\n' "$d" >> "$results_file"
+        else
+          first_run_overwrite+=("$d")
+        fi
+        dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
+      fi
+    else
+      first_run_log "SKIPPED scheduling for empty/container-only directory: $d"
+      dir_log_append "$d" "SKIPPED scheduling (no user files)"
+    fi
+    return 0
+  fi
+
+  # mismatch detected
+  first_run_log "Verification FAILED for $d"
+  dir_log_append "$d" "Verification FAILED for $d"
+
+  case "$FIRST_RUN_CHOICE" in
+    skip)
+      first_run_log "CHOICE skip: recorded mismatch for $d"
+      if [ -n "$results_file" ]; then
+        printf 'ERROR:First-run: skipped %s due to checksum mismatch\n' "$d" >> "$results_file"
+      else
+        record_error "First-run: skipped $d due to checksum mismatch"
+      fi
+      ;;
+    overwrite)
+      if [ "$VERIFY_ONLY" -eq 1 ]; then
+        first_run_log "CHOICE overwrite suppressed in verify-only for $d"
+        if [ -n "$results_file" ]; then
+          printf 'ERROR:First-run: overwrite requested but skipped (verify-only) for %s\n' "$d" >> "$results_file"
+        else
+          record_error "First-run: overwrite requested but skipped (verify-only) for $d"
+        fi
+        return 0
+      fi
+
+      if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+        if ! has_files "$d"; then
+          first_run_log "SKIPPED scheduling overwrite for empty directory: $d"
+          dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
+          return 0
+        fi
+      fi
+
+      first_run_log "CHOICE overwrite: scheduling recomputation for $d"
+      dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
+      if [ "$DRY_RUN" -eq 1 ]; then
+        first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+        vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
+      else
+        if [ -n "$results_file" ]; then
+          printf 'OVERWRITE:%s\n' "$d" >> "$results_file"
+          printf 'COUNTER:count_overwritten:1\n' >> "$results_file"
+        else
+          first_run_overwrite+=("$d")
+          first_run_log "SCHEDULED OVERWRITE for $d"
+          dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
+          count_overwritten=$((count_overwritten+1))
+        fi
+      fi
+      ;;
+    prompt)
+      # Prompt mode always runs sequentially; this path is only called from sequential.
+      while true; do
+        printf 'Directory %s has mismatched checksums. Choose action: [s]kip, [o]verwrite, [a]bort: ' "$d"
+        if ! IFS= read -r choice; then choice="s"; fi
+        case "$choice" in
+          s|S)
+            first_run_log "CHOICE skip for $d"
+            record_error "First-run: skipped $d due to checksum mismatch"
+            break
+            ;;
+          o|O)
+            if [ "$VERIFY_ONLY" -eq 1 ]; then
+              first_run_log "CHOICE overwrite suppressed in verify-only for $d"
+              record_error "First-run: overwrite requested but skipped (verify-only) for $d"
+              break
+            fi
+
+            if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
+              if ! has_files "$d"; then
+                first_run_log "SKIPPED scheduling overwrite for empty directory (prompt): $d"
+                dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
+                break
+              fi
+            fi
+
+            first_run_log "CHOICE overwrite for $d"
+            if [ "$DRY_RUN" -eq 1 ]; then
+              first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
+              vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
+            else
+              first_run_overwrite+=("$d")
+              first_run_log "SCHEDULED OVERWRITE for $d"
+              count_overwritten=$((count_overwritten+1))
+            fi
+            break
+            ;;
+          a|A)
+            first_run_log "CHOICE abort at $d"
+            log "User aborted at first-run mismatch in $d"
+            exit 2
+            ;;
+          *) printf 'Please enter s, o, or a\n' ;;
+        esac
+      done
+      ;;
+    *)
+      first_run_log "Unknown FIRST_RUN_CHOICE='$FIRST_RUN_CHOICE'; treating as skip for $d"
+      if [ -n "$results_file" ]; then
+        printf 'ERROR:First-run: unknown choice for %s; skipped\n' "$d" >> "$results_file"
+      else
+        record_error "First-run: unknown choice for $d; skipped"
+      fi
+      ;;
+  esac
+}
+
+# Sequential path: iterate targets and mutate globals directly (existing behavior).
+_first_run_verify_sequential() {
+  for d in "${targets[@]}"; do
+    _first_run_verify_one "$d" ""
+  done
+}
+
+# Parallel path: dispatch each directory to a subshell worker.
+_first_run_verify_parallel() {
+  local _fr_results_dir
+  _fr_results_dir="$(mktemp -d "${TMPDIR:-/tmp}/fr_verify.XXXXXX")"
+  DIR_PIDS=(); DIR_PIDS_COUNT=0
+  local _fr_idx=0
+  local _real_first_run_log="$FIRST_RUN_LOG"
+  local _real_run_log="$RUN_LOG"
+
+  for d in "${targets[@]}"; do
+    _dir_par_maybe_wait
+    local _fr_out="$_fr_results_dir/worker_${_fr_idx}"
+    (
+      # Redirect log files to per-worker temps so writes don't interleave
+      FIRST_RUN_LOG="$_fr_out.frlog"
+      RUN_LOG="$_fr_out.runlog"
+      : > "$FIRST_RUN_LOG"
+      : > "$RUN_LOG"
+      _first_run_verify_one "$d" "$_fr_out.result"
+    ) &
+    DIR_PIDS+=("$!")
+    DIR_PIDS_COUNT=${#DIR_PIDS[@]}
+    _fr_idx=$((_fr_idx+1))
+  done
+
+  _dir_par_wait_all
+
+  # Aggregate results in submission order (preserves deterministic output)
+  local i
+  for (( i=0; i<_fr_idx; i++ )); do
+    local _fr_out="$_fr_results_dir/worker_${i}"
+    # Replay log files into the real logs
+    [ -s "$_fr_out.frlog" ] && cat "$_fr_out.frlog" >> "$_real_first_run_log"
+    [ -s "$_fr_out.runlog" ] && cat "$_fr_out.runlog" >> "$_real_run_log"
+    # Parse structured results
+    [ -f "$_fr_out.result" ] || continue
+    while IFS= read -r _line; do
+      case "$_line" in
+        COUNTER:count_verified:*)   count_verified=$((count_verified + ${_line##*:})) ;;
+        COUNTER:count_overwritten:*) count_overwritten=$((count_overwritten + ${_line##*:})) ;;
+        OVERWRITE:*)                first_run_overwrite+=("${_line#OVERWRITE:}") ;;
+        ERROR:*)                    record_error "${_line#ERROR:}" ;;
+      esac
+    done < "$_fr_out.result"
+  done
+
+  rm -rf "$_fr_results_dir" 2>/dev/null || true
+}
+
 first_run_verify() {
   local base="$1"
   local -a targets=()
@@ -127,123 +325,12 @@ first_run_verify() {
   log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
   first_run_log "First-run start: base=$base  files: ${#targets[@]}"
 
-  for d in "${targets[@]}"; do
-    first_run_log "Verifying directory: $d"
-    dir_log_append "$d" "Verifying existing checksums in: $d"
-    if verify_md5_file "$d"; then
-      first_run_log "Verified OK: $d"
-      dir_log_append "$d" "Verified OK: $d"
-      count_verified=$((count_verified+1))
-
-      # Single, definitive scheduling rule:
-      # - Only schedule if the directory contains user files.
-      # - In dry-run or verify-only, do not mutate; just log.
-      if has_files "$d"; then
-        if [ "$DRY_RUN" -eq 1 ] || [ "$VERIFY_ONLY" -eq 1 ]; then
-          first_run_log "DRY/VERIFY: meta/log creation suppressed for $d"
-        else
-          first_run_log "SCHEDULED: would create meta/log for $d"
-          first_run_overwrite+=("$d")
-          dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
-        fi
-      else
-        first_run_log "SKIPPED scheduling for empty/container-only directory: $d"
-        dir_log_append "$d" "SKIPPED scheduling (no user files)"
-      fi
-      continue
-    fi
-
-    # mismatch detected
-    first_run_log "Verification FAILED for $d"
-    dir_log_append "$d" "Verification FAILED for $d"
-
-    case "$FIRST_RUN_CHOICE" in
-      skip)
-        first_run_log "CHOICE skip: recorded mismatch for $d"
-        record_error "First-run: skipped $d due to checksum mismatch"
-        continue
-        ;;
-      overwrite)
-        if [ "$VERIFY_ONLY" -eq 1 ]; then
-          first_run_log "CHOICE overwrite suppressed in verify-only for $d"
-          record_error "First-run: overwrite requested but skipped (verify-only) for $d"
-          continue
-        fi
-
-        # Respect SKIP_EMPTY before scheduling overwrite
-        if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
-          if ! has_files "$d"; then
-            first_run_log "SKIPPED scheduling overwrite for empty directory: $d"
-            dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
-            continue
-          fi
-        fi
-
-        first_run_log "CHOICE overwrite: scheduling recomputation for $d"
-        dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
-        if [ "$DRY_RUN" -eq 1 ]; then
-          first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
-          vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
-        else
-          first_run_overwrite+=("$d")
-          first_run_log "SCHEDULED OVERWRITE for $d"
-          dir_log_append "$d" "SCHEDULED OVERWRITE by first-run"
-          count_overwritten=$((count_overwritten+1))
-        fi
-        continue
-        ;;
-      prompt)
-        while true; do
-          printf 'Directory %s has mismatched checksums. Choose action: [s]kip, [o]verwrite, [a]bort: ' "$d"
-          if ! IFS= read -r choice; then choice="s"; fi
-          case "$choice" in
-            s|S)
-              first_run_log "CHOICE skip for $d"
-              record_error "First-run: skipped $d due to checksum mismatch"
-              break
-              ;;
-            o|O)
-              if [ "$VERIFY_ONLY" -eq 1 ]; then
-                first_run_log "CHOICE overwrite suppressed in verify-only for $d"
-                record_error "First-run: overwrite requested but skipped (verify-only) for $d"
-                break
-              fi
-
-              # Respect SKIP_EMPTY before scheduling overwrite in interactive prompt
-              if [ "${SKIP_EMPTY:-1}" -eq 1 ] && [ "${FORCE_REBUILD:-0}" -eq 0 ] && [ "${VERIFY_ONLY:-0}" -eq 0 ]; then
-                if ! has_files "$d"; then
-                  first_run_log "SKIPPED scheduling overwrite for empty directory (prompt): $d"
-                  dir_log_append "$d" "SKIPPED scheduling overwrite (no user files)"
-                  break
-                fi
-              fi
-
-              first_run_log "CHOICE overwrite for $d"
-              if [ "$DRY_RUN" -eq 1 ]; then
-                first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
-                vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
-              else
-                first_run_overwrite+=("$d")
-                first_run_log "SCHEDULED OVERWRITE for $d"
-                count_overwritten=$((count_overwritten+1))
-              fi
-              break
-              ;;
-            a|A)
-              first_run_log "CHOICE abort at $d"
-              log "User aborted at first-run mismatch in $d"
-              exit 2
-              ;;
-            *) printf 'Please enter s, o, or a\n' ;;
-          esac
-        done
-        ;;
-      *)
-        first_run_log "Unknown FIRST_RUN_CHOICE='$FIRST_RUN_CHOICE'; treating as skip for $d"
-        record_error "First-run: unknown choice for $d; skipped"
-        ;;
-    esac
-  done
+  # --- Parallel or sequential dispatch ---
+  if [ "${PARALLEL_JOBS:-1}" -gt 1 ] && [ "$FIRST_RUN_CHOICE" != "prompt" ]; then
+    _first_run_verify_parallel "$@"
+  else
+    _first_run_verify_sequential
+  fi
 
   first_run_log "First-run completed."
   return 0
