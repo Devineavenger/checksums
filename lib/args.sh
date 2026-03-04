@@ -126,6 +126,7 @@ _load_config() {
       NO_REUSE)           NO_REUSE="$val" ;;
       NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
       PROGRESS)           PROGRESS="$val" ;;
+      MINIMAL)            MINIMAL="$val" ;;
       EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
       INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
       *)
@@ -223,8 +224,8 @@ parse_args() {
   # when a long option is encountered, getopts sets opt='-' and OPTARG to the
   # long option name; we handle it in the '-' branch below.
   #
-  # Short flags included: f a m l n d v r R F C z p P b o y V h K Q
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQ-:" opt 2>/dev/null; do
+  # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQM-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -252,6 +253,7 @@ parse_args() {
       V) VERIFY_ONLY=1 ;;                # -V : verify-only audit mode (no writes)
       S) STATUS_ONLY=1 ;;                # -S : status/diff mode (read-only)
       Q) PROGRESS=0 ;;                   # -Q : disable progress reporting
+      M) MINIMAL=1 ;;                    # -M : minimal mode (hash-only, no sidecars)
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -327,6 +329,9 @@ parse_args() {
           no-progress)
             PROGRESS=0
             ;;
+          minimal)
+            MINIMAL=1
+            ;;
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
             NO_ROOT_SIDEFILES=0
@@ -398,6 +403,11 @@ parse_args() {
   if ! [[ "$BATCH_RULES" =~ ^([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+,)*([0-9]+[KMG]?-[0-9]+[KMG]?:[0-9]+|>[0-9]+[KMG]?:[0-9]+)$ ]]; then
     record_error "Invalid --batch/-b rules format: '$BATCH_RULES'. Falling back to default."
     BATCH_RULES="0-1M:20,1M-40M:20,>40M:1"
+  fi
+
+  # Minimal mode: force-disable first-run (no .meta/.log to bootstrap)
+  if [ "${MINIMAL:-0}" -eq 1 ] && [ "${FIRST_RUN:-0}" -eq 1 ]; then
+    FIRST_RUN=0
   fi
 
   # STATUS_ONLY is read-only; conflicts with write-oriented modes

@@ -87,6 +87,7 @@ read_meta() {
 }
 
 verify_meta_sig() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   local meta="$1" tmp stored expected
   [ -f "$meta" ] || return 0
   [ "$META_SIG_ALGO" = "none" ] && return 0
@@ -111,6 +112,7 @@ verify_meta_sig() {
 }
 
 write_meta() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   # Writes meta manifest atomically, signs it (unless none), and appends audit trail.
   local meta="$1"; shift
   local tmp="${meta}.tmp" sig sigsrc

@@ -9,7 +9,7 @@
 # arising from its use.
 
 #
-# uninstall.sh — Friendly uninstaller for checksums v2.5
+# uninstall.sh — Friendly uninstaller for checksums
 #
 # Purpose:
 #   Remove the installed checksums command and its supporting library files.

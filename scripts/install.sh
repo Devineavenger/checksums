@@ -65,5 +65,5 @@ case "$OS" in
   *)      echo -e "${GREEN}✔ Installed on $OS${RESET}" ;;
 esac
 
-echo -e "${GREEN}==> Installation complete!${RESET}"
+echo -e "${GREEN}==> Installation complete! (checksums ${VERSION})${RESET}"
 echo "Run 'checksums --help' to get started."

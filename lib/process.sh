@@ -358,8 +358,9 @@ process_single_directory() {
   fi
 
   # Only now create/rotate per-directory log because we will actually process this dir.
+  # Minimal mode skips per-directory log creation entirely.
   LOG_FILEPATH=""
-  if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
+  if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ] && [ "${MINIMAL:-0}" -eq 0 ]; then
     LOG_FILEPATH="$logf"
     dbg "PROC: LOG_FILEPATH set to $LOG_FILEPATH"
     rotate_log "$LOG_FILEPATH"
@@ -606,9 +607,11 @@ process_single_directory() {
         if [ -z "$h" ]; then
           h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
         fi
-        meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
-        printf '%s\n' "$meta_line" >> "$tmp_meta"
+        if [ "${MINIMAL:-0}" -eq 0 ]; then
+          meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
+          printf '%s\n' "$meta_line" >> "$tmp_meta"
+        fi
       done
     else
       for fpath in "${files[@]}"; do
@@ -618,25 +621,30 @@ process_single_directory() {
         if [ -z "$h" ]; then
           h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
         fi
-        meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
-        printf '%s\n' "$meta_line" >> "$tmp_meta"
+        if [ "${MINIMAL:-0}" -eq 0 ]; then
+          meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
+          printf '%s\n' "$meta_line" >> "$tmp_meta"
+        fi
       done
       rm -f "$MAP_path_to_hash" "$MAP_path_to_inode" "$MAP_path_to_meta" 2>/dev/null || true
     fi
 
-    local lockfile="${metaf}${LOCK_SUFFIX}"
-    local -a meta_lines=()
-    if [ -f "$tmp_meta" ]; then
-      while IFS= read -r line; do
-        meta_lines+=("$line")
-      done < "$tmp_meta"
-    fi
-
     if [ -s "$tmp_sum" ]; then
-      with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
+      if [ "${MINIMAL:-0}" -eq 0 ]; then
+        local lockfile="${metaf}${LOCK_SUFFIX}"
+        local -a meta_lines=()
+        if [ -f "$tmp_meta" ]; then
+          while IFS= read -r line; do
+            meta_lines+=("$line")
+          done < "$tmp_meta"
+        fi
+        with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
+        log "Wrote $sumf and $metaf"
+      else
+        log "Wrote $sumf"
+      fi
       mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
-      log "Wrote $sumf and $metaf"
       count_created=$((count_created+1))
     else
       vlog "Skipped writing manifests for $d (no local files)"

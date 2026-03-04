@@ -71,6 +71,8 @@ ${B}Run Control Options:${R}
   -y, --assume-yes   assume "yes" for all prompts (non-interactive)
   --assume-no        assume "no" for all prompts (non-interactive)
   -Q, --no-progress  disable live progress reporting (default: on for TTY)
+  -M, --minimal      hash-only mode: write .md5 manifest only, skip .meta/.log
+                     no first-run logic, no meta signatures, no run log
 
 ${B}First-run Options:${R}
   -F, --first-run    bootstrap mode: verify existing .md5 files lacking .meta/.log

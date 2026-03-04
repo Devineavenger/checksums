@@ -28,8 +28,10 @@ _positional:
 all: help
 
 install:
+	@printf '==> Installing checksums %s\n' "$$(cat VERSION 2>/dev/null || echo unknown)"
 	install -d $(DESTDIR)$(BINDIR)
 	install -d $(DESTDIR)$(LIBDIR)
+	install -m 0644 VERSION $(DESTDIR)$(SHAREDIR)/
 	install -m 0755 $(MAIN_SCRIPT) $(DESTDIR)$(BINDIR)/checksums
 	# copy lib scripts if any exist
 	@if ls lib/*.sh >/dev/null 2>&1; then \
@@ -37,8 +39,14 @@ install:
 	else \
 	  true; \
 	fi
+	@printf '==> Installed checksums %s to %s\n' "$$(cat VERSION 2>/dev/null || echo unknown)" "$(DESTDIR)$(PREFIX)"
 
 uninstall:
+	@if [ -r "$(DESTDIR)$(SHAREDIR)/VERSION" ]; then \
+	  printf '==> Uninstalling checksums %s\n' "$$(cat $(DESTDIR)$(SHAREDIR)/VERSION)"; \
+	else \
+	  printf '==> Uninstalling checksums\n'; \
+	fi
 	rm -f $(DESTDIR)$(BINDIR)/checksums
 	rm -rf $(DESTDIR)$(SHAREDIR)
 

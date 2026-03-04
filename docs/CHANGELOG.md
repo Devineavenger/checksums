@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: minimal mode (`-M` / `--minimal`) — hash-only mode that writes only the `.md5` manifest file; skips `.meta`, `.log`, `.run.log`, lock files, first-run logic, meta signatures, and log rotation; compatible with `md5sum`/`sha256sum` output format; configurable via `MINIMAL=1` in config
+
+### Tests
+* test: 7 new tests — `-M` flag parsing, `--minimal` long flag, `.md5`-only output, hash format validation, `FIRST_RUN=0` forcing, `write_meta` no-op, `verify_meta_sig` bypass
+
 ## v4.5.0 - 2026-03-05
 
 ### Features

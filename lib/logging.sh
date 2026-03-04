@@ -88,12 +88,14 @@ record_error() {
 
 # first_run_log writes detailed first-run traces into the FIRST_RUN_LOG file.
 first_run_log() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   local msg="$*"
   local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
   [ -n "${FIRST_RUN_LOG:-}" ] && printf '%s %s\n' "$ts" "$msg" >> "$FIRST_RUN_LOG"
 }
 
 dir_log_append() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   # Lightweight append-only helper for directory-level notes. Ensures a run header
   # exists in the file and then appends the message.
   local dir="$1"; shift
@@ -118,6 +120,7 @@ dir_log_append() {
 }
 
 dir_log_skip() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   # When a directory is determined to be up-to-date, rotate/truncate its log
   # and write a short skip notice so operators can see which directories were skipped.
   # Honor SKIP_EMPTY and NO_ROOT_SIDEFILES to avoid creating logs for those cases.
@@ -149,6 +152,7 @@ dir_log_skip() {
 }
 
 rotate_log() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   # Rotate the given logfile by moving it to <logfile>.<timestamp>.log.
   # Do NOT rotate when the logfile exists but appears to be a fresh file
   # (no prior #run header). This avoids creating a rotated file on first write.
@@ -233,6 +237,7 @@ rotate_log() {
 }
 
 log_run_header() {
+  [ "${MINIMAL:-0}" -eq 1 ] && return 0
   # Write an audit header into logfile with run id and timestamp.
   local logfile="$1"
   local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)

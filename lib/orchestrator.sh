@@ -205,7 +205,8 @@ run_checksums() {
 
   # Now that TARGET_DIR is normalized, initialize the run log in the target dir.
   # Only create the run log if TARGET_DIR is non-empty and writable.
-  if [ -n "${TARGET_DIR:-}" ]; then
+  # Minimal mode skips run log entirely.
+  if [ -n "${TARGET_DIR:-}" ] && [ "${MINIMAL:-0}" -eq 0 ]; then
     RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
     LOG_FILEPATH="$RUN_LOG"
     # Create/truncate run log only if we can write into the target directory.
