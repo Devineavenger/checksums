@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.4.1 - 2026-03-04
+
 ### Fixes
 * fix: remove 10 duplicate tests across `test_helpers.bats`, `test_integrations.bats`, and `test_planner_extra.bats` (173 tests remain across 30 files)
 
