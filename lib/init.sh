@@ -120,6 +120,9 @@ ME="$(basename "$0")"
 : "${BATCH_RULES:=0-1M:20,1M-40M:20,>40M:1}"    # -b | --batch Adaptive batching defaults. Format string: "LOW-HIGH:COUNT,LOW-HIGH:COUNT,>HIGH:COUNT" Units: suffix K/M/G supported (e.g. 2M = 2 megabytes). Default: 0–1M → 20 files, 1M–40M → 20 files, >40M → 1 file
 : "${FIRST_RUN_KEEP:=0}"                       # Preserve first-run log after overwrites when set (CLI or env). Default off: delete the stale log post-overwrite.
 
+# Progress reporting: on by default, use -Q / --no-progress to suppress
+: "${PROGRESS:=1}"
+
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 : "${SKIP_EMPTY:=1}"

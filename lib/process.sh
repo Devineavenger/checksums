@@ -49,6 +49,15 @@
 #    via helper functions (map_get/map_set) and temporary files, preserving functionality.
 
 
+# Stub progress callbacks for test harnesses that source process.sh without orchestrator.sh.
+# The real implementations live in orchestrator.sh and override these when loaded.
+if ! declare -F _progress_file_done >/dev/null 2>&1; then
+  _progress_file_done() { :; }
+fi
+if ! declare -F _progress_update >/dev/null 2>&1; then
+  _progress_update() { :; }
+fi
+
 # Ensure associative meta arrays exist (no-op if already declared in init.sh).
 # Works in shells that support -A and is safe if arrays are already declared.
 # These hold previous-run metadata so we can reuse hashes based on inode/dev pairs or paths.
@@ -514,6 +523,8 @@ process_single_directory() {
       else
         map_set "$MAP_path_to_hash" "$fpath" "$h"
       fi
+      _progress_file_done
+      _progress_update
       continue
     fi
 
@@ -524,6 +535,8 @@ process_single_directory() {
       else
         map_set "$MAP_path_to_hash" "$fpath" ""
       fi
+      _progress_file_done
+      _progress_update
     else
       local batch_size; batch_size=$(classify_batch_size "$size")
       batch_files+=("$fpath")
@@ -576,6 +589,8 @@ process_single_directory() {
         else
           record_error "Hash failed for $rpath"
         fi
+        _progress_file_done
+        _progress_update
       done < "$worker_out"
       rm -f -- "$worker_out" 2>/dev/null || true
     done

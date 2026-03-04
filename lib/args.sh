@@ -125,6 +125,7 @@ _load_config() {
       SKIP_EMPTY)         SKIP_EMPTY="$val" ;;
       NO_REUSE)           NO_REUSE="$val" ;;
       NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
+      PROGRESS)           PROGRESS="$val" ;;
       EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
       INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
       *)
@@ -222,8 +223,8 @@ parse_args() {
   # when a long option is encountered, getopts sets opt='-' and OPTARG to the
   # long option name; we handle it in the '-' branch below.
   #
-  # Short flags included: f a m l n d v r R F C z p P b o y V h K
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzS-:" opt 2>/dev/null; do
+  # Short flags included: f a m l n d v r R F C z p P b o y V h K Q
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQ-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -250,6 +251,7 @@ parse_args() {
       y) YES=1 ;;                        # -y : assume-yes (non-interactive)
       V) VERIFY_ONLY=1 ;;                # -V : verify-only audit mode (no writes)
       S) STATUS_ONLY=1 ;;                # -S : status/diff mode (read-only)
+      Q) PROGRESS=0 ;;                   # -Q : disable progress reporting
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -321,6 +323,9 @@ parse_args() {
             ;;
           status)
             STATUS_ONLY=1
+            ;;
+          no-progress)
+            PROGRESS=0
             ;;
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)

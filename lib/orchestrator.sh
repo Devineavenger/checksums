@@ -54,10 +54,113 @@
 _ORCH_TMPFILES=()
 _ORCH_TMPDIRS=()
 
+# === Progress reporting globals ===
+_PROG_FILE=""             # Shared counter file (holds current file count)
+_PROG_DIR_TOTAL=0         # Total directories to process
+_PROG_FILE_TOTAL=0        # Total files to process across all dirs
+_PROG_DIR_DONE=0          # Directories completed so far
+_PROG_START=0             # Epoch seconds at progress init
+_PROG_CURRENT_DIR=""      # Directory currently being processed
+_PROG_ACTIVE=0            # 1 when progress display is active
+
+# Initialize progress tracking: create counter file and set totals.
+_progress_init() {
+  local total_dirs="$1" total_files="$2"
+  _PROG_DIR_TOTAL="$total_dirs"
+  _PROG_FILE_TOTAL="$total_files"
+  _PROG_DIR_DONE=0
+  _PROG_ACTIVE=0
+
+  # Suppress if disabled, not a TTY on stderr, or zero work
+  if [ "${PROGRESS:-1}" -eq 0 ] || ! [ -t 2 ] || [ "$total_files" -eq 0 ]; then
+    _PROG_FILE=""
+    return
+  fi
+
+  _PROG_FILE="$(mktemp "${TMPDIR:-/tmp}/prog.XXXXXX")"
+  _orch_register_tmp "$_PROG_FILE"
+  echo 0 > "$_PROG_FILE"
+  _PROG_START=$(date +%s)
+  _PROG_ACTIVE=1
+}
+
+# Increment the shared file counter by 1 (called from process.sh after each file).
+_progress_file_done() {
+  [ "${_PROG_ACTIVE:-0}" -eq 1 ] || return 0
+  [ -n "${_PROG_FILE:-}" ] && [ -f "$_PROG_FILE" ] || return 0
+  local count
+  count=$(<"$_PROG_FILE")
+  echo $((count + 1)) > "$_PROG_FILE"
+}
+
+# Format seconds into human-readable ETA string (e.g. "2m34s", "1h12m").
+_format_eta() {
+  local secs="$1"
+  if [ "$secs" -ge 3600 ]; then
+    printf '%dh%dm' $((secs / 3600)) $(( (secs % 3600) / 60 ))
+  elif [ "$secs" -ge 60 ]; then
+    printf '%dm%ds' $((secs / 60)) $((secs % 60))
+  else
+    printf '%ds' "$secs"
+  fi
+}
+
+# Emit a \r-overwritten progress line to stderr.
+_progress_update() {
+  [ "${_PROG_ACTIVE:-0}" -eq 1 ] || return 0
+  [ -n "${_PROG_FILE:-}" ] && [ -f "$_PROG_FILE" ] || return 0
+
+  local files_done dirs_done dir_total file_total
+  files_done=$(<"$_PROG_FILE")
+  dirs_done="${_PROG_DIR_DONE}"
+  dir_total="${_PROG_DIR_TOTAL}"
+  file_total="${_PROG_FILE_TOTAL}"
+
+  # Dynamic column widths: pad current to the width of total's digit count
+  local dw=${#dir_total} fw=${#file_total}
+
+  # ETA calculation
+  local eta_str="--:--"
+  local now elapsed
+  now=$(date +%s)
+  elapsed=$((now - _PROG_START))
+  if [ "$elapsed" -gt 0 ] && [ "$files_done" -gt 0 ]; then
+    local remaining=$(( (file_total - files_done) * elapsed / files_done ))
+    eta_str=$(_format_eta "$remaining")
+  fi
+
+  # Current directory basename (truncated for display)
+  local dir_name
+  dir_name=$(basename "${_PROG_CURRENT_DIR:-.}")
+
+  printf '\r\033[K  [%*d/%*d dirs] [%*d/%*d files] ETA: %s  %s' \
+    "$dw" "$dirs_done" "$dw" "$dir_total" \
+    "$fw" "$files_done" "$fw" "$file_total" \
+    "$eta_str" "$dir_name" >&2
+}
+
+# Clear the progress line from stderr.
+_progress_clear() {
+  [ "${_PROG_ACTIVE:-0}" -eq 1 ] || return 0
+  printf '\r\033[K' >&2
+}
+
+# Clean up progress state.
+_progress_cleanup() {
+  _progress_clear
+  if [ -n "${_PROG_FILE:-}" ] && [ -f "$_PROG_FILE" ]; then
+    rm -f "$_PROG_FILE" 2>/dev/null || true
+  fi
+  _PROG_FILE=""
+  _PROG_ACTIVE=0
+}
+
 _orch_register_tmp()  { _ORCH_TMPFILES+=("$1"); }
 _orch_register_tmpd() { _ORCH_TMPDIRS+=("$1"); }
 
 _orch_cleanup() {
+  # Clear progress line and remove counter file
+  _progress_cleanup 2>/dev/null || true
   # Destroy FIFO semaphore if still active
   [ -n "${SEM_FD:-}" ] && _sem_destroy 2>/dev/null || true
   # Remove registered temp files and directories
@@ -312,6 +415,15 @@ run_checksums() {
   while IFS= read -r -d '' d; do plan_to_process+=("$d"); done < "$plan_to_process_file"
   while IFS= read -r -d '' d; do plan_skipped+=("$d"); done < "$plan_skipped_file"
 
+  # Pre-count files across all planned directories for progress reporting.
+  local _prog_total_files=0
+  if [ "${PROGRESS:-1}" -eq 1 ] && [ -t 2 ] && [ "${#plan_to_process[@]}" -gt 0 ]; then
+    for d in "${plan_to_process[@]}"; do
+      _prog_total_files=$((_prog_total_files + $(count_files "$d")))
+    done
+  fi
+  _progress_init "${#plan_to_process[@]}" "$_prog_total_files"
+
   # Emit skip logs now (rotation + header) for skipped directories,
   # but honor NO_ROOT_SIDEFILES and SKIP_EMPTY so root and empty/container-only dirs stay untouched.
   # helper: test membership in an array
@@ -369,6 +481,7 @@ run_checksums() {
         continue
       fi
       _dir_par_maybe_wait
+      _progress_update
       local _proc_out="$_proc_results_dir/worker_${_proc_idx}.result"
       (
         count_verified=0; count_verified_existing=0; count_created=0
@@ -388,10 +501,13 @@ run_checksums() {
       DIR_PIDS_COUNT=${#DIR_PIDS[@]}
       count_processed=$((count_processed+1))
       processed_dirs+=("$d")
+      _PROG_DIR_DONE=$((_PROG_DIR_DONE+1))
+      _PROG_CURRENT_DIR="$d"
       _proc_idx=$((_proc_idx+1))
     done
 
     _dir_par_wait_all
+    _progress_update
     _sem_destroy
 
     # Aggregate results from workers
@@ -417,11 +533,14 @@ run_checksums() {
       else
         exists_yesno=no
       fi
+      _PROG_CURRENT_DIR="$d"
       vlog "ORCH: about to call process_single_directory for $d (exists=$exists_yesno)"
       if [ "$exists_yesno" = yes ]; then
         process_single_directory "$d"
         count_processed=$((count_processed+1))
         processed_dirs+=("$d")
+        _PROG_DIR_DONE=$((_PROG_DIR_DONE+1))
+        _progress_update
       else
         record_error "Planned processing target missing: $d"
       fi
@@ -429,6 +548,9 @@ run_checksums() {
   fi
 
   rm -f "$plan_to_process_file" "$plan_skipped_file"
+
+  _progress_clear
+  _progress_cleanup
 
   cleanup_leftover_locks "$TARGET_DIR"
 
