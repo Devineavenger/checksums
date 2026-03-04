@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.5.0 - 2026-03-05
+
 ### Features
 * feat: live progress reporting — per-file `[dirs] [files] ETA: Xm Ys  dirname` progress line on stderr with dynamic column widths (scales to 100M+ dirs/files); ETA computed from elapsed time and files completed; enabled by default on TTY, suppressed via `-Q` / `--no-progress` / `PROGRESS=0`; shared counter file for parallel accuracy; no memory growth
 
