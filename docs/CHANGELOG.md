@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Features
+* feat: safe key=value config parser — `_load_config()` replaces shell-sourced `.conf` files with a line-by-line key=value parser; no code execution; strips comments, blank lines, and matching quotes; maps 25 known keys to globals; unknown keys produce a warning; old bash array syntax detected and rejected with migration hint
+
+### Changes
+* chore: `example/checksums.conf` — rewritten for key=value format with all 25 configurable keys documented; old v2.3 template preserved as `checksums.conf.v2.3`
+
+### Tests
+* test: 13 new tests — `_load_config` string/integer/quoted parsing, comment/blank handling, whitespace around `=`, unknown key warning, old array syntax detection, empty values, special characters, multi-key parsing, invalid line warning
+
 ## v4.3.0 - 2026-03-04
 
 ### Features

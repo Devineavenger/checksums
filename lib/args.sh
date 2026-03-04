@@ -43,6 +43,97 @@
 # NOTE: This file focuses on robust, portable parsing and clear, explicit comments
 # for maintainers. Keep comments near the code they document so future edits stay clear.
 
+# _load_config — safe key=value config parser (no code execution)
+#
+# Reads a config file line by line. Blank lines and lines starting with #
+# are skipped. Each remaining line must contain KEY=VALUE. Leading/trailing
+# whitespace is trimmed from both key and value. Matching outer quotes
+# ("..." or '...') are stripped from the value. Known keys are mapped to
+# their corresponding globals; unknown keys produce a warning.
+#
+# Old bash-sourced configs containing array syntax (KEY=(...)) are detected
+# and rejected with a fatal error and migration hint.
+_load_config() {
+  local file="$1"
+  local line_num=0 line key val
+
+  # Detect old bash-sourced format: array assignments like KEY=(...)
+  if grep -qE '^[[:space:]]*[A-Za-z_]+[[:space:]]*=\s*\(' "$file" 2>/dev/null; then
+    fatal "Config file '$file' uses old bash array syntax (e.g. PATTERNS=(...)). Please convert to key=value format. See example/checksums.conf for the new format."
+  fi
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_num=$((line_num + 1))
+
+    # Strip leading whitespace
+    line="${line#"${line%%[![:space:]]*}"}"
+    # Strip trailing whitespace
+    line="${line%"${line##*[![:space:]]}"}"
+
+    # Skip blank lines and comments
+    [ -z "$line" ] && continue
+    [[ "$line" == \#* ]] && continue
+
+    # Must contain =
+    if [[ "$line" != *=* ]]; then
+      log "WARNING: config $file:$line_num: invalid line (no '='): $line"
+      continue
+    fi
+
+    # Split on first =
+    key="${line%%=*}"
+    val="${line#*=}"
+
+    # Trim whitespace from key
+    key="${key%"${key##*[![:space:]]}"}"
+    key="${key#"${key%%[![:space:]]*}"}"
+
+    # Trim whitespace from value
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+
+    # Strip matching outer quotes
+    if [ "${#val}" -ge 2 ]; then
+      case "$val" in
+        \"*\") val="${val:1:${#val}-2}" ;;
+        \'*\') val="${val:1:${#val}-2}" ;;
+      esac
+    fi
+
+    # Map known keys to globals
+    case "$key" in
+      BASE_NAME)          BASE_NAME="$val" ;;
+      PER_FILE_ALGO)      PER_FILE_ALGO="$val" ;;
+      META_SIG_ALGO)      META_SIG_ALGO="$val" ;;
+      LOG_BASE)           LOG_BASE="$val" ;;
+      LOG_FORMAT)         LOG_FORMAT="$val" ;;
+      DRY_RUN)            DRY_RUN="$val" ;;
+      DEBUG)              DEBUG="$val" ;;
+      VERBOSE)            VERBOSE="$val" ;;
+      YES)                YES="$val" ;;
+      ASSUME_NO)          ASSUME_NO="$val" ;;
+      FORCE_REBUILD)      FORCE_REBUILD="$val" ;;
+      FIRST_RUN)          FIRST_RUN="$val" ;;
+      FIRST_RUN_CHOICE)   FIRST_RUN_CHOICE="$val" ;;
+      FIRST_RUN_KEEP)     FIRST_RUN_KEEP="$val" ;;
+      PARALLEL_JOBS)      PARALLEL_JOBS="$val" ;;
+      PARALLEL_DIRS)      PARALLEL_DIRS="$val" ;;
+      BATCH_RULES)        BATCH_RULES="$val" ;;
+      VERIFY_ONLY)        VERIFY_ONLY="$val" ;;
+      VERIFY_MD5_DETAILS) VERIFY_MD5_DETAILS="$val" ;;
+      STATUS_ONLY)        STATUS_ONLY="$val" ;;
+      SKIP_EMPTY)         SKIP_EMPTY="$val" ;;
+      NO_REUSE)           NO_REUSE="$val" ;;
+      NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
+      EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
+      INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
+      *)
+        log "WARNING: config $file:$line_num: unknown key '$key' (ignored)"
+        ;;
+    esac
+  done < "$file"
+}
+
 parse_args() {
   # NOTE: Global defaults (BASE_NAME, LOG_BASE, LOG_FORMAT, VERIFY_ONLY, ASSUME_NO,
   # CONFIG_FILE, FIRST_RUN_KEEP, VERIFY_MD5_DETAILS, etc.) are declared and
@@ -112,16 +203,14 @@ parse_args() {
   if [ -n "$_prescan_config" ]; then
     CONFIG_FILE="$_prescan_config"
     if [ -f "$CONFIG_FILE" ]; then
-      # shellcheck source=/dev/null
-      . "$CONFIG_FILE"
+      _load_config "$CONFIG_FILE"
     else
       fatal "Config file specified but not found: $CONFIG_FILE"
     fi
   elif [ -n "$_prescan_target" ]; then
     local _default_conf="$_prescan_target/${BASE_NAME}.conf"
     if [ -f "$_default_conf" ]; then
-      # shellcheck source=/dev/null
-      . "$_default_conf"
+      _load_config "$_default_conf"
     fi
   fi
 

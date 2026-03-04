@@ -1,0 +1,65 @@
+# .checksums.conf
+#
+# Configuration file for checksums v2.3
+# Place this file in the root directory you want to scan.
+# It is sourced as a shell script, so you can set variables directly.
+# CLI arguments always override these defaults.
+
+# === Core file naming ===
+# Base name for generated files (.md5, .meta, .log).
+# Default is "#####checksums#####"
+BASE_NAME="project_checksums"
+
+# === Algorithms ===
+# Algorithm for per-file checksums: "md5" or "sha256"
+PER_FILE_ALGO="sha256"
+
+# Algorithm for meta signature: "sha256", "md5", or "none"
+META_SIG_ALGO="sha256"
+
+# === Logging ===
+# Log format: "text" (default), "json", or "csv"
+LOG_FORMAT="json"
+
+# Number of parallel hashing jobs (default 1).
+# Set to number of CPU cores for best performance.
+PARALLEL_JOBS=4
+
+# === Patterns ===
+# Exclude patterns: shell globs for files to skip.
+# Example: skip temporary, backup, and editor swap files.
+EXCLUDE_PATTERNS=("*.tmp" "*.bak" "*.swp" ".gitignore")
+
+# Include patterns: if non-empty, only these files are considered.
+# Example: only include .txt and .md files.
+# If left empty, all files (except excluded) are included.
+INCLUDE_PATTERNS=("*.txt" "*.md")
+
+# === Behavior toggles ===
+# Force rebuild of all checksums, ignoring manifests.
+# FORCE_REBUILD=1
+
+# Run in dry-run mode (no writes).
+# DRY_RUN=1
+
+# Verbose logging (INFO+VERBOSE).
+# VERBOSE=1
+
+# Debug logging (INFO+VERBOSE+DEBUG).
+# DEBUG=1
+
+# === First-run verification ===
+# Enable first-run verification of existing .md5 files.
+# FIRST_RUN=1
+# Action on mismatch: "skip", "overwrite", or "prompt"
+# FIRST_RUN_CHOICE="prompt"
+
+# === Non-interactive modes (2.3) ===
+# Assume "yes" for all prompts (equivalent to -y / --assume-yes).
+# YES=1
+# Assume "no" for all prompts (equivalent to --assume-no).
+# ASSUME_NO=1
+
+# === Verification-only mode (2.2) ===
+# Enable verification-only audit mode (no writes).
+# VERIFY_ONLY=1
