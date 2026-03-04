@@ -23,22 +23,6 @@
 # - For verify-only runs, we parse existing manifests and report integrity without writing anything.
 # - We minimize unnecessary side effects (like logs or manifests) in container-only or empty folders.
 #
-# v2.4: switched from get_inode/get_dev/get_mtime/get_size to stat_field (unified abstraction).
-# v2.4: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available.
-# v2.6: fixes
-#   - Signature stability: pass meta lines to write_meta as individual args (not one giant string).
-#   - Syntax: fix mismatched braces in DRY_RUN block.
-#   - Robustness: initialize arrays in process_directories to avoid unbound variable errors.
-#
-# v2.7 (custom):
-#   - Side-effect-free planning function for pre-summary.
-#   - No skip logging in the decision loop (skip logs happen after confirmation in run_checksums).
-#
-# v3.0 (custom):
-#   - Honor SKIP_EMPTY (default 1) to avoid creating .meta/.log/.md5 for empty or container-only directories.
-#   - Early-return in process_single_directory before any per-directory side effects when skipping.
-#   - Block side-effects in root when NO_ROOT_SIDEFILES=1.
-#
 # Responsibilities:
 #  - Respect SKIP_EMPTY and NO_ROOT_SIDEFILES policies to avoid creating sidecar files
 #    in directories that should remain untouched (root or empty/container-only dirs).
@@ -73,11 +57,6 @@ if declare -p -A >/dev/null 2>&1; then
   # initialize to empty maps only if not already associative arrays
   : "${meta_inode_dev:=}"  # no-op; keeps ShellCheck quiet about undefined vars
 fi
-
-# Ensure parallel job arrays exist to avoid unbound var warnings.
-# Remove unused local arrays (pids/pids_count). Worker control uses HASH_PIDS/HASH_PIDS_COUNT in hash.sh.
-# This avoids confusion and keeps state centralized in hash helpers.
-# (no replacement needed)
 
 # Precompute batch thresholds once per run to avoid repeated numfmt conversions.
 # Ensure global associative type even inside functions.
@@ -249,11 +228,11 @@ process_single_directory() {
   if [ -z "${LOCK_SUFFIX}" ]; then
     LOCK_SUFFIX=".lock"
   fi
-  local md5f="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
+  local sumf="$d/$MD5_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
   # Debug: emit exact lock paths we will attempt to remove (visible in run log)
-  dbg "PROC: removing possible stale locks: ${md5f}${LOCK_SUFFIX} ${metaf}${LOCK_SUFFIX} ${logf}${LOCK_SUFFIX}"
+  dbg "PROC: removing possible stale locks: ${sumf}${LOCK_SUFFIX} ${metaf}${LOCK_SUFFIX} ${logf}${LOCK_SUFFIX}"
   # Narrow, deterministic removal: only our sidecar locks in this directory.
-  rm -f -- "${md5f}${LOCK_SUFFIX}" "${metaf}${LOCK_SUFFIX}" "${logf}${LOCK_SUFFIX}" 2>/dev/null || true
+  rm -f -- "${sumf}${LOCK_SUFFIX}" "${metaf}${LOCK_SUFFIX}" "${logf}${LOCK_SUFFIX}" 2>/dev/null || true
 
   if [ "${NO_ROOT_SIDEFILES:-0}" -eq 1 ] && [ -n "${TARGET_DIR:-}" ]; then
     if [ "$(cd "$d" 2>/dev/null && pwd -P)" = "$(cd "${TARGET_DIR%/}" 2>/dev/null && pwd -P)" ]; then

@@ -13,7 +13,7 @@
 #
 # init.sh
 #
-# Initialization for checksums v3.x (modular split from checksums.sh v2.12.5).
+# Initialization for checksums (modular architecture).
 #
 # Responsibilities:
 # - Define base paths, version string, and entrypoint name.

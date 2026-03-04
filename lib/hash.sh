@@ -146,8 +146,8 @@ _do_hash_task() {
 # New: batch worker — hashes multiple files sequentially and writes all results.
 # Usage: _do_hash_batch <algo> <results_file> <file1> <file2> ...
 _do_hash_batch() {
-  # Release semaphore token on exit when parallel dirs are active.
-  # The trap fires on success, error, or crash — token is always returned.
+  # Each worker runs in a subshell; this EXIT trap ensures the semaphore token
+  # is released even if hashing fails or the subshell crashes.
   [ -n "${SEM_FD:-}" ] && trap '_sem_release' EXIT
   local algo="$1" results_file="$2"
   shift 2

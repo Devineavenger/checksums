@@ -150,7 +150,7 @@ run_checksums() {
   while IFS= read -r -d '' d; do preview_skipped+=("$d"); done < "$preview_skipped_file"
 
   log "Found ${_C_GREEN}${#preview_proc[@]}${_C_RST} folder(s) to process (preview):"
-  local i=0 max_preview=200
+  local i=0 max_preview=200  # cap verbose preview to avoid overwhelming output
   for d in "${preview_proc[@]}"; do
     [ "$i" -ge "$max_preview" ] && break
     vlog "  * $d"

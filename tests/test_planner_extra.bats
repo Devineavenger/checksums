@@ -36,14 +36,6 @@ setup() {
 
 teardown() { rm -rf "$TMPDIR"; }
 
-@test "decide_quick_plan skips hidden files" {
-  mkdir "$TMPDIR/.hiddendir"
-  out_proc="$TMPDIR/proc"
-  out_skip="$TMPDIR/skip"
-  decide_quick_plan "$TMPDIR" "$out_proc" "$out_skip"
-  tr '\0' '\n' < "$out_skip" | grep -q "$TMPDIR/.hiddendir"
-}
-
 @test "decide_directories_plan skips dir with valid meta" {
   out_proc="$TMPDIR/proc"
   out_skip="$TMPDIR/skip"

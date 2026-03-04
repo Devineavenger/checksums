@@ -21,21 +21,6 @@ teardown() {
   rm -rf "$TMPDIR"
 }
 
-@test "verify_md5_file returns 2 when manifest references missing file" {
-  md5=$(file_hash "$TMPDIR/file.txt" md5)
-  # GNU md5sum format: two spaces between hash and filename
-  printf '%s  %s\n' "$md5" "ghost.txt" > "$TMPDIR/$MD5_FILENAME"
-  run verify_md5_file "$TMPDIR"
-  # Expect return code 2 (missing file referenced in manifest)
-  [ "$status" -eq 2 ]
-}
-
-@test "verify_md5_file returns 1 for malformed manifest line" {
-  echo "not-a-valid-line" > "$TMPDIR/$MD5_FILENAME"
-  run verify_md5_file "$TMPDIR"
-  [ "$status" -eq 1 ]
-}
-
 @test "emit_md5_file_details logs MISSING and MISMATCH lines" {
   echo "foo" > "$TMPDIR/foo.txt"
   md5foo=$(file_hash "$TMPDIR/foo.txt" md5)

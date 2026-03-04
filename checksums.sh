@@ -8,26 +8,12 @@
 # This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
 # arising from its use.
 
-# checksums.sh (v3.0 entrypoint)
+# checksums.sh — modular entrypoint
 # Version: 4.4.0
 #
-# Minimal entrypoint that sources the new modular lib and runs main.
-# Preserves the original CLI, usage, and behavior by delegating to lib.
-#
-# The previous monolithic checksums.sh v2.12.5 has been split into:
-#   - lib/init.sh         (defaults, globals, notes)
-#   - lib/loader.sh       (dynamic library sourcing)
-#   - lib/planner.sh      (planning functions)
-#   - lib/orchestrator.sh (full run flow)
-# Plus your existing modules in lib/*.sh (fs, hash, logging, meta, process,
-# stat, tools, usage, args, compat, first_run).
-#
-# Notes:
-# - This variant preserves comments and diagnostic guidance for maintainers.
-# - It declares associative meta_* arrays only when supported by the running shell,
-#   avoiding any assignments that would convert arrays to strings (prevents SC2178).
-# - All other behavior is preserved from your prior version: quick preview, full plan,
-#   first-run scheduling, safe writes with locking, and md5sum-style "./filename" output.
+# Sources lib/init.sh (globals, defaults) and lib/loader.sh (dynamic library
+# sourcing for all other lib/*.sh modules), then calls main().
+# CLI parsing, orchestration, and all processing are delegated to lib/.
 
 set -euo pipefail
 

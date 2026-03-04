@@ -9,7 +9,7 @@
 # arising from its use.
 
 #
-# install.sh — Friendly installer for checksums v2.5
+# install.sh — Friendly installer for checksums
 #
 # Usage:
 #   ./install.sh            # install to /usr/local

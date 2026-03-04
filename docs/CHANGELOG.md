@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Fixes
+* fix: remove 10 duplicate tests across `test_helpers.bats`, `test_integrations.bats`, and `test_planner_extra.bats` (173 tests remain across 30 files)
+
+### Changes
+* chore: comment audit — removed stale version references from `checksums.sh`, `init.sh`, `install.sh`, `process.sh`; removed orphaned cleanup note from `process.sh`; added missing context comments in `orchestrator.sh`, `hash.sh`, `tools.sh`; standardized `md5f` → `sumf` variable naming in `process.sh`
+* chore: retroactively populated empty changelog entries for v2.4, v2.6, v2.7, and v3.0.0 from removed source comments
+
 ## v4.4.0 - 2026-03-04
 
 ### Features
@@ -220,6 +227,11 @@ Automated CI release; no user-facing changes.
 
 ## v3.0.0 - 2025-10-19
 
+### Features
+* feat: modular architecture — monolithic `checksums.sh` v2.12.5 split into `lib/` modules (`init.sh`, `loader.sh`, `planner.sh`, `orchestrator.sh`, `process.sh`, `hash.sh`, `logging.sh`, `meta.sh`, `stat.sh`, `fs.sh`, `args.sh`, `usage.sh`, `tools.sh`, `compat.sh`)
+* feat: `SKIP_EMPTY` (default 1) — skip creating .meta/.log/.md5 for empty or container-only directories; early-return in `process_single_directory` before any side effects
+* feat: `NO_ROOT_SIDEFILES` (default 1) — block sidecar file creation in root TARGET_DIR
+
 ## v2.12.5 - 2025-10-19
 
 ## v2.12.4 - 2025-10-19
@@ -251,3 +263,22 @@ Automated CI release; no user-facing changes.
 ## v2.5.17 - 2025-10-19
 
 ## v2.5.16 - 2025-10-19
+
+## v2.7 — date not recorded
+
+### Changes
+* chore: side-effect-free planning function for pre-summary
+* chore: skip logging moved out of the decision loop (skip logs happen after confirmation in `run_checksums`)
+
+## v2.6 — date not recorded
+
+### Fixes
+* fix: signature stability — pass meta lines to `write_meta` as individual args (not one giant string)
+* fix: syntax — fix mismatched braces in DRY_RUN block
+* fix: robustness — initialize arrays in `process_directories` to avoid unbound variable errors
+
+## v2.4 — date not recorded
+
+### Changes
+* refactor: switched from `get_inode`/`get_dev`/`get_mtime`/`get_size` to `stat_field` (unified abstraction)
+* feat: added compatibility path for Bash < 4 using text-map fallbacks when associative arrays are not available
