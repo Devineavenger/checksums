@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.3.0 - 2026-03-04
+
 ### Features
 * feat: global color system — new shared `lib/color.sh` module with 10-variable palette (bold, dim, reset, red, green, yellow, blue, magenta, cyan, white); TTY detection and `NO_COLOR` support; auto-sourced before all other modules
 * feat: colored logging — ERROR prefix in red, VERBOSE/DEBUG output dimmed; INFO unchanged; colors apply to text format only (JSON/CSV unaffected); log files never colored
