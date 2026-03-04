@@ -1,4 +1,12 @@
 ## [Unreleased]
+## v4.1.1 - 2026-03-04
+
+### Fixes
+* fix: add signal handler cleanup — `_orch_cleanup` trap on EXIT/INT/TERM removes orphaned temp files, temp directories, and FIFO semaphore on interrupt or crash
+
+### Tests
+* test: 4 new tests — `_orch_cleanup` temp file removal, temp directory removal, semaphore teardown, no-op safety
+
 ## v4.1.0 - 2026-03-04
 
 ### Features

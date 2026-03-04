@@ -3,6 +3,8 @@ load '../lib/init.sh'
 load '../lib/logging.sh'
 load '../lib/meta.sh'
 load '../lib/fs.sh'
+load '../lib/hash.sh'
+load '../lib/orchestrator.sh'
 load '../lib/process.sh'
 
 setup() {
@@ -71,3 +73,51 @@ teardown() { rm -rf "$TMPDIR"; }
 #  false
 #}
 
+@test "_orch_cleanup removes registered temp files" {
+  local f1 f2
+  f1="$(mktemp "$TMPDIR/orch_tmp.XXXXXX")"
+  f2="$(mktemp "$TMPDIR/orch_tmp.XXXXXX")"
+  _ORCH_TMPFILES=()
+  _ORCH_TMPDIRS=()
+  _orch_register_tmp "$f1"
+  _orch_register_tmp "$f2"
+  [ -f "$f1" ]
+  [ -f "$f2" ]
+  _orch_cleanup
+  [ ! -f "$f1" ]
+  [ ! -f "$f2" ]
+}
+
+@test "_orch_cleanup removes registered temp directories" {
+  local d1
+  d1="$(mktemp -d "$TMPDIR/orch_dir.XXXXXX")"
+  touch "$d1/somefile"
+  _ORCH_TMPFILES=()
+  _ORCH_TMPDIRS=()
+  _orch_register_tmpd "$d1"
+  [ -d "$d1" ]
+  _orch_cleanup
+  [ ! -d "$d1" ]
+}
+
+@test "_orch_cleanup destroys active semaphore" {
+  PARALLEL_JOBS=2
+  _ORCH_TMPFILES=()
+  _ORCH_TMPDIRS=()
+  _sem_init
+  local fifo="$SEM_FIFO"
+  [ -p "$fifo" ]
+  [ -n "$SEM_FD" ]
+  _orch_cleanup
+  [ ! -e "$fifo" ]
+  [ -z "$SEM_FD" ]
+}
+
+@test "_orch_cleanup is safe to call with nothing registered" {
+  _ORCH_TMPFILES=()
+  _ORCH_TMPDIRS=()
+  SEM_FD=""
+  SEM_FIFO=""
+  run _orch_cleanup
+  [ "$status" -eq 0 ]
+}

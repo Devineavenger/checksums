@@ -50,7 +50,28 @@
 #  - Global variables such as TARGET_DIR, BASE_NAME, MD5_FILENAME, etc., are
 #    initialized by init.sh or via CLI/config handling performed earlier.
 
+# Temp files registered for cleanup on exit/signal.
+_ORCH_TMPFILES=()
+_ORCH_TMPDIRS=()
+
+_orch_register_tmp()  { _ORCH_TMPFILES+=("$1"); }
+_orch_register_tmpd() { _ORCH_TMPDIRS+=("$1"); }
+
+_orch_cleanup() {
+  # Destroy FIFO semaphore if still active
+  [ -n "${SEM_FD:-}" ] && _sem_destroy 2>/dev/null || true
+  # Remove registered temp files and directories
+  local f; for f in "${_ORCH_TMPFILES[@]}"; do rm -f "$f" 2>/dev/null; done
+  local d; for d in "${_ORCH_TMPDIRS[@]}"; do rm -rf "$d" 2>/dev/null; done
+  _ORCH_TMPFILES=()
+  _ORCH_TMPDIRS=()
+}
+
 run_checksums() {
+  trap '_orch_cleanup' EXIT
+  trap '_orch_cleanup; exit 130' INT
+  trap '_orch_cleanup; exit 143' TERM
+
   # Defer run-log creation until TARGET_DIR is validated and normalized.
   # This prevents accidental creation of a run log in the current working dir
   # or repository root when callers (tests) haven't set TARGET_DIR.
@@ -120,6 +141,8 @@ run_checksums() {
   local preview_proc_file preview_skipped_file
   preview_proc_file="$(mktemp)" || fatal "mktemp failed"
   preview_skipped_file="$(mktemp)" || fatal "mktemp failed"
+  _orch_register_tmp "$preview_proc_file"
+  _orch_register_tmp "$preview_skipped_file"
   decide_quick_plan "$TARGET_DIR" "$preview_proc_file" "$preview_skipped_file"
 
   local -a preview_proc=() preview_skipped=()
@@ -187,6 +210,7 @@ run_checksums() {
     # ensure MAP_first_run_overwrite exists for non-assoc fallback
     if [ "${USE_ASSOC:-0}" -eq 0 ] && [ -z "${MAP_first_run_overwrite:-}" ]; then
       MAP_first_run_overwrite="$(mktemp)"; : > "$MAP_first_run_overwrite"
+      _orch_register_tmp "$MAP_first_run_overwrite"
     fi
     first_run_verify "$TARGET_DIR"
     # when first_run_verify schedules entries it appended to first_run_overwrite and also
@@ -206,6 +230,7 @@ run_checksums() {
       # Ensure the map file exists and is empty if not already set
       if [ -z "${MAP_first_run_overwrite:-}" ]; then
         MAP_first_run_overwrite="$(mktemp)" && : > "$MAP_first_run_overwrite"
+        _orch_register_tmp "$MAP_first_run_overwrite"
       fi
       for d in "${first_run_overwrite[@]:-}"; do
         map_set "$MAP_first_run_overwrite" "$d" "1"
@@ -279,6 +304,8 @@ run_checksums() {
   local plan_to_process_file plan_skipped_file
   plan_to_process_file="$(mktemp)" || fatal "mktemp failed"
   plan_skipped_file="$(mktemp)" || fatal "mktemp failed"
+  _orch_register_tmp "$plan_to_process_file"
+  _orch_register_tmp "$plan_skipped_file"
   decide_directories_plan "$TARGET_DIR" "$plan_to_process_file" "$plan_skipped_file"
 
   local -a plan_to_process=() plan_skipped=()
@@ -333,6 +360,7 @@ run_checksums() {
     DIR_PIDS=(); DIR_PIDS_COUNT=0
     local _proc_results_dir
     _proc_results_dir="$(mktemp -d "${TMPDIR:-/tmp}/proc_par.XXXXXX")"
+    _orch_register_tmpd "$_proc_results_dir"
     local _proc_idx=0
 
     for d in "${plan_to_process[@]}"; do
