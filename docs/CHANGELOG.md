@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.7.0 - 2026-03-05
+
 ### Features
 * feat: algorithm-based manifest filenames — manifest extension now matches `PER_FILE_ALGO` (`.md5`, `.sha256`, `.sha1`, etc.); supports md5, sha1, sha224, sha256, sha384, sha512; `file_hash()` generalized for any SHA variant via `${algo}sum` or `shasum -a N` fallback; variable rename `MD5_FILENAME` → `SUM_FILENAME`, `MD5_EXCL` → `SUM_EXCL` across codebase
 
