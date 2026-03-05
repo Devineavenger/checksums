@@ -29,12 +29,12 @@ first_run_overwrite=()
 
 verify_md5_file() {
   local dir="$1"
-  local sumf="$dir/$MD5_FILENAME"
+  local sumf="$dir/$SUM_FILENAME"
   [ -f "$sumf" ] || return 2
   vlog "Verifying $sumf"
 
-  if command -v md5sum >/dev/null 2>&1; then
-    # Try GNU md5sum check first
+  if [ "${PER_FILE_ALGO:-md5}" = "md5" ] && command -v md5sum >/dev/null 2>&1; then
+    # Try GNU md5sum check first (only valid for md5 manifests)
     if md5sum --check --status "$sumf" >/dev/null 2>&1; then
       return 0
     fi
@@ -66,7 +66,7 @@ verify_md5_file() {
       continue
     fi
 
-    actual=$(file_hash "$fpath" "md5")
+    actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}")
     if [ "$actual" != "$expected" ]; then
       bad=1
       [ -n "$FIRST_RUN_LOG" ] && \
@@ -156,8 +156,8 @@ _first_run_verify_one() {
       first_run_log "CHOICE overwrite: scheduling recomputation for $d"
       dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
       if [ "$DRY_RUN" -eq 1 ]; then
-        first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
-        vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
+        first_run_log "DRYRUN: would overwrite $d/$SUM_FILENAME"
+        vlog "DRYRUN: would overwrite $d/$SUM_FILENAME"
       else
         if [ -n "$results_file" ]; then
           printf 'OVERWRITE:%s\n' "$d" >> "$results_file"
@@ -198,8 +198,8 @@ _first_run_verify_one() {
 
             first_run_log "CHOICE overwrite for $d"
             if [ "$DRY_RUN" -eq 1 ]; then
-              first_run_log "DRYRUN: would overwrite $d/$MD5_FILENAME"
-              vlog "DRYRUN: would overwrite $d/$MD5_FILENAME"
+              first_run_log "DRYRUN: would overwrite $d/$SUM_FILENAME"
+              vlog "DRYRUN: would overwrite $d/$SUM_FILENAME"
             else
               first_run_overwrite+=("$d")
               first_run_log "SCHEDULED OVERWRITE for $d"
@@ -301,7 +301,7 @@ first_run_verify() {
           _fr_seen["$d"]=1
         fi
       fi
-    done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(find "$base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   else
     # Bash < 4: use a space-delimited “seen_list” to prevent duplicates.
     local seen_list=""
@@ -313,11 +313,11 @@ first_run_verify() {
           *) targets+=("$d"); seen_list="$seen_list $d" ;;
         esac
       fi
-    done < <(find "$base" -type f -name "$MD5_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(find "$base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   fi
 
   if [ "${#targets[@]}" -eq 0 ]; then
-    log "First-run: no existing $MD5_FILENAME needing verification found."
+    log "First-run: no existing $SUM_FILENAME needing verification found."
     return 0
   fi
 

@@ -125,7 +125,7 @@ dir_log_skip() {
   # and write a short skip notice so operators can see which directories were skipped.
   # Honor SKIP_EMPTY and NO_ROOT_SIDEFILES to avoid creating logs for those cases.
   local dir="$1"
-  local sumf="$dir/$MD5_FILENAME"
+  local sumf="$dir/$SUM_FILENAME"
   local metaf="$dir/$META_FILENAME"
   local logfile="$dir/$LOG_FILENAME"
   local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
@@ -323,7 +323,7 @@ _verify_md5_sequential() {
       [ -n "${RUN_LOG:-}" ] && printf 'MISSING: %s\n' "$fpath" >>"${RUN_LOG}"
       continue
     fi
-    actual=$(file_hash "$fpath" "md5")
+    actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}")
     if [ "$actual" != "$expected" ]; then
       bad=1
       [ -n "${RUN_LOG:-}" ] && printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >>"${RUN_LOG}"
@@ -405,7 +405,7 @@ _verify_md5_parallel() {
       current_batch_size=$((current_batch_size + 1))
       if (( current_batch_size >= PARALLEL_JOBS )); then
         _par_maybe_wait
-        _do_hash_batch "md5" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
+        _do_hash_batch "$PER_FILE_ALGO" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
         HASH_PIDS+=("$!")
         # shellcheck disable=SC2034
         HASH_PIDS_COUNT=${#HASH_PIDS[@]}
@@ -417,7 +417,7 @@ _verify_md5_parallel() {
     # Flush remainder
     if [ "${#batch_files[@]}" -gt 0 ]; then
       _par_maybe_wait
-      _do_hash_batch "md5" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
+      _do_hash_batch "$PER_FILE_ALGO" "$verify_dir/batch_${batch_id}.out" "${batch_files[@]}" &
       HASH_PIDS+=("$!")
       # shellcheck disable=SC2034
       HASH_PIDS_COUNT=${#HASH_PIDS[@]}

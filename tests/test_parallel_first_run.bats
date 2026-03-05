@@ -10,7 +10,7 @@ load '../lib/first_run.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   RUN_LOG="$TMPDIR/run.log"
@@ -28,7 +28,7 @@ setup() {
     echo "content $i" > "$TMPDIR/dir$i/file.txt"
     local md5
     md5=$(file_hash "$TMPDIR/dir$i/file.txt" md5)
-    printf '%s  %s\n' "$md5" "file.txt" > "$TMPDIR/dir$i/$MD5_FILENAME"
+    printf '%s  %s\n' "$md5" "file.txt" > "$TMPDIR/dir$i/$SUM_FILENAME"
   done
 
   detect_stat

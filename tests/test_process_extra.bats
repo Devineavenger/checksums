@@ -12,7 +12,7 @@ load '../lib/process.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   LOCK_SUFFIX=".lock"      # ensure the test uses the same suffix as the code
@@ -46,7 +46,7 @@ teardown() {
   SKIP_EMPTY=1
   run process_single_directory "$TMPDIR/parent"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/parent/$MD5_FILENAME" ]
+  [ ! -f "$TMPDIR/parent/$SUM_FILENAME" ]
   [ ! -f "$TMPDIR/parent/$META_FILENAME" ]
   [ ! -f "$TMPDIR/parent/$LOG_FILENAME" ]
 }
@@ -80,7 +80,7 @@ teardown() {
   META_SIG_ALGO="sha256"
   run process_single_directory "$TMPDIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$MD5_FILENAME" ]
+  [ ! -f "$TMPDIR/$SUM_FILENAME" ]
   [ ! -f "$TMPDIR/$META_FILENAME" ]
   [ ! -f "$TMPDIR/$LOG_FILENAME" ]
 }
@@ -164,12 +164,12 @@ teardown() {
   PER_FILE_ALGO="md5"
   META_SIG_ALGO="sha256"
   process_single_directory "$TMPDIR"
-  [ -f "$TMPDIR/$MD5_FILENAME" ]
-  grep -q "file1.txt" "$TMPDIR/$MD5_FILENAME"
-  grep -q "file2.txt" "$TMPDIR/$MD5_FILENAME"
-  grep -q "file3.txt" "$TMPDIR/$MD5_FILENAME"
+  [ -f "$TMPDIR/$SUM_FILENAME" ]
+  grep -q "file1.txt" "$TMPDIR/$SUM_FILENAME"
+  grep -q "file2.txt" "$TMPDIR/$SUM_FILENAME"
+  grep -q "file3.txt" "$TMPDIR/$SUM_FILENAME"
   # No entry should have an empty hash (two consecutive spaces followed by ./)
-  ! grep -qP '^  \.' "$TMPDIR/$MD5_FILENAME" 2>/dev/null || ! grep -q '^  \.' "$TMPDIR/$MD5_FILENAME"
+  ! grep -qP '^  \.' "$TMPDIR/$SUM_FILENAME" 2>/dev/null || ! grep -q '^  \.' "$TMPDIR/$SUM_FILENAME"
 }
 
 @test "hashes written to manifest match direct file_hash output" {
@@ -181,8 +181,8 @@ teardown() {
   process_single_directory "$TMPDIR"
   expected_a=$(file_hash "$TMPDIR/a.txt" md5)
   expected_b=$(file_hash "$TMPDIR/b.txt" md5)
-  grep -q "$expected_a" "$TMPDIR/$MD5_FILENAME"
-  grep -q "$expected_b" "$TMPDIR/$MD5_FILENAME"
+  grep -q "$expected_a" "$TMPDIR/$SUM_FILENAME"
+  grep -q "$expected_b" "$TMPDIR/$SUM_FILENAME"
 }
 
 @test "no hash results temp directory is left after processing completes" {

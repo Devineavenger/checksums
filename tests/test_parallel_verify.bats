@@ -12,7 +12,7 @@ load '../lib/compat.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   RUN_LOG="$TMPDIR/run.log"
@@ -33,10 +33,10 @@ teardown() { rm -rf "$TMPDIR"; }
   hb=$(file_hash "$TMPDIR/dir/b.txt" md5)
   hc=$(file_hash "$TMPDIR/dir/c.txt" md5)
   printf '%s  ./a.txt\n%s  ./b.txt\n%s  ./c.txt\n' "$ha" "$hb" "$hc" \
-    > "$TMPDIR/dir/$MD5_FILENAME"
+    > "$TMPDIR/dir/$SUM_FILENAME"
 
   PARALLEL_JOBS=2
-  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$MD5_FILENAME"
+  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$SUM_FILENAME"
   [ "$status" -eq 0 ]
 }
 
@@ -49,10 +49,10 @@ teardown() { rm -rf "$TMPDIR"; }
   ha=$(file_hash "$TMPDIR/dir/a.txt" md5)
   hb="0000000000000000000000000000dead"
   printf '%s  ./a.txt\n%s  ./b.txt\n' "$ha" "$hb" \
-    > "$TMPDIR/dir/$MD5_FILENAME"
+    > "$TMPDIR/dir/$SUM_FILENAME"
 
   PARALLEL_JOBS=2
-  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$MD5_FILENAME"
+  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$SUM_FILENAME"
   [ "$status" -eq 1 ]
   grep -q "MISMATCH" "$RUN_LOG"
 }
@@ -63,10 +63,10 @@ teardown() { rm -rf "$TMPDIR"; }
   local ha
   ha=$(file_hash "$TMPDIR/dir/a.txt" md5)
   printf '%s  ./a.txt\n%s  ./gone.txt\n' "$ha" "deadbeef" \
-    > "$TMPDIR/dir/$MD5_FILENAME"
+    > "$TMPDIR/dir/$SUM_FILENAME"
 
   PARALLEL_JOBS=2
-  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$MD5_FILENAME"
+  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$SUM_FILENAME"
   [ "$status" -eq 2 ]
   grep -q "MISSING" "$RUN_LOG"
 }
@@ -78,7 +78,7 @@ teardown() { rm -rf "$TMPDIR"; }
   done
 
   # Build correct manifest
-  local md5f="$TMPDIR/dir/$MD5_FILENAME"
+  local md5f="$TMPDIR/dir/$SUM_FILENAME"
   : > "$md5f"
   for i in $(seq 1 10); do
     h=$(file_hash "$TMPDIR/dir/f${i}.txt" md5)
@@ -111,10 +111,10 @@ teardown() { rm -rf "$TMPDIR"; }
   echo "data" > "$TMPDIR/dir/file.txt"
   local h
   h=$(file_hash "$TMPDIR/dir/file.txt" md5)
-  printf '%s  ./file.txt\n' "$h" > "$TMPDIR/dir/$MD5_FILENAME"
+  printf '%s  ./file.txt\n' "$h" > "$TMPDIR/dir/$SUM_FILENAME"
 
   PARALLEL_JOBS=2
-  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$MD5_FILENAME"
+  run emit_md5_file_details "$TMPDIR/dir" "$TMPDIR/dir/$SUM_FILENAME"
   [ "$status" -eq 0 ]
   # No verify.* temp dirs should remain
   [ -z "$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'verify.*' 2>/dev/null)" ]

@@ -41,7 +41,7 @@ _STATUS_DIR_UNCH=()
 #
 status_single_directory() {
   local d="$1"
-  local sumf="$d/$MD5_FILENAME"
+  local sumf="$d/$SUM_FILENAME"
   local metaf="$d/$META_FILENAME"
 
   _STATUS_DIR_NEW=()
@@ -311,7 +311,7 @@ run_status() {
     # Respect SKIP_EMPTY — but still check directories that have manifests
     # (a dir with all files deleted still has sidecars we need to diff against)
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_local_files "$d"; then
-      [ -f "$d/$MD5_FILENAME" ] || continue
+      [ -f "$d/$SUM_FILENAME" ] || continue
     fi
 
     st_dirs=$((st_dirs + 1))

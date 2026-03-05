@@ -70,7 +70,9 @@ check_required_tools() {
   if [ "$PER_FILE_ALGO" = "md5" ]; then
     [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5")
   else
-    [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum")
+    command -v "${PER_FILE_ALGO}sum" >/dev/null 2>&1 \
+      || command -v shasum >/dev/null 2>&1 \
+      || missing+=("${PER_FILE_ALGO}sum/shasum")
   fi
   # meta signature
   if [ "$META_SIG_ALGO" = "sha256" ]; then

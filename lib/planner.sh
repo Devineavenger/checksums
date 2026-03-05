@@ -45,7 +45,7 @@ decide_quick_plan() {
     fi
 
     # Preview carve-out mirroring first-run: show md5-only dirs as 'to process'
-    if [ "${FIRST_RUN:-0}" -eq 1 ] && [ -f "$d/$MD5_FILENAME" ] \
+    if [ "${FIRST_RUN:-0}" -eq 1 ] && [ -f "$d/$SUM_FILENAME" ] \
        && { [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; }; then
       printf '%s\0' "$d" >> "$out_proc"; continue
     fi
@@ -104,7 +104,7 @@ _plan_one_directory() {
 
   local base_name sumf metaf reason changed
   base_name=$(basename "$d")
-  sumf="$d/$MD5_FILENAME"
+  sumf="$d/$SUM_FILENAME"
   if [ "${DEBUG:-0}" -gt 0 ]; then
     if [ -f "$sumf" ]; then
       dbg "sumfile present for $d -> $sumf"
@@ -160,7 +160,7 @@ _plan_one_directory() {
 
   if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
     if find "$d" -maxdepth 1 -type f \
-         ! -name "$MD5_EXCL" \
+         ! -name "$SUM_EXCL" \
          ! -name "$META_EXCL" \
          ! -name "$LOG_EXCL" \
          ! -name "$LOCK_EXCL" \

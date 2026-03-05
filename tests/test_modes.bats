@@ -5,7 +5,7 @@ load '../lib/process.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   TARGET_DIR="$TMPDIR"
@@ -17,7 +17,7 @@ teardown() { rm -rf "$TMPDIR"; }
   echo "hello" > "$TMPDIR/data.txt"
   run process_single_directory "$TMPDIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$MD5_FILENAME" ]
+  [ ! -f "$TMPDIR/$SUM_FILENAME" ]
   [ ! -f "$TMPDIR/$META_FILENAME" ]
 }
 
@@ -26,7 +26,7 @@ teardown() { rm -rf "$TMPDIR"; }
   echo "hello" > "$TMPDIR/data.txt"
   run process_single_directory "$TMPDIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$MD5_FILENAME" ]
+  [ ! -f "$TMPDIR/$SUM_FILENAME" ]
   [ ! -f "$TMPDIR/$META_FILENAME" ]
   [ ! -f "$TMPDIR/$LOG_FILENAME" ]
 }
@@ -36,5 +36,5 @@ teardown() { rm -rf "$TMPDIR"; }
   echo "hello" > "$TMPDIR/data.txt"
   run process_single_directory "$TMPDIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$MD5_FILENAME" ]
+  [ ! -f "$TMPDIR/$SUM_FILENAME" ]
 }

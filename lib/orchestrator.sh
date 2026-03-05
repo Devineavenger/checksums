@@ -47,7 +47,7 @@
 #  - The other modules (fs.sh, tools.sh, stat.sh, logging.sh, meta.sh, process.sh,
 #    compat.sh, first_run.sh, args.sh, usage.sh) are already sourced by the
 #    top-level entrypoint before run_checksums is invoked.
-#  - Global variables such as TARGET_DIR, BASE_NAME, MD5_FILENAME, etc., are
+#  - Global variables such as TARGET_DIR, BASE_NAME, SUM_FILENAME, etc., are
 #    initialized by init.sh or via CLI/config handling performed earlier.
 
 # Temp files registered for cleanup on exit/signal.
@@ -215,10 +215,10 @@ run_checksums() {
     fi
   fi
 
-  # NOTE: Exclusion globals (MD5_EXCL/META_EXCL/LOG_EXCL/etc.) are required by fs helpers.
+  # NOTE: Exclusion globals (SUM_EXCL/META_EXCL/LOG_EXCL/etc.) are required by fs helpers.
   # Ensure they are initialized even if build_exclusions hasn't run yet. This prevents
   # unset-variable issues when helpers are called before the standard build step.
-  if [ -z "${MD5_EXCL:-}" ] || [ -z "${META_EXCL:-}" ] || [ -z "${LOG_EXCL:-}" ]; then
+  if [ -z "${SUM_EXCL:-}" ] || [ -z "${META_EXCL:-}" ] || [ -z "${LOG_EXCL:-}" ]; then
     dbg "Calling build_exclusions early to initialize exclusion globals"
     build_exclusions
   fi

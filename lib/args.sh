@@ -29,7 +29,7 @@
 #   BASE_NAME, PER_FILE_ALGO, META_SIG_ALGO, LOG_BASE, DRY_RUN, DEBUG, VERBOSE, YES,
 #   ASSUME_NO, FORCE_REBUILD, FIRST_RUN, FIRST_RUN_CHOICE, PARALLEL_JOBS, LOG_FORMAT,
 #   VERIFY_ONLY, CONFIG_FILE, SKIP_EMPTY, NO_ROOT_SIDEFILES,
-#   MD5_FILENAME, META_FILENAME, LOG_FILENAME
+#   SUM_FILENAME, META_FILENAME, LOG_FILENAME
 #
 # Provided functions (sourced elsewhere):
 #   usage()    - prints help and exits (or returns)
@@ -430,10 +430,10 @@ parse_args() {
   # Normalize and validate individual options
   # -------------------------
 
-  # per-file algo must be md5 or sha256; default to md5 if unset
+  # per-file algo validation: md5, sha1, sha224, sha256, sha384, sha512
   case "${PER_FILE_ALGO:-md5}" in
-    md5|sha256) PER_FILE_ALGO="${PER_FILE_ALGO:-md5}" ;;
-    *) fatal "Unsupported per-file algo: ${PER_FILE_ALGO}" ;;
+    md5|sha1|sha224|sha256|sha384|sha512) PER_FILE_ALGO="${PER_FILE_ALGO:-md5}" ;;
+    *) fatal "Unsupported per-file algo: ${PER_FILE_ALGO} (use md5, sha1, sha224, sha256, sha384, or sha512)" ;;
   esac
 
   # meta signature algo must be sha256, md5, or none; default to sha256
@@ -514,10 +514,11 @@ parse_args() {
   # -------------------------
   # Filenames derived from base names
   # -------------------------
-  # Preserve original behavior: strip trailing .md5 if present and derive sidecar names.
-  # This ensures tests and downstream code can rely on consistent filenames.
+  # Strip known algorithm extensions from BASE_NAME to prevent double-extension,
+  # then derive sidecar names using the current PER_FILE_ALGO.
   BASE_NAME="${BASE_NAME%%.md5}"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  BASE_NAME="${BASE_NAME%%.sha[0-9]*}"
+  SUM_FILENAME="${BASE_NAME}.${PER_FILE_ALGO}"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_BASE="${LOG_BASE:-$BASE_NAME}"
   LOG_FILENAME="${LOG_BASE}.log"

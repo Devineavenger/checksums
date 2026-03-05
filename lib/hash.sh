@@ -31,10 +31,14 @@ file_hash() {
       md5 -r -- "$f" 2>/dev/null | cut -d' ' -f1
     fi
   else
-    if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum --binary -- "$f" 2>/dev/null | cut -d' ' -f1
+    # Generic SHA variant: try ${algo}sum first (sha1sum, sha256sum, etc.),
+    # then fall back to shasum -a N
+    if command -v "${algo}sum" >/dev/null 2>&1; then
+      "${algo}sum" --binary -- "$f" 2>/dev/null | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+      shasum -a "${algo#sha}" -- "$f" 2>/dev/null | cut -d' ' -f1
     else
-      shasum -a 256 -- "$f" 2>/dev/null | cut -d' ' -f1
+      return 1
     fi
   fi
 }

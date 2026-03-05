@@ -47,7 +47,9 @@ ${B}File Naming Options:${R}
 
 ${B}Hashing Options:${R}
   -a ALGO, --per-file-algo ALGO
-                     per-file checksum algorithm: md5 (default) or sha256
+                     per-file checksum algorithm (default: md5)
+                     supported: md5, sha1, sha224, sha256, sha384, sha512
+                     manifest extension matches algorithm (.md5, .sha256, etc.)
   -m ALGO, --meta-sig ALGO
                      meta signature algorithm: sha256 (default), md5, or none
   -R, --no-reuse     disable reuse heuristics; force rehash of all files

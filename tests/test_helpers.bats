@@ -8,7 +8,7 @@ setup() {
   TMPDIR=$(mktemp -d)
   echo "hello world" > "$TMPDIR/file.txt"
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
 }
 
 teardown() {
@@ -16,7 +16,7 @@ teardown() {
 }
 
 @test "verify_md5_file returns 2 for missing checksum file" {
-  rm -f "$TMPDIR/$MD5_FILENAME"
+  rm -f "$TMPDIR/$SUM_FILENAME"
   run verify_md5_file "$TMPDIR"
   [ "$status" -eq 2 ]
 }
@@ -29,7 +29,7 @@ teardown() {
   {
     printf '%s  %s\n' "$md5foo" "foo.txt"
     printf '%s  %s\n' "$md5bar" "bar.txt"
-  } > "$TMPDIR/$MD5_FILENAME"
+  } > "$TMPDIR/$SUM_FILENAME"
   run verify_md5_file "$TMPDIR"
   [ "$status" -eq 0 ]
 }

@@ -12,7 +12,7 @@ load '../lib/compat.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
 
@@ -51,7 +51,7 @@ teardown() { rm -rf "$TMPDIR"; }
   echo "foo" > "$TMPDIR/dir/file.txt"
   echo "bar" > "$TMPDIR/dir/file2.txt"
   md5=$(file_hash "$TMPDIR/dir/file.txt" md5)
-  printf '%s  ./file.txt\n' "$md5" > "$TMPDIR/dir/$MD5_FILENAME"
+  printf '%s  ./file.txt\n' "$md5" > "$TMPDIR/dir/$SUM_FILENAME"
   out_proc="$TMPDIR/proc"
   out_skip="$TMPDIR/skip"
   decide_directories_plan "$TMPDIR" "$out_proc" "$out_skip"

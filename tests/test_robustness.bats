@@ -11,7 +11,7 @@ load '../lib/compat.sh'
 setup() {
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
-  MD5_FILENAME="${BASE_NAME}.md5"
+  SUM_FILENAME="${BASE_NAME}.md5"
   META_FILENAME="${BASE_NAME}.meta"
   LOG_FILENAME="${BASE_NAME}.log"
   TARGET_DIR="$TMPDIR"
@@ -43,9 +43,9 @@ teardown() { rm -rf "$TMPDIR"; }
   # assert command succeeded
   [ "$status" -eq 0 ]
   # assert sidefiles exist and contain expected entries; this is robust across logging modes
-  [ -f "$TMPDIR/dir/$MD5_FILENAME" ]
+  [ -f "$TMPDIR/dir/$SUM_FILENAME" ]
   [ -f "$TMPDIR/dir/$META_FILENAME" ]
-  test "$(wc -l < "$TMPDIR/dir/$MD5_FILENAME")" -eq 120
+  test "$(wc -l < "$TMPDIR/dir/$SUM_FILENAME")" -eq 120
   # count only meaningful meta lines (tab-separated fields, at least 6 columns)
   meta_count=$(awk -F'\t' 'NF>=6 {c++} END{print c+0}' "$TMPDIR/dir/$META_FILENAME")
   test "$meta_count" -ge 120

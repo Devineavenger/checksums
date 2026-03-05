@@ -138,7 +138,7 @@ ME="$(basename "$0")"
 : "${NO_ROOT_SIDEFILES:=1}"
 
 # === Filenames derived from base names (set once globally) ===
-MD5_FILENAME="${BASE_NAME}.md5"
+SUM_FILENAME="${BASE_NAME}.${PER_FILE_ALGO}"
 META_FILENAME="${BASE_NAME}.meta"
 LOG_FILENAME="${LOG_BASE:-$BASE_NAME}.log"
 
@@ -153,7 +153,7 @@ LOG_FILENAME="${LOG_BASE:-$BASE_NAME}.log"
 : "${_C_MAGENTA:=}" "${_C_CYAN:=}" "${_C_WHITE:=}"
 
 # === Exclusions (patterns to skip when scanning a directory) ===
-MD5_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""
+SUM_EXCL="" META_EXCL="" LOG_EXCL="" LOCK_EXCL=""
 
 # === Tool detection flags (set in detect_tools) ===
 TOOL_md5_cmd=""                   # md5sum or md5 -r

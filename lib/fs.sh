@@ -35,7 +35,7 @@ _safe_name() {
 # Ensure derived exclusion names are available even if build_exclusions() hasn't been run.
 # This makes the helpers safe to call in isolation (interactive tests, unit probes).
 # We provide safe defaults here to avoid unbound variables under `set -u`.
-MD5_EXCL="${MD5_EXCL:-$(_safe_name "$(basename "${MD5_FILENAME:-#####checksums#####.md5}")")}"
+SUM_EXCL="${SUM_EXCL:-$(_safe_name "$(basename "${SUM_FILENAME:-#####checksums#####.md5}")")}"
 META_EXCL="${META_EXCL:-$(_safe_name "$(basename "${META_FILENAME:-#####checksums#####.meta}")")}"
 LOG_EXCL="${LOG_EXCL:-$(_safe_name "$(basename "${LOG_FILENAME:-#####checksums#####.log}")")}"
 ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}")")}"
@@ -130,7 +130,7 @@ has_files() {
     # for matching rather than literal strings. ALT_LOG_EXCL is the log base
     # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
     case "$fname" in
-      "$MD5_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      "$SUM_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
       # rotated logs: base.<ts>.log (tolerate legacy variants too)
       ${ALT_LOG_EXCL}.*.log ) continue ;;
       # run-level and first-run logs (explicit names — match literally)
@@ -167,7 +167,7 @@ has_local_files() {
     # inside the directory (maxdepth 1). This prevents creating sidecars for
     # parent/container dirs that contain files only in subdirectories.
     case "$fname" in
-      "$MD5_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      "$SUM_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
       ${ALT_LOG_EXCL}.*.log ) continue ;;
       "$RUN_EXCL" | "$FIRST_RUN_EXCL" ) continue ;;
       *"$LOCK_SUFFIX") continue ;;
@@ -190,7 +190,7 @@ has_local_files() {
 build_exclusions() {
   # Strip directory components so only basenames are compared in find expressions.
   # This mirrors original behavior which avoided full-path matches for rotated logs.
-  MD5_EXCL=$(_safe_name "$(basename "$MD5_FILENAME")")
+  SUM_EXCL=$(_safe_name "$(basename "$SUM_FILENAME")")
   META_EXCL=$(_safe_name "$(basename "$META_FILENAME")")
   LOG_EXCL=$(_safe_name "$(basename "$LOG_FILENAME")")
   RUN_EXCL=$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}.run.log")")
@@ -201,11 +201,11 @@ build_exclusions() {
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
 
-  # after computing MD5_EXCL, META_EXCL, LOG_EXCL, RUN_EXCL, FIRST_RUN_EXCL, ALT_LOG_EXCL, LOCK_EXCL
+  # after computing SUM_EXCL, META_EXCL, LOG_EXCL, RUN_EXCL, FIRST_RUN_EXCL, ALT_LOG_EXCL, LOCK_EXCL
   # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.
   # IMPORTANT: do not exclude bare ALT_LOG_EXCL or ALT_LOG_EXCL.* (could match user files).
   # Only exclude the actual rotated log patterns to avoid skipping real data.
-  EXCLUDE_PATTERNS+=("$MD5_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
+  EXCLUDE_PATTERNS+=("$SUM_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
 }
 
 find_file_expr() {
@@ -219,7 +219,7 @@ find_file_expr() {
   local d="$1"
   find "$d" -maxdepth 1 -type f \
     ! -name '.DS_Store' ! -name '._*' \
-    ! -name "$MD5_EXCL" \
+    ! -name "$SUM_EXCL" \
     ! -name "$META_EXCL" \
     ! -name "$LOG_EXCL" \
     ! -name "*${LOCK_SUFFIX}" \

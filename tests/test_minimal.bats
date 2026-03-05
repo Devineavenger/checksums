@@ -52,7 +52,7 @@ teardown() {
   VERIFY_ONLY=0
   process_single_directory "$TEST_TMPDIR/sub"
 
-  [ -f "$TEST_TMPDIR/sub/$MD5_FILENAME" ]
+  [ -f "$TEST_TMPDIR/sub/$SUM_FILENAME" ]
   [ ! -f "$TEST_TMPDIR/sub/$META_FILENAME" ]
   [ ! -f "$TEST_TMPDIR/sub/$LOG_FILENAME" ]
 }
@@ -64,7 +64,7 @@ teardown() {
   process_single_directory "$TEST_TMPDIR/sub"
 
   # Should be in md5sum format: hash  ./filename
-  run cat "$TEST_TMPDIR/sub/$MD5_FILENAME"
+  run cat "$TEST_TMPDIR/sub/$SUM_FILENAME"
   assert_output --regexp '^[a-f0-9]+  \./file\.txt$'
 }
 
