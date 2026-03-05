@@ -100,7 +100,8 @@ dir_log_append() {
   # exists in the file and then appends the message.
   local dir="$1"; shift
   local msg="$*"
-  local logfile="$dir/$LOG_FILENAME"
+  local logfile
+  logfile="$(_sidecar_path "$dir" "$LOG_FILENAME")"
   local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
 
   # Honor NO_ROOT_SIDEFILES: do not create logs for the root directory
@@ -125,9 +126,10 @@ dir_log_skip() {
   # and write a short skip notice so operators can see which directories were skipped.
   # Honor SKIP_EMPTY and NO_ROOT_SIDEFILES to avoid creating logs for those cases.
   local dir="$1"
-  local sumf="$dir/$SUM_FILENAME"
-  local metaf="$dir/$META_FILENAME"
-  local logfile="$dir/$LOG_FILENAME"
+  local sumf metaf logfile
+  sumf="$(_sidecar_path "$dir" "$SUM_FILENAME")"
+  metaf="$(_sidecar_path "$dir" "$META_FILENAME")"
+  logfile="$(_sidecar_path "$dir" "$LOG_FILENAME")"
   local ts; ts=$(printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1)
 
   # Avoid creating logs in root when NO_ROOT_SIDEFILES=1

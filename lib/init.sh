@@ -129,6 +129,9 @@ ME="$(basename "$0")"
 # Quiet mode: suppress all output except errors
 : "${QUIET:=0}"
 
+# Central manifest store: redirect all sidecar files into STORE_DIR (mirror tree layout)
+: "${STORE_DIR:=}"
+
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 : "${SKIP_EMPTY:=1}"

@@ -237,7 +237,10 @@ process_single_directory() {
   if [ -z "${LOCK_SUFFIX}" ]; then
     LOCK_SUFFIX=".lock"
   fi
-  local sumf="$d/$SUM_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
+  local sumf metaf logf
+  sumf="$(_sidecar_path "$d" "$SUM_FILENAME")"
+  metaf="$(_sidecar_path "$d" "$META_FILENAME")"
+  logf="$(_sidecar_path "$d" "$LOG_FILENAME")"
   # Debug: emit exact lock paths we will attempt to remove (visible in run log)
   dbg "PROC: removing possible stale locks: ${sumf}${LOCK_SUFFIX} ${metaf}${LOCK_SUFFIX} ${logf}${LOCK_SUFFIX}"
   # Narrow, deterministic removal: only our sidecar locks in this directory.
@@ -267,7 +270,9 @@ process_single_directory() {
   fi
 
   # Derive paths now (but do NOT create logs yet)
-  local sumf="$d/$SUM_FILENAME" metaf="$d/$META_FILENAME" logf="$d/$LOG_FILENAME"
+  sumf="$(_sidecar_path "$d" "$SUM_FILENAME")"
+  metaf="$(_sidecar_path "$d" "$META_FILENAME")"
+  logf="$(_sidecar_path "$d" "$LOG_FILENAME")"
 
   vlog "Starting directory: $d"
   dbg "sumfile: $sumf  metafile: $metaf  logfile: $logf"

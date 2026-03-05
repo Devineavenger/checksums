@@ -128,6 +128,7 @@ _load_config() {
       PROGRESS)           PROGRESS="$val" ;;
       MINIMAL)            MINIMAL="$val" ;;
       QUIET)              QUIET="$val" ;;
+      STORE_DIR)          STORE_DIR="$val" ;;
       EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
       INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
       *)
@@ -180,8 +181,8 @@ parse_args() {
         ;;
       # Flags that consume the next token as their value — skip that token so
       # a value that looks like a path is not mistaken for TARGET_DIR.
-      -a|-m|-l|-C|-p|-P|-b|-o| \
-      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format)
+      -a|-m|-l|-C|-p|-P|-b|-o|-D| \
+      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir)
         _pi=$(( _pi + 1 ))
         ;;
       --)
@@ -226,7 +227,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMq-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -256,6 +257,7 @@ parse_args() {
       Q) PROGRESS=0 ;;                   # -Q : disable progress reporting
       M) MINIMAL=1 ;;                    # -M : minimal mode (hash-only, no sidecars)
       q) QUIET=1 ;;                      # -q : quiet mode (errors only)
+      D) STORE_DIR=$OPTARG ;;            # -D DIR : central manifest store directory
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -340,6 +342,9 @@ parse_args() {
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
             NO_ROOT_SIDEFILES=0
+            ;;
+          store-dir)
+            STORE_DIR="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
 
           # -------------------------
@@ -430,6 +435,15 @@ parse_args() {
 
   TARGET_DIR=$1
   [ -d "$TARGET_DIR" ] || fatal "Directory '$TARGET_DIR' not found."
+
+  # Resolve STORE_DIR to absolute path if set
+  if [ -n "${STORE_DIR:-}" ]; then
+    case "$STORE_DIR" in
+      /*) ;; # already absolute
+      *) STORE_DIR="$(cd "$TARGET_DIR" 2>/dev/null && cd "$(dirname "$STORE_DIR")" 2>/dev/null && pwd -P)/$(basename "$STORE_DIR")" \
+           || fatal "Cannot resolve --store-dir path: $STORE_DIR" ;;
+    esac
+  fi
 
   # -------------------------
   # Normalize and validate individual options

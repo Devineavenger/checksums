@@ -25,6 +25,40 @@
 #  - INCLUDE_PATTERNS and EXCLUDE_PATTERNS accept shell globs and are applied
 #    using [[ .. == pattern ]] so they support basic globbing semantics
 
+# _sidecar_path DIR FILENAME
+# Return the path for a sidecar file. When STORE_DIR is set, maps the directory
+# into the central store (mirror tree layout); otherwise returns DIR/FILENAME.
+_sidecar_path() {
+  local dir="$1" filename="$2"
+  if [ -n "${STORE_DIR:-}" ]; then
+    local target="${TARGET_DIR%/}"
+    local rel="${dir#"$target"}"
+    rel="${rel#/}"
+    local store_sub
+    if [ -z "$rel" ]; then
+      store_sub="${STORE_DIR%/}"
+    else
+      store_sub="${STORE_DIR%/}/$rel"
+    fi
+    mkdir -p "$store_sub" 2>/dev/null || true
+    printf '%s/%s' "$store_sub" "$filename"
+  else
+    printf '%s/%s' "$dir" "$filename"
+  fi
+}
+
+# _runlog_path FILENAME
+# Return the path for a run-level log file (run.log, first-run.log).
+# When STORE_DIR is set, places it in the store root; otherwise in TARGET_DIR.
+_runlog_path() {
+  local filename="$1"
+  if [ -n "${STORE_DIR:-}" ]; then
+    printf '%s/%s' "${STORE_DIR%/}" "$filename"
+  else
+    printf '%s/%s' "${TARGET_DIR%/}" "$filename"
+  fi
+}
+
 _safe_name() {
   # Return a safe non-matching name if input empty to prevent accidental
   # -name "" constructs in find which can produce warnings or unintended matches.
@@ -42,6 +76,7 @@ ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksu
 RUN_EXCL="${RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}.run.log")")}"
 FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}.first-run.log")")}"
 LOCK_EXCL="${LOCK_EXCL:-$(_safe_name "${LOCK_SUFFIX:-.lock}")}"
+STORE_DIR_EXCL="${STORE_DIR_EXCL:-}"
 
 # Default pattern arrays exist in args.sh but we also declare here for safety.
 declare -a INCLUDE_PATTERNS=${INCLUDE_PATTERNS:+("${INCLUDE_PATTERNS[@]}")}
@@ -200,6 +235,18 @@ build_exclusions() {
   ALT_LOG_EXCL=$(_safe_name "$(basename "${LOG_BASE:-$BASE_NAME}")")
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
+
+  # Central store exclusion: when STORE_DIR is inside TARGET_DIR, record it for pruning.
+  STORE_DIR_EXCL=""
+  if [ -n "${STORE_DIR:-}" ] && [ -n "${TARGET_DIR:-}" ]; then
+    local _sd_abs="${STORE_DIR%/}"
+    local _td_abs="${TARGET_DIR%/}"
+    case "$_sd_abs" in
+      "$_td_abs"/*)
+        STORE_DIR_EXCL="$_sd_abs"
+        ;;
+    esac
+  fi
 
   # after computing SUM_EXCL, META_EXCL, LOG_EXCL, RUN_EXCL, FIRST_RUN_EXCL, ALT_LOG_EXCL, LOCK_EXCL
   # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.

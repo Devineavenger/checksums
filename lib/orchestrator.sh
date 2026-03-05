@@ -209,11 +209,23 @@ run_checksums() {
     return 1
   fi
 
+  # Validate and prepare STORE_DIR if set
+  if [ -n "${STORE_DIR:-}" ]; then
+    # Resolve to absolute path
+    case "$STORE_DIR" in
+      /*) ;; # already absolute
+      *) STORE_DIR="$(cd "$(dirname "$STORE_DIR")" 2>/dev/null && pwd -P)/$(basename "$STORE_DIR")" \
+           || fatal "Cannot resolve --store-dir path: $STORE_DIR" ;;
+    esac
+    mkdir -p "$STORE_DIR" 2>/dev/null || fatal "Cannot create store directory: $STORE_DIR"
+    log "Using central manifest store: $STORE_DIR"
+  fi
+
   # Now that TARGET_DIR is normalized, initialize the run log in the target dir.
   # Only create the run log if TARGET_DIR is non-empty and writable.
   # Minimal mode skips run log entirely.
   if [ -n "${TARGET_DIR:-}" ] && [ "${MINIMAL:-0}" -eq 0 ]; then
-    RUN_LOG="$TARGET_DIR/${LOG_BASE:-$BASE_NAME}.run.log"
+    RUN_LOG="$(_runlog_path "${LOG_BASE:-$BASE_NAME}.run.log")"
     LOG_FILEPATH="$RUN_LOG"
     # Create/truncate run log only if we can write into the target directory.
     if mkdir -p "$(dirname "$RUN_LOG")" 2>/dev/null || true; then
@@ -236,6 +248,54 @@ run_checksums() {
   # Initialize adaptive batch thresholds once per run to avoid repeated numfmt conversions.
   # This reduces overhead when classifying batch sizes for many files.
   init_batch_thresholds
+
+  # --- Scattered sidefile detection and migration prompt (when --store-dir is active) ---
+  if [ -n "${STORE_DIR:-}" ]; then
+    local _scattered_count=0
+    _scattered_count=$(find "$TARGET_DIR" -type f \( -name "$SUM_FILENAME" -o -name "$META_FILENAME" -o -name "$LOG_FILENAME" \) 2>/dev/null \
+      | grep -cv "^${STORE_DIR_EXCL:-__NOMATCH__}" 2>/dev/null || echo 0)
+    if [ "$_scattered_count" -gt 0 ]; then
+      log "${_C_YELLOW}WARNING:${_C_RST} Found $_scattered_count existing sidecar file(s) in source directories."
+      log "These files were created before --store-dir was enabled."
+
+      local _migrate_choice="leave"
+      if [ "$YES" -eq 1 ]; then
+        _migrate_choice="migrate"
+      elif [ "$ASSUME_NO" -eq 1 ]; then
+        _migrate_choice="leave"
+      elif [ "$DRY_RUN" -eq 1 ]; then
+        _migrate_choice="leave"
+        log "Dry-run: skipping migration prompt"
+      else
+        printf '%b  [m]igrate into store, [l]eave in place:%b ' "${_C_BOLD}" "${_C_RST}"
+        local _mc
+        if IFS= read -r _mc; then
+          case "$_mc" in
+            m|M) _migrate_choice="migrate" ;;
+            *) _migrate_choice="leave" ;;
+          esac
+        fi
+      fi
+
+      if [ "$_migrate_choice" = "migrate" ]; then
+        log "Migrating scattered sidecar files into $STORE_DIR ..."
+        local _migrated=0
+        while IFS= read -r -d '' _sf; do
+          local _sf_dir _sf_name _dest
+          _sf_dir="$(dirname "$_sf")"
+          _sf_name="$(basename "$_sf")"
+          _dest="$(_sidecar_path "$_sf_dir" "$_sf_name")"
+          if [ "$_sf" != "$_dest" ]; then
+            mv -f "$_sf" "$_dest" 2>/dev/null && _migrated=$((_migrated+1))
+            vlog "Migrated: $_sf -> $_dest"
+          fi
+        done < <(find "$TARGET_DIR" -type f \( -name "$SUM_FILENAME" -o -name "$META_FILENAME" -o -name "$LOG_FILENAME" \) -print0 2>/dev/null)
+        log "Migrated $_migrated file(s) into store."
+      else
+        log "Leaving existing sidecar files in place."
+      fi
+    fi
+  fi
 
   # Explicit notice when reuse heuristics are disabled
   if [ "${NO_REUSE:-0}" -eq 1 ]; then

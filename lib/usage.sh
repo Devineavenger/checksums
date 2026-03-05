@@ -44,6 +44,10 @@ ${B}File Naming Options:${R}
                      base name for sidecar files (.md5/.meta/.log) [default: ${BASE_NAME}]
   -l LOGNAME, --log-base LOGNAME
                      log base name (default: same as -f)
+  -D DIR, --store-dir DIR
+                     store all sidecar files in DIR (mirror tree layout)
+                     keeps source directories clean; DIR is created if needed
+                     migrates existing scattered sidefiles on first use
 
 ${B}Hashing Options:${R}
   -a ALGO, --per-file-algo ALGO

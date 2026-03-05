@@ -1,14 +1,15 @@
 #!/usr/bin/env bats
 
-# Load the helper functions directly
-load '../lib/hash.sh'
-load '../lib/first_run.sh'
-
 setup() {
+  source "$BATS_TEST_DIRNAME/../lib/init.sh"
+  source "$BATS_TEST_DIRNAME/../lib/fs.sh"
+  source "$BATS_TEST_DIRNAME/../lib/hash.sh"
+  source "$BATS_TEST_DIRNAME/../lib/first_run.sh"
   TMPDIR=$(mktemp -d)
   echo "hello world" > "$TMPDIR/file.txt"
   BASE_NAME="#####checksums#####"
   SUM_FILENAME="${BASE_NAME}.md5"
+  STORE_DIR=""
 }
 
 teardown() {

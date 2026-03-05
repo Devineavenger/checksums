@@ -29,7 +29,8 @@ first_run_overwrite=()
 
 verify_md5_file() {
   local dir="$1"
-  local sumf="$dir/$SUM_FILENAME"
+  local sumf
+  sumf="$(_sidecar_path "$dir" "$SUM_FILENAME")"
   [ -f "$sumf" ] || return 2
   vlog "Verifying $sumf"
 
@@ -156,8 +157,8 @@ _first_run_verify_one() {
       first_run_log "CHOICE overwrite: scheduling recomputation for $d"
       dir_log_append "$d" "Scheduled auto-overwrite: recomputing for $d"
       if [ "$DRY_RUN" -eq 1 ]; then
-        first_run_log "DRYRUN: would overwrite $d/$SUM_FILENAME"
-        vlog "DRYRUN: would overwrite $d/$SUM_FILENAME"
+        first_run_log "DRYRUN: would overwrite $(_sidecar_path "$d" "$SUM_FILENAME")"
+        vlog "DRYRUN: would overwrite $(_sidecar_path "$d" "$SUM_FILENAME")"
       else
         if [ -n "$results_file" ]; then
           printf 'OVERWRITE:%s\n' "$d" >> "$results_file"
@@ -198,8 +199,8 @@ _first_run_verify_one() {
 
             first_run_log "CHOICE overwrite for $d"
             if [ "$DRY_RUN" -eq 1 ]; then
-              first_run_log "DRYRUN: would overwrite $d/$SUM_FILENAME"
-              vlog "DRYRUN: would overwrite $d/$SUM_FILENAME"
+              first_run_log "DRYRUN: would overwrite $(_sidecar_path "$d" "$SUM_FILENAME")"
+              vlog "DRYRUN: would overwrite $(_sidecar_path "$d" "$SUM_FILENAME")"
             else
               first_run_overwrite+=("$d")
               first_run_log "SCHEDULED OVERWRITE for $d"
@@ -288,32 +289,57 @@ first_run_verify() {
   local -a targets=()
 
   # Collect directories that contain an .md5 and have at least one sidefile missing.
+  # When STORE_DIR is set, manifests live there; map store paths back to source dirs.
+  local _fr_search_base="$base"
+  [ -n "${STORE_DIR:-}" ] && [ -d "${STORE_DIR:-}" ] && _fr_search_base="$STORE_DIR"
+
   # Bash 3.x lacks associative arrays; guard declare -A and provide a simple fallback.
   if declare -p -A >/dev/null 2>&1; then
-    # Bash ≥ 4: use an assoc set to avoid duplicate targets.
+    # Bash >= 4: use an assoc set to avoid duplicate targets.
     declare -A _fr_seen=()
     while IFS= read -r -d '' f; do
       local d; d=$(dirname "$f")
+      # Map store path back to source directory when using STORE_DIR
+      if [ -n "${STORE_DIR:-}" ]; then
+        local _rel="${d#"${STORE_DIR%/}"}"
+        _rel="${_rel#/}"
+        if [ -z "$_rel" ]; then
+          d="${base%/}"
+        else
+          d="${base%/}/$_rel"
+        fi
+      fi
+      [ -d "$d" ] || continue
       # Select if either .meta OR .log is missing
-      if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
+      if [ ! -f "$(_sidecar_path "$d" "$META_FILENAME")" ] || [ ! -f "$(_sidecar_path "$d" "$LOG_FILENAME")" ]; then
         if [ -z "${_fr_seen[$d]:-}" ]; then
           targets+=("$d")
           _fr_seen["$d"]=1
         fi
       fi
-    done < <(find "$base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   else
-    # Bash < 4: use a space-delimited “seen_list” to prevent duplicates.
+    # Bash < 4: use a space-delimited "seen_list" to prevent duplicates.
     local seen_list=""
     while IFS= read -r -d '' f; do
       local d; d=$(dirname "$f")
-      if [ ! -f "$d/$META_FILENAME" ] || [ ! -f "$d/$LOG_FILENAME" ]; then
+      if [ -n "${STORE_DIR:-}" ]; then
+        local _rel="${d#"${STORE_DIR%/}"}"
+        _rel="${_rel#/}"
+        if [ -z "$_rel" ]; then
+          d="${base%/}"
+        else
+          d="${base%/}/$_rel"
+        fi
+      fi
+      [ -d "$d" ] || continue
+      if [ ! -f "$(_sidecar_path "$d" "$META_FILENAME")" ] || [ ! -f "$(_sidecar_path "$d" "$LOG_FILENAME")" ]; then
         case " $seen_list " in
           *" $d "*) ;;               # already present
           *) targets+=("$d"); seen_list="$seen_list $d" ;;
         esac
       fi
-    done < <(find "$base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   fi
 
   if [ "${#targets[@]}" -eq 0 ]; then
@@ -321,7 +347,7 @@ first_run_verify() {
     return 0
   fi
 
-  FIRST_RUN_LOG="${TARGET_DIR%/}/${LOG_BASE:-$BASE_NAME}.first-run.log"
+  FIRST_RUN_LOG="$(_runlog_path "${LOG_BASE:-$BASE_NAME}.first-run.log")"
   : > "$FIRST_RUN_LOG"
   log "First-run: found ${#targets[@]} directories; detailed first-run log: $FIRST_RUN_LOG"
   first_run_log "First-run start: base=$base  files: ${#targets[@]}"

@@ -41,8 +41,9 @@ _STATUS_DIR_UNCH=()
 #
 status_single_directory() {
   local d="$1"
-  local sumf="$d/$SUM_FILENAME"
-  local metaf="$d/$META_FILENAME"
+  local sumf metaf
+  sumf="$(_sidecar_path "$d" "$SUM_FILENAME")"
+  metaf="$(_sidecar_path "$d" "$META_FILENAME")"
 
   _STATUS_DIR_NEW=()
   _STATUS_DIR_DEL=()
@@ -313,10 +314,15 @@ run_status() {
       continue
     fi
 
+    # Skip store directory itself if inside target
+    if [ -n "${STORE_DIR_EXCL:-}" ] && [[ "$d" == "$STORE_DIR_EXCL"* ]]; then
+      continue
+    fi
+
     # Respect SKIP_EMPTY — but still check directories that have manifests
     # (a dir with all files deleted still has sidecars we need to diff against)
     if [ "${SKIP_EMPTY:-1}" -eq 1 ] && ! has_local_files "$d"; then
-      [ -f "$d/$SUM_FILENAME" ] || continue
+      [ -f "$(_sidecar_path "$d" "$SUM_FILENAME")" ] || continue
     fi
 
     st_dirs=$((st_dirs + 1))

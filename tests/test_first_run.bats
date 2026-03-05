@@ -1,11 +1,14 @@
 #!/usr/bin/env bats
-load '../lib/first_run.sh'
-load '../lib/hash.sh'
 
 setup() {
+  source "$BATS_TEST_DIRNAME/../lib/init.sh"
+  source "$BATS_TEST_DIRNAME/../lib/fs.sh"
+  source "$BATS_TEST_DIRNAME/../lib/hash.sh"
+  source "$BATS_TEST_DIRNAME/../lib/first_run.sh"
   TMPDIR=$(mktemp -d)
   BASE_NAME="#####checksums#####"
   SUM_FILENAME="${BASE_NAME}.md5"
+  STORE_DIR=""
   echo "hello world" > "$TMPDIR/file.txt"
 }
 
