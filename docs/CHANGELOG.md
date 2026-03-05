@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.9.0 - 2026-03-05
+
 ### Features
 * feat: central manifest store (`-D DIR` / `--store-dir DIR`) — redirect all sidecar files (`.md5`/`.sha256`, `.meta`, `.log`) into a central directory with mirrored tree layout; keeps source directories clean; run log and first-run log also redirected into store root; detects existing scattered sidefiles and prompts to migrate or leave in place; configurable via `STORE_DIR` in config; `_sidecar_path()` and `_runlog_path()` helpers centralize all path resolution
 
