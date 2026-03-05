@@ -126,6 +126,9 @@ ME="$(basename "$0")"
 # Minimal mode: write only .md5 manifest, skip .meta/.log/.run.log and first-run logic
 : "${MINIMAL:=0}"
 
+# Quiet mode: suppress all output except errors
+: "${QUIET:=0}"
+
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 : "${SKIP_EMPTY:=1}"

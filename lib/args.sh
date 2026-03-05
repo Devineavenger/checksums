@@ -127,6 +127,7 @@ _load_config() {
       NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
       PROGRESS)           PROGRESS="$val" ;;
       MINIMAL)            MINIMAL="$val" ;;
+      QUIET)              QUIET="$val" ;;
       EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
       INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
       *)
@@ -225,7 +226,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQM-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMq-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -254,6 +255,7 @@ parse_args() {
       S) STATUS_ONLY=1 ;;                # -S : status/diff mode (read-only)
       Q) PROGRESS=0 ;;                   # -Q : disable progress reporting
       M) MINIMAL=1 ;;                    # -M : minimal mode (hash-only, no sidecars)
+      q) QUIET=1 ;;                      # -q : quiet mode (errors only)
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -328,6 +330,9 @@ parse_args() {
             ;;
           no-progress)
             PROGRESS=0
+            ;;
+          quiet)
+            QUIET=1
             ;;
           minimal)
             MINIMAL=1

@@ -270,6 +270,11 @@ run_status() {
   elif [ "$VERBOSE" -gt 0 ]; then log_level=2
   fi
 
+  if [ "${QUIET:-0}" -eq 1 ]; then
+    log_level=0
+    PROGRESS=0
+  fi
+
   detect_tools
   detect_stat
   check_bash_version

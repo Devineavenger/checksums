@@ -189,6 +189,12 @@ run_checksums() {
     log_level=2   # single -v = verbose only
   fi
 
+  # Quiet mode: suppress all console output except errors; also disable progress
+  if [ "${QUIET:-0}" -eq 1 ]; then
+    log_level=0
+    PROGRESS=0
+  fi
+
   detect_tools
   detect_stat
   check_bash_version

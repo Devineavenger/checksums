@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: quiet mode (`-q` / `--quiet`) — suppress all console output except errors; sets `log_level=0` and disables progress; file logging unaffected; configurable via `QUIET=1` in config
+
+### Tests
+* test: 4 new tests — `-q` flag parsing, `--quiet` long flag, INFO suppression, fatal output preserved
+
 ## v4.7.0 - 2026-03-05
 
 ### Features
