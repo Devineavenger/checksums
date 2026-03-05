@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.9.1 - 2026-03-05
+
 ### Fixes
 * fix: version not displayed during `make user-install` / `make user-reinstall` — greedy prefix trim in `install.sh` could strip entire version string
 
