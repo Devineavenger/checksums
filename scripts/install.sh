@@ -20,8 +20,7 @@ set -e
 
 # Read version from VERSION file or fall back to a default
 if [ -r VERSION ]; then
-  VERSION="$(<VERSION)"
-  VERSION="${VERSION##*[[:space:]]}"   # trim trailing newline/space
+  VERSION="$(tr -d ' \t\n\r' < VERSION)"
 else
   VERSION="v3.x"
 fi
