@@ -1,4 +1,12 @@
 ## [Unreleased]
+## v4.10.1 - 2026-03-10
+
+### Performance
+* perf: test suite runs ~3.3× faster — parallel test file execution via `bats --jobs` (auto-detects CPU count, requires GNU parallel); replaced 5 `sleep 1` calls with `touch -t` forced timestamps in `test_status`, `test_matrix`, and `test_incremental`
+
+### Fixes
+* fix: parallel-safe test suite — renamed `TMPDIR` to `TEST_DIR` in integration tests (`test_matrix`, `test_short_vs_long_flags`) to prevent env var leakage into checksums.sh subprocesses during parallel bats runs; snapshot-based leaked temp dir check in `test_process_extra` avoids false positives from concurrent tests
+
 ## v4.10.0 - 2026-03-09
 
 ### Features

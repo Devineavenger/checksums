@@ -80,9 +80,10 @@ fresh_dir() {
   # populate deterministic files
   echo "alpha" > "$newtmp/file1"
   echo "beta"  > "$newtmp/file2"
-  # record and expose as TMPDIR for compatibility with existing tests
+  # Record for teardown; expose as TEST_DIR (not TMPDIR, to avoid leaking
+  # the env var into checksums.sh subprocesses during parallel bats runs).
   CREATED_TMPDIRS="${CREATED_TMPDIRS} ${newtmp}"
-  TMPDIR="$newtmp"
+  TEST_DIR="$newtmp"
   echo "fresh_dir: created $newtmp" >&2
 }
 
@@ -117,18 +118,18 @@ run_and_compare() {
   # --- Short run in isolated temp directory ---
   fresh_dir
   if [ -n "$arg" ]; then
-    run "$CHECKSUMS" -y "$short" "$arg" --allow-root-sidefiles "$TMPDIR"
+    run "$CHECKSUMS" -y "$short" "$arg" --allow-root-sidefiles "$TEST_DIR"
   else
-    run "$CHECKSUMS" -y "$short" --allow-root-sidefiles "$TMPDIR"
+    run "$CHECKSUMS" -y "$short" --allow-root-sidefiles "$TEST_DIR"
   fi
   status_short=$status; output_short="$output"
 
   # --- Long run in isolated temp directory ---
   fresh_dir
   if [ -n "$arg" ]; then
-    run "$CHECKSUMS" -y "$long" "$arg" --allow-root-sidefiles "$TMPDIR"
+    run "$CHECKSUMS" -y "$long" "$arg" --allow-root-sidefiles "$TEST_DIR"
   else
-    run "$CHECKSUMS" -y "$long" --allow-root-sidefiles "$TMPDIR"
+    run "$CHECKSUMS" -y "$long" --allow-root-sidefiles "$TEST_DIR"
   fi
   status_long=$status; output_long="$output"
 

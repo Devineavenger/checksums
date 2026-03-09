@@ -45,8 +45,21 @@ echo "Using bats at: $(command -v bats)"
 bats --version 2>/dev/null || echo "bats --version unavailable"
 
 echo "Running bats tests with CI_PARALLEL=${CI_PARALLEL} CI_STRICT_LOGS=${CI_STRICT_LOGS}"
+
+# Determine parallel job count for bats: use BATS_JOBS if set, otherwise auto-detect.
+# Requires GNU parallel or shenwei356/rush for --jobs support.
+: "${BATS_JOBS:=0}"
+if [ "$BATS_JOBS" -eq 0 ] && command -v nproc >/dev/null 2>&1; then
+  BATS_JOBS=$(nproc)
+fi
+
 # Run via the bats binary explicitly to ensure the Bats harness provides helpers like 'fail'
-bats tests/
+if [ "$BATS_JOBS" -gt 1 ] && command -v parallel >/dev/null 2>&1; then
+  echo "Running bats with --jobs $BATS_JOBS (parallel test files)"
+  bats --jobs "$BATS_JOBS" tests/
+else
+  bats tests/
+fi
 rc=$?
 
 echo

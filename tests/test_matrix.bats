@@ -15,11 +15,14 @@ fi
 # - On assertion failure we cat the run log to aid debugging.
 
 setup() {
-  TMPDIR="$(mktemp -d)"
+  # Use TEST_DIR (not TMPDIR) so checksums.sh subprocesses don't inherit it as
+  # their temp directory — prevents mktemp pollution inside the test data dir
+  # during parallel bats execution.
+  TEST_DIR="$(mktemp -d)"
   CHECKSUMS="$(pwd)/checksums.sh"
   chmod +x "$CHECKSUMS" || true
   BASE_NAME="#####checksums#####"
-  RUN_LOG="$TMPDIR/${BASE_NAME}.run.log"
+  RUN_LOG="$TEST_DIR/${BASE_NAME}.run.log"
 
   # CI-configurable knobs
   PARALLEL="${CI_PARALLEL:-4}"
@@ -27,7 +30,7 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$TMPDIR"
+  rm -rf "$TEST_DIR"
 }
 
 # Portable helpers
@@ -67,66 +70,68 @@ dump_log_on_fail() {
 # Tests
 
 @test "baseline run creates sidecars (allow root sidefiles)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
   [ "$status" -eq 0 ]
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]
-  [ -f "$TMPDIR/$BASE_NAME.meta" ]
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]
+  [ -f "$TEST_DIR/$BASE_NAME.meta" ]
 }
 
 @test "dry-run does not create sidecars (-n)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y -n --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y -n --allow-root-sidefiles "$TEST_DIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$BASE_NAME.md5" ]
-  [ ! -f "$TMPDIR/$BASE_NAME.meta" ]
+  [ ! -f "$TEST_DIR/$BASE_NAME.md5" ]
+  [ ! -f "$TEST_DIR/$BASE_NAME.meta" ]
 }
 
 @test "verify-only audits manifests (-V)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  run "$CHECKSUMS" -y -V --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  run "$CHECKSUMS" -y -V --allow-root-sidefiles "$TEST_DIR"
   [ "$status" -eq 0 ]
 }
 
 @test "verify-only logs 'Verify-only'" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  run "$CHECKSUMS" -y -V --allow-root-sidefiles "$TMPDIR"
-  grep -q "Verify-only" "$TMPDIR/$BASE_NAME.run.log"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  run "$CHECKSUMS" -y -V --allow-root-sidefiles "$TEST_DIR"
+  grep -q "Verify-only" "$TEST_DIR/$BASE_NAME.run.log"
 }
 
 @test "force rebuild overwrites manifests (-r)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  ts1=$(file_mtime "$TMPDIR/$BASE_NAME.md5")
-  sleep 1
-  run "$CHECKSUMS" -y -r --allow-root-sidefiles "$TMPDIR"
-  ts2=$(file_mtime "$TMPDIR/$BASE_NAME.md5")
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  ts1=$(file_mtime "$TEST_DIR/$BASE_NAME.md5")
+  # Backdate manifest so second run's mtime is guaranteed to be newer (avoids sleep)
+  touch -t 202001010000.00 "$TEST_DIR/$BASE_NAME.md5"
+  ts1=$(file_mtime "$TEST_DIR/$BASE_NAME.md5")
+  run "$CHECKSUMS" -y -r --allow-root-sidefiles "$TEST_DIR"
+  ts2=$(file_mtime "$TEST_DIR/$BASE_NAME.md5")
   [ "$ts2" -gt "$ts1" ]
 }
 
 @test "disable reuse rehashes files (-R/--no-reuse)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  run "$CHECKSUMS" -y -R --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.run.log" ]
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  run "$CHECKSUMS" -y -R --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.run.log" ]
 }
 
 @test "first-run schedules overwrite (-F)" {
   # create two files so the initial manifest has real entries
-  echo "hello" > "$TMPDIR/file1"
-  echo "world" > "$TMPDIR/file2"
+  echo "hello" > "$TEST_DIR/file1"
+  echo "world" > "$TEST_DIR/file2"
 
   # Run once to create manifests
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]    # ensure md5 exists
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]    # ensure md5 exists
 
   # Remove meta/log and run log to simulate 'md5-only' state
-  rm -f "$TMPDIR/$BASE_NAME.meta" "$TMPDIR/$BASE_NAME.log" "$TMPDIR/$BASE_NAME.run.log"
+  rm -f "$TEST_DIR/$BASE_NAME.meta" "$TEST_DIR/$BASE_NAME.log" "$TEST_DIR/$BASE_NAME.run.log"
 
   # Run first-run mode with debug to capture planner decisions if needed
-  run "$CHECKSUMS" -y -F --allow-root-sidefiles -d "$TMPDIR"
+  run "$CHECKSUMS" -y -F --allow-root-sidefiles -d "$TEST_DIR"
   if [ "$status" -ne 0 ]; then
     dump_log_on_fail
     fail "checksums.sh failed when running -F (exit $status)"
@@ -134,67 +139,67 @@ dump_log_on_fail() {
 
   # Default behavior: when scheduled overwrites are executed, the first-run log
   # is removed by the orchestrator. Assert that the log is absent by default.
-  if [ -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
+  if [ -f "$TEST_DIR/$BASE_NAME.first-run.log" ]; then
     echo "=== DIR LIST ==="
-    ls -la "$TMPDIR"
+    ls -la "$TEST_DIR"
     dump_log_on_fail
-    fail "expected first-run log to be removed by default after overwrites: $TMPDIR/$BASE_NAME.first-run.log"
+    fail "expected first-run log to be removed by default after overwrites: $TEST_DIR/$BASE_NAME.first-run.log"
   fi
 }
 
 @test "first-run keeps log with -K / FIRST_RUN_KEEP=1" {
   # create two files so the initial manifest has real entries
-  echo "hello" > "$TMPDIR/file1"
-  echo "world" > "$TMPDIR/file2"
+  echo "hello" > "$TEST_DIR/file1"
+  echo "world" > "$TEST_DIR/file2"
 
   # Run once to create manifests
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]    # ensure md5 exists
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]    # ensure md5 exists
 
   # Remove meta/log and run log to simulate 'md5-only' state
-  rm -f "$TMPDIR/$BASE_NAME.meta" "$TMPDIR/$BASE_NAME.log" "$TMPDIR/$BASE_NAME.run.log"
+  rm -f "$TEST_DIR/$BASE_NAME.meta" "$TEST_DIR/$BASE_NAME.log" "$TEST_DIR/$BASE_NAME.run.log"
 
   # Run first-run mode with keep flag via CLI short option -K
-  run "$CHECKSUMS" -y -F -K --allow-root-sidefiles -d "$TMPDIR"
+  run "$CHECKSUMS" -y -F -K --allow-root-sidefiles -d "$TEST_DIR"
   if [ "$status" -ne 0 ]; then
     dump_log_on_fail
     fail "checksums.sh failed when running -F -K (exit $status)"
   fi
 
   # The keep flag should preserve the detailed first-run log for auditing
-  if [ ! -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
+  if [ ! -f "$TEST_DIR/$BASE_NAME.first-run.log" ]; then
     echo "=== DIR LIST ==="
-    ls -la "$TMPDIR"
+    ls -la "$TEST_DIR"
     dump_log_on_fail
-    fail "expected first-run log to be kept when -K is provided: $TMPDIR/$BASE_NAME.first-run.log"
+    fail "expected first-run log to be kept when -K is provided: $TEST_DIR/$BASE_NAME.first-run.log"
   fi
 
   # Cleanup and also test env alias variant
-  rm -f "$TMPDIR/$BASE_NAME.first-run.log" "$TMPDIR/$BASE_NAME.run.log"
+  rm -f "$TEST_DIR/$BASE_NAME.first-run.log" "$TEST_DIR/$BASE_NAME.run.log"
   # Ensure we simulate the same md5-only state as the CLI -K run:
-  rm -f "$TMPDIR/$BASE_NAME.meta" "$TMPDIR/$BASE_NAME.log" "$TMPDIR/$BASE_NAME.run.log"
+  rm -f "$TEST_DIR/$BASE_NAME.meta" "$TEST_DIR/$BASE_NAME.log" "$TEST_DIR/$BASE_NAME.run.log"
 
   # Run again using environment variable alias FIRST_RUN_KEEP=1
-  FIRST_RUN_KEEP=1 run "$CHECKSUMS" -y -F --allow-root-sidefiles -d "$TMPDIR"
+  FIRST_RUN_KEEP=1 run "$CHECKSUMS" -y -F --allow-root-sidefiles -d "$TEST_DIR"
   if [ "$status" -ne 0 ]; then
     dump_log_on_fail
     fail "checksums.sh failed when running FIRST_RUN_KEEP=1 -F (exit $status)"
   fi
 
-  if [ ! -f "$TMPDIR/$BASE_NAME.first-run.log" ]; then
+  if [ ! -f "$TEST_DIR/$BASE_NAME.first-run.log" ]; then
     echo "=== DIR LIST ==="
-    ls -la "$TMPDIR"
+    ls -la "$TEST_DIR"
     dump_log_on_fail
-    fail "expected first-run log to be kept when FIRST_RUN_KEEP=1 is set: $TMPDIR/$BASE_NAME.first-run.log"
+    fail "expected first-run log to be kept when FIRST_RUN_KEEP=1 is set: $TEST_DIR/$BASE_NAME.first-run.log"
   fi
 }
 
 @test "parallel jobs respected exit" {
-  for i in $(seq 1 10); do echo "data $i" > "$TMPDIR/file$i"; done
+  for i in $(seq 1 10); do echo "data $i" > "$TEST_DIR/file$i"; done
 
   attempt=0
   max_attempts=2
-  until run "$CHECKSUMS" -y -p "$PARALLEL" --allow-root-sidefiles "$TMPDIR"; do
+  until run "$CHECKSUMS" -y -p "$PARALLEL" --allow-root-sidefiles "$TEST_DIR"; do
     attempt=$((attempt+1))
     if [ "$attempt" -ge "$max_attempts" ]; then
       dump_log_on_fail
@@ -207,23 +212,23 @@ dump_log_on_fail() {
 }
 
 @test "parallel jobs respected log entry" {
-  for i in $(seq 1 10); do echo "data $i" > "$TMPDIR/file$i"; done
-  run "$CHECKSUMS" -y -p "$PARALLEL" --allow-root-sidefiles "$TMPDIR"
+  for i in $(seq 1 10); do echo "data $i" > "$TEST_DIR/file$i"; done
+  run "$CHECKSUMS" -y -p "$PARALLEL" --allow-root-sidefiles "$TEST_DIR"
   [ "$status" -eq 0 ]
-  grep -q "parallel: $PARALLEL" "$TMPDIR/$BASE_NAME.run.log" \
-    || grep -q "PARALLEL_JOBS=$PARALLEL" "$TMPDIR/$BASE_NAME.run.log" \
+  grep -q "parallel: $PARALLEL" "$TEST_DIR/$BASE_NAME.run.log" \
+    || grep -q "PARALLEL_JOBS=$PARALLEL" "$TEST_DIR/$BASE_NAME.run.log" \
     || skip "No explicit parallel marker in run log for this build"
 }
 
 @test "batch rules applied exit and optional strict log" {
-  dd if=/dev/zero of="$TMPDIR/bigfile" bs=1M count=5 >/dev/null 2>&1 || true
-  echo "hello" > "$TMPDIR/file1"
+  dd if=/dev/zero of="$TEST_DIR/bigfile" bs=1M count=5 >/dev/null 2>&1 || true
+  echo "hello" > "$TEST_DIR/file1"
   BATCH="0-2M:20,2M-50M:10,>50M:1"
 
   # Try short debug flag -d first, then fallback to no debug
-  run "$CHECKSUMS" -y -b "$BATCH" --allow-root-sidefiles -d "$TMPDIR"
+  run "$CHECKSUMS" -y -b "$BATCH" --allow-root-sidefiles -d "$TEST_DIR"
   if [ "$status" -ne 0 ]; then
-    run "$CHECKSUMS" -y -b "$BATCH" --allow-root-sidefiles "$TMPDIR"
+    run "$CHECKSUMS" -y -b "$BATCH" --allow-root-sidefiles "$TEST_DIR"
   fi
 
   # Ensure the run succeeded
@@ -233,12 +238,12 @@ dump_log_on_fail() {
   fi
 
   # Behavioral assertions (default, CI-friendly)
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]
-  [ -f "$TMPDIR/$BASE_NAME.meta" ]
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]
+  [ -f "$TEST_DIR/$BASE_NAME.meta" ]
 
   # Strict log assertion only when CI_STRICT_LOGS=true
   if [ "${CI_STRICT_LOGS:-}" = "true" ]; then
-    if grep -qiE "batch|rules|->[[:space:]]*[0-9]+" "$TMPDIR/$BASE_NAME.run.log"; then
+    if grep -qiE "batch|rules|->[[:space:]]*[0-9]+" "$TEST_DIR/$BASE_NAME.run.log"; then
       :
     else
       dump_log_on_fail
@@ -250,59 +255,59 @@ dump_log_on_fail() {
 }
 
 @test "log format json outputs JSON" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y -o json --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y -o json --allow-root-sidefiles "$TEST_DIR"
   [[ "${output}" == *'"level":"INFO"'* ]]
 }
 
 @test "log format csv outputs CSV" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y -o csv --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y -o csv --allow-root-sidefiles "$TEST_DIR"
   [[ "${output}" == *"timestamp,level,message"* ]]
 }
 
 @test "skip-empty default" {
-  run "$CHECKSUMS" -y "$TMPDIR"
+  run "$CHECKSUMS" -y "$TEST_DIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$BASE_NAME.md5" ]
+  [ ! -f "$TEST_DIR/$BASE_NAME.md5" ]
 }
 
 @test "no-skip-empty processes empty dirs (--no-skip-empty)" {
-  echo "content" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --no-skip-empty --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]
+  echo "content" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --no-skip-empty --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]
 }
 
 @test "allow-root-sidefiles permits root artifacts (--allow-root-sidefiles)" {
-  echo "content" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.md5" ]
+  echo "content" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.md5" ]
 }
 
 @test "root sidecars blocked by default" {
-  echo "content" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y "$TMPDIR"
+  echo "content" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y "$TEST_DIR"
   [ "$status" -eq 0 ]
-  [ ! -f "$TMPDIR/$BASE_NAME.md5" ]
+  [ ! -f "$TEST_DIR/$BASE_NAME.md5" ]
 }
 
 @test "disable md5-details (-z/--no-md5-details)" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y -z --allow-root-sidefiles "$TMPDIR"
-  [ -f "$TMPDIR/$BASE_NAME.run.log" ]
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y -z --allow-root-sidefiles "$TEST_DIR"
+  [ -f "$TEST_DIR/$BASE_NAME.run.log" ]
 }
 
 @test "enable md5-details exit" {
-  echo "hello" > "$TMPDIR/file1"
-  run "$CHECKSUMS" -y --md5-details --allow-root-sidefiles "$TMPDIR"
+  echo "hello" > "$TEST_DIR/file1"
+  run "$CHECKSUMS" -y --md5-details --allow-root-sidefiles "$TEST_DIR"
   [ "$status" -eq 0 ]
 }
 
 @test "enable md5-details logs VERIFIED" {
-  echo "hello" > "$TMPDIR/file1"
+  echo "hello" > "$TEST_DIR/file1"
   # First run to create manifests
-  run "$CHECKSUMS" -y --allow-root-sidefiles "$TMPDIR"
+  run "$CHECKSUMS" -y --allow-root-sidefiles "$TEST_DIR"
   # Second run with md5-details to audit existing manifests
-  run "$CHECKSUMS" -y --md5-details --allow-root-sidefiles "$TMPDIR"
-  grep -q "VERIFIED" "$TMPDIR/$BASE_NAME.run.log"
+  run "$CHECKSUMS" -y --md5-details --allow-root-sidefiles "$TEST_DIR"
+  grep -q "VERIFIED" "$TEST_DIR/$BASE_NAME.run.log"
 }

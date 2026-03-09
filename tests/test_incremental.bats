@@ -42,9 +42,8 @@ teardown() { rm -rf "$TMPDIR"; }
 }
 
 @test "planner detects mtime change" {
-  # Touch file to change mtime
-  sleep 1
-  touch "$TMPDIR/dir/file.txt"
+  # Force a distinct mtime without sleeping — set to a future timestamp
+  touch -t 203001010000.00 "$TMPDIR/dir/file.txt"
 
   out_proc="$TMPDIR/proc"
   out_skip="$TMPDIR/skip"
