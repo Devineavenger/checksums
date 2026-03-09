@@ -16,7 +16,9 @@
 
 usage() {
   # Pre-build bold markers for headings; printf '%b' interprets \033 escapes.
-  local B; B=$(printf '%b' "${_C_BOLD:-}") R; R=$(printf '%b' "${_C_RST:-}")
+  local B R
+  B=$(printf '%b' "${_C_BOLD:-}")
+  R=$(printf '%b' "${_C_RST:-}")
 
   cat <<EOF
 ${B}$ME Version $VER${R}
@@ -65,7 +67,7 @@ ${B}Hashing Options:${R}
                      accepts: integer, "auto" (all cores), or fraction (3/4, 1/2, etc.)
                      when > 1, -p controls the shared worker pool across all dirs
   -b RULES, --batch RULES
-                     adaptive batching rules (default: "0-1M:20,1M-40M:20,>40M:1")
+                     adaptive batching rules (default: "0-10M:20,10M-40M:20,>40M:5")
                      format: "LOW-HIGH:COUNT,>HIGH:COUNT" with K/M/G suffixes
 
 ${B}Run Control Options:${R}

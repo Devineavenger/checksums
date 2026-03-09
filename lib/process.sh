@@ -86,11 +86,11 @@ fi
 # Fallback list is referenced below; declare defensively even on Bash 5.x
 declare -g THRESHOLDS_LIST=""
 
-# Parse BATCH_RULES (e.g. "0-1M:20,1M-40M:20,>40M:1") into byte ranges and counts.
+# Parse BATCH_RULES (e.g. "0-10M:20,10M-40M:20,>40M:5") into byte ranges and counts.
 # Called once (orchestrator) to populate BATCH_THRESHOLDS or THRESHOLDS_LIST.
 # Rules are forgiving to whitespace and validated to avoid malformed entries.
 init_batch_thresholds() {
-  local rules="${BATCH_RULES:-0-1M:20,1M-40M:20,>40M:1}"
+  local rules="${BATCH_RULES:-0-10M:20,10M-40M:20,>40M:5}"
   IFS=',' read -ra parts <<< "$rules"
 
   for rule in "${parts[@]}"; do

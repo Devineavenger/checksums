@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Fixes
+* fix: variable declaration bug in `usage()` — bare `R` after command substitution was executed as a command instead of declared as a variable, causing `R: command not found` on every `--help` / no-args invocation
+
+### Changes
+* change: default `BATCH_RULES` raised from `0-1M:20,1M-40M:20,>40M:1` to `0-10M:20,10M-40M:20,>40M:5` — wider first bucket (10 MB vs 1 MB) and larger batch for big files (5 vs 1)
+
+### Tests
+* test: 21 new tests (`test_usage.bats`) — `--help` and `--version` clean output, `usage()` direct call, all 17 `lib/*.sh` files sourced individually and via loader to catch variable declaration and syntax errors at source time
+
 ## v4.9.1 - 2026-03-05
 
 ### Fixes
