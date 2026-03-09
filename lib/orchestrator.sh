@@ -304,6 +304,13 @@ run_checksums() {
   log "Starting run on $TARGET_DIR"
   vlog "Run ID: $RUN_ID"
   log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
+  # Log active user-supplied filter patterns (verbose only; tool-generated exclusions are implicit)
+  if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+    vlog "Exclude patterns: ${EXCLUDE_PATTERNS[*]}"
+  fi
+  if [ "${INCLUDE_PATTERNS:+1}" = "1" ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+    vlog "Include patterns: ${INCLUDE_PATTERNS[*]}"
+  fi
 
   # ----------------------------
   # Quick preview (very fast)

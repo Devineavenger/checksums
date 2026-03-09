@@ -112,6 +112,15 @@ ${B}Directory Handling Options:${R}
                      allow sidecar files (.md5/.meta/.log) in root DIRECTORY
                      (default: root sidefiles disabled)
 
+${B}File Filtering Options:${R}
+  -e PATTERN, --exclude PATTERN
+                     exclude files matching PATTERN (basename glob, repeatable)
+                     supports comma-separated: --exclude '*.tmp,*.bak'
+  -i PATTERN, --include PATTERN
+                     include only files matching PATTERN (basename glob, repeatable)
+                     supports comma-separated: --include '*.txt,*.md'
+                     if set, only matching files are processed (allowlist)
+
 ${B}Logging Options:${R}
   -o FORMAT, --output FORMAT
                      log format: text (default), json, csv
@@ -123,13 +132,17 @@ ${B}Config file:${R}
   CLI arguments always override config settings.
 
 ${B}Patterns:${R}
-  INCLUDE_PATTERNS, EXCLUDE_PATTERNS accept shell globs (e.g., "*.tmp").
-  If INCLUDE_PATTERNS is non-empty, only matching files are considered.
+  -e / --exclude and -i / --include accept basename shell globs (e.g., "*.tmp").
+  Both flags are repeatable and support comma-separated values.
+  If include patterns are set, only matching files are processed (allowlist).
+  Exclude patterns always take precedence over include patterns.
+  Config file equivalents: EXCLUDE_PATTERNS and INCLUDE_PATTERNS (comma-separated).
 
 ${B}Quick Examples:${R}
   $ME -a sha256 -o json --assume-yes /data/project
   $ME --config /data/project/custom.conf -V /data/project
   $ME --allow-root-sidefiles /data/project
+  $ME --exclude '*.tmp,*.bak' --include '*.txt,*.md' -y /data/project
   $ME -F -C overwrite /data/project
 
 ${B}Common Usage Patterns:${R}

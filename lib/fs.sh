@@ -78,9 +78,11 @@ FIRST_RUN_EXCL="${FIRST_RUN_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####che
 LOCK_EXCL="${LOCK_EXCL:-$(_safe_name "${LOCK_SUFFIX:-.lock}")}"
 STORE_DIR_EXCL="${STORE_DIR_EXCL:-}"
 
-# Default pattern arrays exist in args.sh but we also declare here for safety.
-declare -a INCLUDE_PATTERNS=${INCLUDE_PATTERNS:+("${INCLUDE_PATTERNS[@]}")}
-declare -a EXCLUDE_PATTERNS=${EXCLUDE_PATTERNS:+("${EXCLUDE_PATTERNS[@]}")}
+# Default pattern arrays: ensure they exist as proper global arrays so set -u
+# doesn't trip on them and ${#arr[@]} returns 0 (not 1 with an empty element).
+# Uses -ga (global array) so declarations survive bats load context (function scope).
+declare -p EXCLUDE_PATTERNS &>/dev/null || declare -ga EXCLUDE_PATTERNS=()
+declare -p INCLUDE_PATTERNS &>/dev/null || declare -ga INCLUDE_PATTERNS=()
 
 # normalize_unit: produce numfmt-friendly IEC tokens (plain number, K, M, G, T, P, E),
 # or the "Ki/Mi/Gi" form if you prefer explicit binary suffix (both accepted by numfmt).
@@ -174,8 +176,8 @@ has_files() {
       *"$LOCK_SUFFIX") continue ;;
       # If the basename matches any EXCLUDE_PATTERNS, treat as excluded too
       *)
-        # Safely check for EXCLUDE_PATTERNS presence and iterate if non-empty
-        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+        # Apply user-supplied exclude patterns (basename glob matching)
+        if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
           local pat
           for pat in "${EXCLUDE_PATTERNS[@]}"; do
             # shellcheck disable=SC2053
@@ -183,7 +185,16 @@ has_files() {
           done
           [ -z "$fname" ] && continue
         fi
-        # Found a non-tool regular file — return success immediately.
+        # If include patterns are defined, require a match (allowlist)
+        if [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+          local ipat imatch=0
+          for ipat in "${INCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            [[ "$fname" == $ipat ]] && { imatch=1; break; }
+          done
+          [ "$imatch" -eq 0 ] && continue
+        fi
+        # Found a non-tool regular file matching all filters — return success.
         return 0
         ;;
     esac
@@ -207,13 +218,23 @@ has_local_files() {
       "$RUN_EXCL" | "$FIRST_RUN_EXCL" ) continue ;;
       *"$LOCK_SUFFIX") continue ;;
       *)
-        if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+        # Apply user-supplied exclude patterns (basename glob matching)
+        if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
           local pat skip=0
           for pat in "${EXCLUDE_PATTERNS[@]}"; do
             # shellcheck disable=SC2053
             [[ "$fname" == $pat ]] && skip=1 && break
           done
           [ "$skip" -eq 1 ] && continue
+        fi
+        # If include patterns are defined, require a match (allowlist)
+        if [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+          local ipat imatch=0
+          for ipat in "${INCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            [[ "$fname" == $ipat ]] && { imatch=1; break; }
+          done
+          [ "$imatch" -eq 0 ] && continue
         fi
         return 0
         ;;
@@ -279,15 +300,15 @@ find_file_expr() {
       local skip=0
 
       # Apply exclude patterns first; these are shell globs evaluated with [[ .. == pattern ]]
-      if [ "${EXCLUDE_PATTERNS:+1}" = "1" ] && [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
+      if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
         for pat in "${EXCLUDE_PATTERNS[@]}"; do
           # shellcheck disable=SC2053
           [[ "$fname" == $pat ]] && skip=1 && break
         done
       fi
 
-      # If include patterns are defined, require a match (after exclusions)
-      if [ "$skip" -eq 0 ] && [ "${INCLUDE_PATTERNS:+1}" = "1" ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
+      # If include patterns are defined, require a match (allowlist; after exclusions)
+      if [ "$skip" -eq 0 ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
         local match=0
         for pat in "${INCLUDE_PATTERNS[@]}"; do
           # shellcheck disable=SC2053

@@ -123,3 +123,39 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"invalid line"* ]]
 }
+
+# --- Pattern comma-splitting ---
+
+@test "_load_config splits EXCLUDE_PATTERNS comma-separated string into array" {
+  EXCLUDE_PATTERNS=()
+  printf 'EXCLUDE_PATTERNS=*.tmp,*.bak,*.swp\n' > "$TMPDIR/test.conf"
+  _load_config "$TMPDIR/test.conf"
+  [ "${#EXCLUDE_PATTERNS[@]}" -eq 3 ]
+  [ "${EXCLUDE_PATTERNS[0]}" = "*.tmp" ]
+  [ "${EXCLUDE_PATTERNS[1]}" = "*.bak" ]
+  [ "${EXCLUDE_PATTERNS[2]}" = "*.swp" ]
+}
+
+@test "_load_config splits INCLUDE_PATTERNS comma-separated string into array" {
+  INCLUDE_PATTERNS=()
+  printf 'INCLUDE_PATTERNS=*.txt,*.md\n' > "$TMPDIR/test.conf"
+  _load_config "$TMPDIR/test.conf"
+  [ "${#INCLUDE_PATTERNS[@]}" -eq 2 ]
+  [ "${INCLUDE_PATTERNS[0]}" = "*.txt" ]
+  [ "${INCLUDE_PATTERNS[1]}" = "*.md" ]
+}
+
+@test "_load_config handles single pattern without comma" {
+  EXCLUDE_PATTERNS=()
+  printf 'EXCLUDE_PATTERNS=*.log\n' > "$TMPDIR/test.conf"
+  _load_config "$TMPDIR/test.conf"
+  [ "${#EXCLUDE_PATTERNS[@]}" -eq 1 ]
+  [ "${EXCLUDE_PATTERNS[0]}" = "*.log" ]
+}
+
+@test "_load_config handles empty EXCLUDE_PATTERNS value" {
+  EXCLUDE_PATTERNS=()
+  printf 'EXCLUDE_PATTERNS=\n' > "$TMPDIR/test.conf"
+  _load_config "$TMPDIR/test.conf"
+  [ "${#EXCLUDE_PATTERNS[@]}" -eq 0 ]
+}

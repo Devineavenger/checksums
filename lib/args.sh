@@ -129,8 +129,22 @@ _load_config() {
       MINIMAL)            MINIMAL="$val" ;;
       QUIET)              QUIET="$val" ;;
       STORE_DIR)          STORE_DIR="$val" ;;
-      EXCLUDE_PATTERNS)   EXCLUDE_PATTERNS="$val" ;;
-      INCLUDE_PATTERNS)   INCLUDE_PATTERNS="$val" ;;
+      EXCLUDE_PATTERNS)
+        # Split comma-separated globs into individual array elements
+        if [ -n "$val" ]; then
+          local _ep
+          IFS=',' read -ra _ep <<< "$val"
+          EXCLUDE_PATTERNS+=("${_ep[@]}")
+        fi
+        ;;
+      INCLUDE_PATTERNS)
+        # Split comma-separated globs into individual array elements
+        if [ -n "$val" ]; then
+          local _ip
+          IFS=',' read -ra _ip <<< "$val"
+          INCLUDE_PATTERNS+=("${_ip[@]}")
+        fi
+        ;;
       *)
         log "WARNING: config $file:$line_num: unknown key '$key' (ignored)"
         ;;
@@ -181,8 +195,8 @@ parse_args() {
         ;;
       # Flags that consume the next token as their value — skip that token so
       # a value that looks like a path is not mistaken for TARGET_DIR.
-      -a|-m|-l|-C|-p|-P|-b|-o|-D| \
-      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir)
+      -a|-m|-l|-C|-p|-P|-b|-o|-D|-e|-i| \
+      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir|--exclude|--include)
         _pi=$(( _pi + 1 ))
         ;;
       --)
@@ -227,7 +241,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:-:" opt 2>/dev/null; do
+  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:e:i:-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -258,6 +272,16 @@ parse_args() {
       M) MINIMAL=1 ;;                    # -M : minimal mode (hash-only, no sidecars)
       q) QUIET=1 ;;                      # -q : quiet mode (errors only)
       D) STORE_DIR=$OPTARG ;;            # -D DIR : central manifest store directory
+      e)                                 # -e PATTERN : exclude files matching glob (repeatable)
+        local _ep
+        IFS=',' read -ra _ep <<< "$OPTARG"
+        EXCLUDE_PATTERNS+=("${_ep[@]}")
+        ;;
+      i)                                 # -i PATTERN : include only files matching glob (repeatable)
+        local _ip
+        IFS=',' read -ra _ip <<< "$OPTARG"
+        INCLUDE_PATTERNS+=("${_ip[@]}")
+        ;;
       h) usage; exit 0 ;;                # -h : help
 
       # -------------------------
@@ -345,6 +369,20 @@ parse_args() {
             ;;
           store-dir)
             STORE_DIR="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            ;;
+          exclude)
+            # --exclude PATTERN : exclude files matching basename glob (repeatable)
+            local _ep_val="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            local _ep
+            IFS=',' read -ra _ep <<< "$_ep_val"
+            EXCLUDE_PATTERNS+=("${_ep[@]}")
+            ;;
+          include)
+            # --include PATTERN : include only files matching basename glob (repeatable)
+            local _ip_val="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            local _ip
+            IFS=',' read -ra _ip <<< "$_ip_val"
+            INCLUDE_PATTERNS+=("${_ip[@]}")
             ;;
 
           # -------------------------

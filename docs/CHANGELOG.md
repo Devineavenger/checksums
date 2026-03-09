@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+## v4.10.0 - 2026-03-09
+
+### Features
+* feat: file filtering via `--exclude PATTERN` / `-e PATTERN` and `--include PATTERN` / `-i PATTERN` — basename glob matching, repeatable flags, comma-separated values supported; include acts as allowlist (only matching files processed); exclude takes precedence over include; config file equivalents `EXCLUDE_PATTERNS` and `INCLUDE_PATTERNS` (comma-separated)
+
+### Fixes
+* fix: `_load_config()` now properly splits comma-separated `EXCLUDE_PATTERNS` and `INCLUDE_PATTERNS` values into individual array elements instead of assigning the entire string as a single element
+* fix: `EXCLUDE_PATTERNS` / `INCLUDE_PATTERNS` array declaration bug — `declare -a arr=` (empty RHS) created a single empty-string element instead of an empty array, causing `${arr:+1}` guard checks to fail and skip all pattern filtering; replaced with `declare -ga` and proper empty-array initialization
+* fix: `has_files()` and `has_local_files()` now respect `INCLUDE_PATTERNS` — previously only checked `EXCLUDE_PATTERNS`, so directories with only non-matching files would be scheduled for processing and produce empty manifests
+
+### Tests
+* test: 22 new tests — 4 config comma-splitting tests (`test_config.bats`), 18 pattern filtering tests (`test_patterns.bats`) covering `find_file_expr`, `has_files`, `has_local_files` unit tests plus integration tests for `--exclude`, `--include`, `-e`, `-i`, comma-separated values, repeatable flags, tool-file exclusion immunity, config+CLI accumulation, and filenames with spaces
+
 ## v4.9.2 - 2026-03-09
 
 ### Fixes
