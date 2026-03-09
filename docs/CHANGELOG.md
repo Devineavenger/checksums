@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.9.2 - 2026-03-09
+
 ### Fixes
 * fix: variable declaration bug in `usage()` — bare `R` after command substitution was executed as a command instead of declared as a variable, causing `R: command not found` on every `--help` / no-args invocation
 
