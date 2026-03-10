@@ -23,52 +23,18 @@ setup() {
   CHECKSUMS="$(pwd)/checksums.sh"
   chmod +x "$CHECKSUMS" 2>/dev/null || true
   BASE_NAME="#####checksums#####"
-  # Snapshot pre-existing /tmp/tmp.* entries so we only remove new ones created by tests.
-  PRE_EXISTING_TMP="$(ls -1 /tmp/tmp.* 2>/dev/null || true)"
   CREATED_TMPDIRS=""
 }
 
 teardown() {
-  # Remove every path (file or directory) we explicitly recorded.
+  # Remove only the temp directories we explicitly created via fresh_dir().
+  # Do NOT scan /tmp/tmp.* — that would delete other parallel tests' directories.
   for p in $CREATED_TMPDIRS; do
     [ -z "$p" ] && continue
     [ ! -e "$p" ] && continue
-    case "$p" in
-      /tmp/*|/var/tmp/*)
-        echo "teardown: removing recorded path $p" >&2
-        rm -rf -- "$p" || echo "teardown: failed to remove $p" >&2
-        ;;
-      *)
-        echo "teardown: refusing to remove non-temp path: $p" >&2
-        ;;
-    esac
+    rm -rf -- "$p" 2>/dev/null || true
   done
-
-  # Also remove any new /tmp/tmp.* entries that were created during this test run
-  # (i.e., present now but not in PRE_EXISTING_TMP). This catches mktemp-created files.
-  for cur in $(ls -1 /tmp/tmp.* 2>/dev/null || true); do
-    # skip if it existed before the test run
-    case " $PRE_EXISTING_TMP " in
-      *" $cur "*) continue ;;
-    esac
-    # only remove safe paths
-    case "$cur" in
-      /tmp/*|/var/tmp/*)
-        echo "teardown: removing new tmp entry $cur" >&2
-        rm -rf -- "$cur" || echo "teardown: failed to remove $cur" >&2
-        ;;
-      *)
-        echo "teardown: refusing to remove non-temp path: $cur" >&2
-        ;;
-    esac
-  done
-
   CREATED_TMPDIRS=""
-  unset TMPDIR || true
-
-  # Debug: list any remaining tmp.* entries (post-cleanup)
-  echo "teardown: remaining /tmp/tmp.* entries (post-cleanup):" >&2
-  ls -ld /tmp/tmp.* 2>/dev/null || true
 }
 
 # fresh_dir:

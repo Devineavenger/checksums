@@ -75,8 +75,8 @@ teardown() { rm -rf "$TMPDIR"; }
 
 @test "status_single_directory detects modified file via mtime" {
   echo "modified" > "$TMPDIR/dir/file.txt"
-  # Force a distinct mtime without sleeping — set to a future timestamp
-  touch -t 203001010000.00 "$TMPDIR/dir/file.txt"
+  # Force a distinct mtime without sleeping — set to a fixed past timestamp
+  touch -t 200001010000.00 "$TMPDIR/dir/file.txt"
   status_single_directory "$TMPDIR/dir" || true
   local found=0
   local f; for f in "${_STATUS_DIR_MOD[@]}"; do
@@ -115,8 +115,8 @@ teardown() { rm -rf "$TMPDIR"; }
 
 @test "status_single_directory -R rehash confirms modified" {
   echo "changed content" > "$TMPDIR/dir/file.txt"
-  # Force a distinct mtime without sleeping — set to a future timestamp
-  touch -t 203001010000.00 "$TMPDIR/dir/file.txt"
+  # Force a distinct mtime without sleeping — set to a fixed past timestamp
+  touch -t 200001010000.00 "$TMPDIR/dir/file.txt"
   NO_REUSE=1
   status_single_directory "$TMPDIR/dir" || true
   NO_REUSE=0
@@ -128,8 +128,8 @@ teardown() { rm -rf "$TMPDIR"; }
 }
 
 @test "status_single_directory -R rehash: stat changed but same hash" {
-  # Touch file to change mtime but keep same content — use future timestamp instead of sleep
-  touch -t 203001010000.00 "$TMPDIR/dir/file.txt"
+  # Touch file to change mtime but keep same content — use fixed past timestamp instead of sleep
+  touch -t 200001010000.00 "$TMPDIR/dir/file.txt"
   NO_REUSE=1
   status_single_directory "$TMPDIR/dir" || true
   NO_REUSE=0

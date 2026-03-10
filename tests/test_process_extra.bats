@@ -186,16 +186,15 @@ teardown() {
 }
 
 @test "no hash results temp directory is left after processing completes" {
-  # Snapshot pre-existing hash_results_dir entries so parallel bats runs don't
-  # cause false positives from other test files' temp directories.
-  local before
-  before=$(find /tmp -maxdepth 2 -type d -name 'hash_results_dir.*' 2>/dev/null | wc -l)
+  # Check that process_single_directory cleans up its hash_results_dir temp
+  # directory. We look only inside TMPDIR to avoid false positives from other
+  # parallel tests creating their own temp dirs in /tmp.
   echo "hello" > "$TMPDIR/file.txt"
   PARALLEL_JOBS=1
   PER_FILE_ALGO="md5"
   META_SIG_ALGO="sha256"
   process_single_directory "$TMPDIR"
-  local after
-  after=$(find /tmp -maxdepth 2 -type d -name 'hash_results_dir.*' 2>/dev/null | wc -l)
-  [ "$after" -le "$before" ]
+  local leaked
+  leaked=$(find "$TMPDIR" -maxdepth 2 -type d -name 'hash_results_dir.*' 2>/dev/null | wc -l)
+  [ "$leaked" -eq 0 ]
 }

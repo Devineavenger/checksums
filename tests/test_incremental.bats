@@ -42,8 +42,9 @@ teardown() { rm -rf "$TMPDIR"; }
 }
 
 @test "planner detects mtime change" {
-  # Force a distinct mtime without sleeping — set to a future timestamp
-  touch -t 203001010000.00 "$TMPDIR/dir/file.txt"
+  # Backdate sidecars so the data file appears newer (triggers -newer fast path
+  # in planner) without needing sleep. The original test used sleep 1 + touch.
+  touch -t 200001010000.00 "$TMPDIR/dir/$SUM_FILENAME" "$TMPDIR/dir/$META_FILENAME"
 
   out_proc="$TMPDIR/proc"
   out_skip="$TMPDIR/skip"
