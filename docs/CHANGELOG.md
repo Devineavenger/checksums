@@ -1,4 +1,12 @@
 ## [Unreleased]
+## v4.10.2 - 2026-03-10
+
+### Fixes
+* fix: parallel-safe test teardown — removed aggressive `/tmp/tmp.*` scan from `test_short_vs_long_flags` teardown that was deleting other parallel tests' temp directories mid-execution, causing sporadic exit code mismatches under `bats --jobs`
+* fix: replaced future timestamps (year 2030) with fixed past timestamps (year 2000) in `test_status` and `test_incremental` to avoid time-bomb test failures
+* fix: backdate sidecar files instead of data files in `test_incremental` to preserve planner's `-newer` fast-path detection
+* fix: scoped leaked temp dir check to test's own `$TMPDIR` in `test_process_extra` instead of global `/tmp`
+
 ## v4.10.1 - 2026-03-10
 
 ### Performance
