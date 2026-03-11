@@ -139,6 +139,16 @@ ME="$(basename "$0")"
 MAX_SIZE_BYTES=0        # parsed byte value (0 = no limit)
 MIN_SIZE_BYTES=0        # parsed byte value (0 = no limit)
 
+# External manifest check mode: verify files against an external manifest file
+# (sha256sum -c / md5sum -c interop). Set via -c FILE / --check FILE.
+# When non-empty, main() dispatches to run_check_mode() instead of run_checksums().
+: "${CHECK_FILE:=}"
+
+# Tracks whether the user explicitly passed -a / --per-file-algo on the CLI.
+# Used by check mode to decide whether to auto-detect algorithm from manifest extension.
+# 0 = PER_FILE_ALGO is the default; 1 = user explicitly set it.
+_ALGO_EXPLICIT=0
+
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 : "${SKIP_EMPTY:=1}"

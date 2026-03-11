@@ -86,9 +86,15 @@ teardown() {
 }
 
 @test "file_hash returns 2 for unreadable file" {
-  [ "$(id -u)" -eq 0 ] && skip "requires non-root"
   echo "secret" > "$TEST_DIR/noperm.txt"
-  chmod 000 "$TEST_DIR/noperm.txt"
+  if [ "$(id -u)" -eq 0 ]; then
+    # Root bypasses file permission bits; replacing the file with a directory
+    # causes hash tools to fail with "Is a directory" even for root
+    rm "$TEST_DIR/noperm.txt"
+    mkdir "$TEST_DIR/noperm.txt"
+  else
+    chmod 000 "$TEST_DIR/noperm.txt"
+  fi
   run file_hash "$TEST_DIR/noperm.txt" md5
   [ "$status" -eq 2 ]
   [ -z "$output" ]
@@ -214,14 +220,21 @@ teardown() {
 # --- read_meta handles unreadable meta gracefully ---
 
 @test "read_meta handles unreadable meta gracefully" {
-  [ "$(id -u)" -eq 0 ] && skip "requires non-root"
   mkdir "$TEST_DIR/sub"
   echo "#meta	v1	2024-01-01T00:00:00Z" > "$TEST_DIR/sub/$META_FILENAME"
-  chmod 000 "$TEST_DIR/sub/$META_FILENAME"
+
+  if [ "$(id -u)" -eq 0 ]; then
+    # Root bypasses file permission bits; replacing the file with a directory
+    # causes the [ -f ] guard in read_meta to return false (graceful skip)
+    rm "$TEST_DIR/sub/$META_FILENAME"
+    mkdir "$TEST_DIR/sub/$META_FILENAME"
+  else
+    chmod 000 "$TEST_DIR/sub/$META_FILENAME"
+  fi
 
   errors=()
   count_errors=0
-  # Should not crash under set -e; should record an error
+  # Should not crash under set -e; should return 0 for both !-r and !-f paths
   run read_meta "$TEST_DIR/sub/$META_FILENAME"
   [ "$status" -eq 0 ]
 }

@@ -95,6 +95,15 @@ ${B}First-run Options:${R}
 
 ${B}Verification Options:${R}
   -V, --verify-only  audit mode (no writes)
+  -c FILE, --check FILE
+                     verify files against an external manifest FILE
+                     compatible with md5sum -c / sha256sum -c
+                     auto-detects algorithm from file extension (.md5, .sha256, etc.)
+                     use -a ALGO to override (e.g., -a sha256 -c manifest.txt)
+                     optional DIRECTORY argument sets base path for relative names
+                     exit 0 if all OK, exit 1 if any failure
+                     use -q to suppress OK lines (show only failures)
+                     use -p N for parallel verification
   -z, --no-md5-details
                      disable per-directory md5 verification in planning
   --md5-details      enable md5 verification in planning (default)
@@ -146,6 +155,8 @@ ${B}Quick Examples:${R}
   $ME --allow-root-sidefiles /data/project
   $ME --exclude '*.tmp,*.bak' --include '*.txt,*.md' -y /data/project
   $ME -F -C overwrite /data/project
+  $ME -c checksums.sha256 /data/project
+  $ME -c manifest.md5 -p 4 -q /data/project
 
 ${B}Common Usage Patterns:${R}
 
@@ -201,9 +212,23 @@ ${B}Common Usage Patterns:${R}
    No files written; exits 0 if clean, 1 if changes exist (CI-friendly)
    Add -R to rehash and confirm changes (slower, avoids false positives)
 
+5. External Manifest Verification (sha256sum -c compatible)
+   $ME -c checksums.sha256 -p 4 /data/project
+   -c checksums.sha256 verifies files listed in the manifest
+   Algorithm auto-detected from .sha256 extension (override with -a)
+   -p 4 uses parallel hashing for faster verification
+   /data/project is the base directory for resolving relative paths
+   Behavior:
+     * Reads the manifest file line by line
+     * Supports both GNU format (hash  filename) and BSD format (ALGO (file) = hash)
+     * Prints "filename: OK" or "filename: FAILED" for each entry
+     * Summary: WARNING if mismatches or unreadable files found
+     * Exit 0 if all verified, exit 1 if any failure
+     * Use -q for quiet mode (failures only, like sha256sum -c --quiet)
+
 ${B}Exit Codes:${R}
   0   Success (also: user abort, --help, --version, --assume-no)
-  1   Error (validation failure, runtime error, missing tools); also: changes found in --status mode
+  1   Error (validation failure, runtime error, missing tools); also: changes found in --status mode; check failures in --check mode
   2   Missing prerequisite (library files not found at startup)
   130  Interrupted (SIGINT / Ctrl-C)
   143  Terminated (SIGTERM)

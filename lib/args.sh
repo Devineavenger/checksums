@@ -122,6 +122,7 @@ _load_config() {
       VERIFY_ONLY)        VERIFY_ONLY="$val" ;;
       VERIFY_MD5_DETAILS) VERIFY_MD5_DETAILS="$val" ;;
       STATUS_ONLY)        STATUS_ONLY="$val" ;;
+      CHECK_FILE)         CHECK_FILE="$val" ;;
       SKIP_EMPTY)         SKIP_EMPTY="$val" ;;
       NO_REUSE)           NO_REUSE="$val" ;;
       NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
@@ -197,8 +198,8 @@ parse_args() {
         ;;
       # Flags that consume the next token as their value — skip that token so
       # a value that looks like a path is not mistaken for TARGET_DIR.
-      -a|-m|-l|-C|-p|-P|-b|-o|-D|-e|-i| \
-      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir|--exclude|--include|--max-size|--min-size)
+      -a|-m|-l|-c|-C|-p|-P|-b|-o|-D|-e|-i| \
+      --per-file-algo|--meta-sig|--log-base|--check|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir|--exclude|--include|--max-size|--min-size)
         _pi=$(( _pi + 1 ))
         ;;
       --)
@@ -243,7 +244,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
-  while getopts "f:a:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:e:i:-:" opt 2>/dev/null; do
+  while getopts "f:a:c:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:e:i:-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -251,7 +252,8 @@ parse_args() {
       # Each short option mirrors a long option handled below. Keep comments
       # describing the semantic effect so maintainers can map short->long easily.
       f) BASE_NAME=$OPTARG ;;            # -f BASE_NAME : base name for .md5/.meta/.log
-      a) PER_FILE_ALGO=$OPTARG ;;        # -a md5|sha256 : per-file checksum algorithm
+      a) PER_FILE_ALGO=$OPTARG; _ALGO_EXPLICIT=1 ;;  # -a ALGO : per-file checksum algorithm
+      c) CHECK_FILE=$OPTARG ;;            # -c FILE : verify against external manifest
       m) META_SIG_ALGO=$OPTARG ;;        # -m sha256|md5|none : meta signature algorithm
       l) LOG_BASE=$OPTARG ;;             # -l LOG_BASE : base name for per-dir logs
       n) DRY_RUN=1 ;;                    # -n : dry run (no writes)
@@ -350,6 +352,10 @@ parse_args() {
             # Disable md5-details in planning
             VERIFY_MD5_DETAILS=0
             ;;
+          check)
+            # --check FILE : verify files against external manifest (sha256sum -c interop)
+            CHECK_FILE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            ;;
           verify-only)
             VERIFY_ONLY=1
             ;;
@@ -404,6 +410,7 @@ parse_args() {
             ;;
           per-file-algo)
             PER_FILE_ALGO="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            _ALGO_EXPLICIT=1
             ;;
           meta-sig)
             META_SIG_ALGO="${!OPTIND}"; OPTIND=$((OPTIND + 1))
@@ -475,13 +482,32 @@ parse_args() {
     fi
   fi
 
-  # Ensure a target directory was provided (guard against set -u)
-  if [ $# -lt 1 ]; then
-    usage
-    exit 1
+  # CHECK_FILE mode: verify against external manifest (read-only, conflicts with write modes)
+  if [ -n "${CHECK_FILE:-}" ]; then
+    [ "${STATUS_ONLY:-0}" -eq 1 ] && fatal "--check is incompatible with --status"
+    [ "${VERIFY_ONLY:-0}" -eq 1 ] && fatal "--check is incompatible with --verify-only"
+    [ "${FIRST_RUN:-0}" -eq 1 ] && fatal "--check is incompatible with --first-run"
+    [ "${DRY_RUN:-0}" -eq 1 ] && fatal "--check is incompatible with --dry-run"
+    [ "${FORCE_REBUILD:-0}" -eq 1 ] && fatal "--check is incompatible with --force-rebuild"
+    [ -f "$CHECK_FILE" ] || fatal "Manifest file not found: $CHECK_FILE"
+    [ -r "$CHECK_FILE" ] || fatal "Manifest file not readable: $CHECK_FILE"
   fi
 
-  TARGET_DIR=$1
+  # Ensure a target directory was provided (guard against set -u).
+  # When CHECK_FILE is set, TARGET_DIR is optional (defaults to CWD).
+  if [ -n "${CHECK_FILE:-}" ]; then
+    if [ $# -ge 1 ]; then
+      TARGET_DIR=$1
+    else
+      TARGET_DIR="$(pwd)"
+    fi
+  else
+    if [ $# -lt 1 ]; then
+      usage
+      exit 1
+    fi
+    TARGET_DIR=$1
+  fi
   [ -d "$TARGET_DIR" ] || fatal "Directory '$TARGET_DIR' not found."
 
   # Resolve STORE_DIR to absolute path if set

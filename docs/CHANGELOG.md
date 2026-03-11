@@ -1,4 +1,13 @@
 ## [Unreleased]
+## v4.13.0 - 2026-03-12
+
+### Features
+* feat: external manifest check mode (`-c FILE` / `--check FILE`) — sha256sum -c / md5sum -c interop; reads GNU format (`hash  filename`) and BSD format (`ALGO (file) = hash`); auto-detects algorithm from manifest extension (`.md5`, `.sha256`, etc.); `-a` overrides auto-detection; optional `DIRECTORY` argument sets base path for relative filenames (defaults to CWD); `-q` suppresses OK lines; `-p N` enables parallel verification; summary warnings on stderr; exit 0 if all OK, exit 1 on any failure; new `CHECK_FILE` config key; conflict detection with `--status`, `--verify-only`, `--first-run`, `--dry-run`, `--force-rebuild`
+
+### Tests
+* test: new `tests/test_check_mode.bats` — 25 tests covering basic OK/FAILED/missing/unreadable output, algorithm auto-detection and override, BSD format, quiet mode, summary warnings, path resolution (relative, CWD default, `./` prefix), edge cases (empty manifest, comments/blank lines), parallel verification, conflict detection, short/long flag parity
+* test: permission tests now run under root — replaced `runuser -u nobody` with directory-replacement technique (file → directory causes "Is a directory" error even for root); removed `_run_func_as_nobody` helper; affects `file_hash returns 2 for unreadable file`, `read_meta handles unreadable meta gracefully`, `-c: unreadable file produces FAILED open or read`
+
 ## v4.12.1 - 2026-03-11
 
 ### Refactor

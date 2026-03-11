@@ -47,7 +47,9 @@ fi
 
 main() {
   parse_args "$@"
-  if [ "${STATUS_ONLY:-0}" -eq 1 ]; then
+  if [ -n "${CHECK_FILE:-}" ]; then
+    run_check_mode
+  elif [ "${STATUS_ONLY:-0}" -eq 1 ]; then
     run_status
   else
     run_checksums
