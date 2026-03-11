@@ -154,20 +154,7 @@ _sem_release() {
   printf 'x' >&7
 }
 
-_do_hash_task() {
-  # Worker invoked in background: compute hash and append to results file.
-  # On read error, writes an ERROR: sentinel instead of a blank hash so callers
-  # can distinguish hash failures from empty results.
-  local path="$1" algo="$2" results_file="$3"
-  local h
-  if h=$(file_hash "$path" "$algo"); then
-    printf '%s\t%s\n' "$path" "$h" >> "$results_file"
-  else
-    printf '%s\tERROR:read error\n' "$path" >> "$results_file"
-  fi
-}
-
-# New: batch worker — hashes multiple files sequentially and writes all results.
+# Batch worker — hashes multiple files sequentially and writes all results.
 # Usage: _do_hash_batch <algo> <results_file> <file1> <file2> ...
 _do_hash_batch() {
   # Each worker runs in a subshell; this EXIT trap ensures the semaphore token

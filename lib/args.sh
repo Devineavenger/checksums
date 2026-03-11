@@ -580,12 +580,12 @@ parse_args() {
 
   # max-size / min-size: convert human-readable values to bytes and cross-validate
   if [ -n "${MAX_SIZE:-}" ]; then
-    MAX_SIZE_BYTES=$(_to_bytes "$MAX_SIZE")
+    MAX_SIZE_BYTES=$(to_bytes "$MAX_SIZE")
     [ -n "$MAX_SIZE_BYTES" ] && [ "$MAX_SIZE_BYTES" -gt 0 ] 2>/dev/null \
       || fatal "Invalid --max-size value: '$MAX_SIZE'"
   fi
   if [ -n "${MIN_SIZE:-}" ]; then
-    MIN_SIZE_BYTES=$(_to_bytes "$MIN_SIZE")
+    MIN_SIZE_BYTES=$(to_bytes "$MIN_SIZE")
     [ -n "$MIN_SIZE_BYTES" ] && [ "$MIN_SIZE_BYTES" -gt 0 ] 2>/dev/null \
       || fatal "Invalid --min-size value: '$MIN_SIZE'"
   fi

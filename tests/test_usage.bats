@@ -261,6 +261,19 @@ _source_all_libs() {
   refute_output --partial "syntax error"
 }
 
+@test "lib/verification.sh sources cleanly" {
+  run bash -c '
+    source "'"$BATS_TEST_DIRNAME"'/../lib/init.sh"
+    source "'"$BATS_TEST_DIRNAME"'/../lib/color.sh"
+    source "'"$BATS_TEST_DIRNAME"'/../lib/logging.sh"
+    source "'"$BATS_TEST_DIRNAME"'/../lib/hash.sh"
+    source "'"$BATS_TEST_DIRNAME"'/../lib/verification.sh"
+  ' 2>&1
+  assert_success
+  refute_output --partial "command not found"
+  refute_output --partial "syntax error"
+}
+
 @test "lib/loader.sh sources cleanly" {
   run bash -c '
     source "'"$BATS_TEST_DIRNAME"'/../lib/init.sh"

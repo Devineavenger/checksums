@@ -127,7 +127,8 @@ bytes_from_unit() {
 declare -gA TO_BYTES_CACHE=()
 
 # Convert a human unit token to bytes, with caching to avoid repeated subprocess calls.
-_to_bytes() {
+# Called from process.sh (batch thresholds) and args.sh (size filter validation).
+to_bytes() {
   local token="$1"
   # Return cached value if present
   if [ -n "${TO_BYTES_CACHE[$token]:-}" ]; then

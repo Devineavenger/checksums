@@ -109,8 +109,8 @@ init_batch_thresholds() {
 
       case "$count" in ''|*[!0-9]*) dbg "init_batch_thresholds: invalid count='$count' in rule='$rule'"; continue ;; esac
 
-      low_bytes="$(_to_bytes "$low")"
-      high_bytes="$(_to_bytes "$high")"
+      low_bytes="$(to_bytes "$low")"
+      high_bytes="$(to_bytes "$high")"
 
       case "$low_bytes"  in ''|*[!0-9]*) dbg "init_batch_thresholds: low not numeric for '$rule'"; continue ;; esac
       case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
@@ -132,7 +132,7 @@ init_batch_thresholds() {
 
       case "$count" in ''|*[!0-9]*) dbg "init_batch_thresholds: invalid count='$count' in rule='$rule'"; continue ;; esac
 
-      high_bytes="$(_to_bytes "$high")"
+      high_bytes="$(to_bytes "$high")"
       case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
 
       # Store open-ended as ">$high_bytes" so the classify_batch_size lookup's

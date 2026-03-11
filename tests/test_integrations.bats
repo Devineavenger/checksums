@@ -4,6 +4,7 @@
 load '../lib/hash.sh'
 load '../lib/first_run.sh'
 load '../lib/logging.sh'
+load '../lib/verification.sh'
 load '../lib/fs.sh'
 
 setup() {

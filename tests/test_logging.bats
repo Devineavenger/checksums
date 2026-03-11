@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 load '../lib/logging.sh'
+load '../lib/verification.sh'
 
 setup() {
   TMPDIR=$(mktemp -d)

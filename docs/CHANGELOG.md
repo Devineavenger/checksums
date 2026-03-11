@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+## v4.12.1 - 2026-03-11
+
+### Refactor
+* refactor: extract verification functions from `logging.sh` into new `lib/verification.sh` module — `emit_md5_detail`, `emit_md5_file_details`, `_verify_md5_sequential`, `_verify_md5_parallel`
+* refactor: remove dead `_do_hash_task()` from `hash.sh` (superseded by `_do_hash_batch`)
+* refactor: rename `_to_bytes()` → `to_bytes()` in `fs.sh` to reflect cross-module public API usage
+
+### Tests
+* test: add `lib/verification.sh` sourcing-sanity test; update test loads for new module split
+
 ## v4.12.0 - 2026-03-11
 
 ### Features

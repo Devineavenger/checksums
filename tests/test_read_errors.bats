@@ -5,6 +5,7 @@
 
 load '../lib/init.sh'
 load '../lib/logging.sh'
+load '../lib/verification.sh'
 load '../lib/hash.sh'
 load '../lib/fs.sh'
 load '../lib/meta.sh'
