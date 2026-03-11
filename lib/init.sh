@@ -9,7 +9,7 @@
 # arising from its use.
 
 # shellcheck disable=SC2034
-# Version: 4.12.0
+# Version: 4.12.1
 #
 # init.sh
 #
@@ -86,7 +86,7 @@ determine_VER() {
   fi
 
   # 4) Final fallback: hard-coded literal (kept for compatibility)
-  printf '%s' "4.12.0"
+  printf '%s' "4.12.1"
 }
 
 # Populate VER using the robust lookup
