@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v4.11.0 - 2026-03-11
+
 ### Features
 * feat: file size filtering via `--max-size SIZE` and `--min-size SIZE` — skip files larger or smaller than a threshold; accepts human-readable sizes (e.g., `10M`, `1G`, `500K`, plain bytes); applied in `find_file_expr`, `has_files`, and `has_local_files`; configurable via `MAX_SIZE` / `MIN_SIZE` in config; cross-validated (min cannot exceed max)
 
