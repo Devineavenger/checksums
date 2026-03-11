@@ -120,6 +120,8 @@ ${B}File Filtering Options:${R}
                      include only files matching PATTERN (basename glob, repeatable)
                      supports comma-separated: --include '*.txt,*.md'
                      if set, only matching files are processed (allowlist)
+  --max-size SIZE    skip files larger than SIZE (e.g., 10M, 1G, 500K)
+  --min-size SIZE    skip files smaller than SIZE (e.g., 1K, 100)
 
 ${B}Logging Options:${R}
   -o FORMAT, --output FORMAT

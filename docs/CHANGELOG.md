@@ -1,4 +1,11 @@
 ## [Unreleased]
+
+### Features
+* feat: file size filtering via `--max-size SIZE` and `--min-size SIZE` — skip files larger or smaller than a threshold; accepts human-readable sizes (e.g., `10M`, `1G`, `500K`, plain bytes); applied in `find_file_expr`, `has_files`, and `has_local_files`; configurable via `MAX_SIZE` / `MIN_SIZE` in config; cross-validated (min cannot exceed max)
+
+### Tests
+* test: 10 new tests — `find_file_expr` with MAX/MIN/both, `has_files`/`has_local_files` size gating, integration tests for `--max-size`/`--min-size` CLI flags, combined with `--exclude`, config file support, invalid cross-validation rejection
+
 ## v4.10.2 - 2026-03-10
 
 ### Fixes

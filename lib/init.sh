@@ -132,6 +132,13 @@ ME="$(basename "$0")"
 # Central manifest store: redirect all sidecar files into STORE_DIR (mirror tree layout)
 : "${STORE_DIR:=}"
 
+# File size filter thresholds: skip files outside the specified range
+# Values accept human-readable sizes: plain bytes, K, M, G, T (e.g., 10M, 1G, 500K)
+: "${MAX_SIZE:=}"       # --max-size SIZE : skip files larger than SIZE
+: "${MIN_SIZE:=}"       # --min-size SIZE : skip files smaller than SIZE
+MAX_SIZE_BYTES=0        # parsed byte value (0 = no limit)
+MIN_SIZE_BYTES=0        # parsed byte value (0 = no limit)
+
 # === New features (v3.x) ===
 # Skip empty/container-only directories (planner + processor): on by default
 : "${SKIP_EMPTY:=1}"

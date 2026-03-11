@@ -217,3 +217,113 @@ teardown() { rm -rf "$TMPDIR"; }
   [[ "$(cat "$manifest")" == *"my file.txt"* ]]
   [[ "$(cat "$manifest")" != *"my file.tmp"* ]]
 }
+
+# --- Size filtering: find_file_expr ---
+
+@test "find_file_expr respects MAX_SIZE_BYTES" {
+  truncate -s 50 "$TMPDIR/small.txt"
+  truncate -s 10240 "$TMPDIR/large.txt"
+  MAX_SIZE_BYTES=5000
+  result=$(find_file_expr "$TMPDIR" | tr '\0' '\n')
+  [[ "$result" == *"small.txt"* ]]
+  [[ "$result" != *"large.txt"* ]]
+}
+
+@test "find_file_expr respects MIN_SIZE_BYTES" {
+  truncate -s 10 "$TMPDIR/tiny.txt"
+  truncate -s 10240 "$TMPDIR/big.txt"
+  MIN_SIZE_BYTES=100
+  result=$(find_file_expr "$TMPDIR" | tr '\0' '\n')
+  [[ "$result" != *"tiny.txt"* ]]
+  [[ "$result" == *"big.txt"* ]]
+}
+
+@test "find_file_expr respects both MAX and MIN size" {
+  truncate -s 10 "$TMPDIR/tiny.txt"
+  truncate -s 5120 "$TMPDIR/mid.txt"
+  truncate -s 51200 "$TMPDIR/huge.txt"
+  MIN_SIZE_BYTES=100
+  MAX_SIZE_BYTES=10000
+  result=$(find_file_expr "$TMPDIR" | tr '\0' '\n')
+  [[ "$result" != *"tiny.txt"* ]]
+  [[ "$result" == *"mid.txt"* ]]
+  [[ "$result" != *"huge.txt"* ]]
+}
+
+# --- Size filtering: has_files / has_local_files ---
+
+@test "has_files returns 1 when only oversized files exist with MAX_SIZE_BYTES" {
+  truncate -s 10240 "$TMPDIR/large.txt"
+  MAX_SIZE_BYTES=100
+  run has_files "$TMPDIR"
+  [ "$status" -eq 1 ]
+}
+
+@test "has_local_files returns 1 when only undersized files exist with MIN_SIZE_BYTES" {
+  truncate -s 10 "$TMPDIR/tiny.txt"
+  MIN_SIZE_BYTES=1000
+  run has_local_files "$TMPDIR"
+  [ "$status" -eq 1 ]
+}
+
+# --- Size filtering: integration via checksums.sh ---
+
+@test "--max-size excludes large files from manifest" {
+  mkdir -p "$TMPDIR/dir"
+  echo "small" > "$TMPDIR/dir/a.txt"
+  truncate -s 10240 "$TMPDIR/dir/b.dat"
+  run bash "$BATS_TEST_DIRNAME/../checksums.sh" \
+    --max-size 1000 --allow-root-sidefiles -y "$TMPDIR/dir"
+  [ "$status" -eq 0 ]
+  local manifest="$TMPDIR/dir/#####checksums#####.md5"
+  [[ "$(cat "$manifest")" == *"a.txt"* ]]
+  [[ "$(cat "$manifest")" != *"b.dat"* ]]
+}
+
+@test "--min-size excludes small files from manifest" {
+  mkdir -p "$TMPDIR/dir"
+  echo "hi" > "$TMPDIR/dir/a.txt"
+  truncate -s 10240 "$TMPDIR/dir/b.dat"
+  run bash "$BATS_TEST_DIRNAME/../checksums.sh" \
+    --min-size 1000 --allow-root-sidefiles -y "$TMPDIR/dir"
+  [ "$status" -eq 0 ]
+  local manifest="$TMPDIR/dir/#####checksums#####.md5"
+  [[ "$(cat "$manifest")" != *"a.txt"* ]]
+  [[ "$(cat "$manifest")" == *"b.dat"* ]]
+}
+
+@test "--max-size combined with --exclude applies both filters" {
+  mkdir -p "$TMPDIR/dir"
+  echo "small-txt" > "$TMPDIR/dir/a.txt"
+  echo "small-tmp" > "$TMPDIR/dir/b.tmp"
+  truncate -s 10240 "$TMPDIR/dir/c.txt"
+  run bash "$BATS_TEST_DIRNAME/../checksums.sh" \
+    --max-size 1000 --exclude '*.tmp' --allow-root-sidefiles -y "$TMPDIR/dir"
+  [ "$status" -eq 0 ]
+  local manifest="$TMPDIR/dir/#####checksums#####.md5"
+  [[ "$(cat "$manifest")" == *"a.txt"* ]]
+  [[ "$(cat "$manifest")" != *"b.tmp"* ]]
+  [[ "$(cat "$manifest")" != *"c.txt"* ]]
+}
+
+@test "config MAX_SIZE works" {
+  mkdir -p "$TMPDIR/dir"
+  echo "small" > "$TMPDIR/dir/a.txt"
+  truncate -s 10240 "$TMPDIR/dir/b.dat"
+  printf 'MAX_SIZE=1000\n' > "$TMPDIR/dir/#####checksums#####.conf"
+  run bash "$BATS_TEST_DIRNAME/../checksums.sh" \
+    --allow-root-sidefiles -y "$TMPDIR/dir"
+  [ "$status" -eq 0 ]
+  local manifest="$TMPDIR/dir/#####checksums#####.md5"
+  [[ "$(cat "$manifest")" == *"a.txt"* ]]
+  [[ "$(cat "$manifest")" != *"b.dat"* ]]
+}
+
+@test "--min-size greater than --max-size is rejected" {
+  mkdir -p "$TMPDIR/dir"
+  echo "data" > "$TMPDIR/dir/a.txt"
+  run bash "$BATS_TEST_DIRNAME/../checksums.sh" \
+    --min-size 10M --max-size 1M -y "$TMPDIR/dir"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot exceed"* ]]
+}

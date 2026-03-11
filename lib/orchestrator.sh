@@ -311,6 +311,8 @@ run_checksums() {
   if [ "${INCLUDE_PATTERNS:+1}" = "1" ] && [ "${#INCLUDE_PATTERNS[@]}" -gt 0 ]; then
     vlog "Include patterns: ${INCLUDE_PATTERNS[*]}"
   fi
+  [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && vlog "Max file size: $MAX_SIZE ($MAX_SIZE_BYTES bytes)"
+  [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] && vlog "Min file size: $MIN_SIZE ($MIN_SIZE_BYTES bytes)"
 
   # ----------------------------
   # Quick preview (very fast)

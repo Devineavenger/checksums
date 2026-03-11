@@ -194,6 +194,15 @@ has_files() {
           done
           [ "$imatch" -eq 0 ] && continue
         fi
+        # Apply size filters (skip files outside the specified range)
+        if [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] || [ "${MIN_SIZE_BYTES:-0}" -gt 0 ]; then
+          local fsize
+          fsize=$(_get_file_size "$f")
+          if [ -n "$fsize" ]; then
+            [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -gt "$MAX_SIZE_BYTES" ] && continue
+            [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -lt "$MIN_SIZE_BYTES" ] && continue
+          fi
+        fi
         # Found a non-tool regular file matching all filters — return success.
         return 0
         ;;
@@ -236,6 +245,15 @@ has_local_files() {
           done
           [ "$imatch" -eq 0 ] && continue
         fi
+        # Apply size filters (skip files outside the specified range)
+        if [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] || [ "${MIN_SIZE_BYTES:-0}" -gt 0 ]; then
+          local fsize
+          fsize=$(_get_file_size "$f")
+          if [ -n "$fsize" ]; then
+            [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -gt "$MAX_SIZE_BYTES" ] && continue
+            [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -lt "$MIN_SIZE_BYTES" ] && continue
+          fi
+        fi
         return 0
         ;;
     esac
@@ -274,6 +292,22 @@ build_exclusions() {
   # IMPORTANT: do not exclude bare ALT_LOG_EXCL or ALT_LOG_EXCL.* (could match user files).
   # Only exclude the actual rotated log patterns to avoid skipping real data.
   EXCLUDE_PATTERNS+=("$SUM_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
+}
+
+# _get_file_size FILE
+# Print the file size in bytes. Uses stat when available (set by detect_stat
+# in stat.sh), falls back to wc -c for portability in test harnesses that
+# source fs.sh directly without loading stat.sh.
+# Prints empty string on failure.
+_get_file_size() {
+  local f="$1" sz
+  if [ -n "${STAT_FLAG:-}" ] && [ -n "${STAT_SIZE:-}" ]; then
+    sz=$(stat "$STAT_FLAG" "$STAT_SIZE" -- "$f" 2>/dev/null) || sz=""
+  else
+    sz=$(wc -c < "$f" 2>/dev/null) || sz=""
+    sz="${sz// /}"
+  fi
+  printf '%s' "$sz"
 }
 
 find_file_expr() {
@@ -315,6 +349,16 @@ find_file_expr() {
           [[ "$fname" == $pat ]] && match=1 && break
         done
         [ "$match" -eq 0 ] && skip=1
+      fi
+
+      # Apply size filters (only stat if at least one threshold is active)
+      if [ "$skip" -eq 0 ] && { [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] || [ "${MIN_SIZE_BYTES:-0}" -gt 0 ]; }; then
+        local fsize
+        fsize=$(_get_file_size "$f")
+        if [ -n "$fsize" ]; then
+          [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -gt "$MAX_SIZE_BYTES" ] && skip=1
+          [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] && [ "$fsize" -lt "$MIN_SIZE_BYTES" ] && skip=1
+        fi
       fi
 
       # Emit file path only if it survives all filters

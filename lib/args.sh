@@ -129,6 +129,8 @@ _load_config() {
       MINIMAL)            MINIMAL="$val" ;;
       QUIET)              QUIET="$val" ;;
       STORE_DIR)          STORE_DIR="$val" ;;
+      MAX_SIZE)           MAX_SIZE="$val" ;;
+      MIN_SIZE)           MIN_SIZE="$val" ;;
       EXCLUDE_PATTERNS)
         # Split comma-separated globs into individual array elements
         if [ -n "$val" ]; then
@@ -196,7 +198,7 @@ parse_args() {
       # Flags that consume the next token as their value — skip that token so
       # a value that looks like a path is not mistaken for TARGET_DIR.
       -a|-m|-l|-C|-p|-P|-b|-o|-D|-e|-i| \
-      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir|--exclude|--include)
+      --per-file-algo|--meta-sig|--log-base|--first-run-choice|--parallel|--parallel-dirs|--batch|--output|--log-format|--store-dir|--exclude|--include|--max-size|--min-size)
         _pi=$(( _pi + 1 ))
         ;;
       --)
@@ -384,6 +386,14 @@ parse_args() {
             IFS=',' read -ra _ip <<< "$_ip_val"
             INCLUDE_PATTERNS+=("${_ip[@]}")
             ;;
+          max-size)
+            # --max-size SIZE : skip files larger than SIZE (long-only, no short flag)
+            MAX_SIZE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            ;;
+          min-size)
+            # --min-size SIZE : skip files smaller than SIZE (long-only, no short flag)
+            MIN_SIZE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
+            ;;
 
           # -------------------------
           # Long options that take an argument
@@ -567,6 +577,22 @@ parse_args() {
     text|json|csv) LOG_FORMAT="${LOG_FORMAT:-text}" ;;
     *) fatal "Invalid -o/--output format: $LOG_FORMAT (use text|json|csv)" ;;
   esac
+
+  # max-size / min-size: convert human-readable values to bytes and cross-validate
+  if [ -n "${MAX_SIZE:-}" ]; then
+    MAX_SIZE_BYTES=$(_to_bytes "$MAX_SIZE")
+    [ -n "$MAX_SIZE_BYTES" ] && [ "$MAX_SIZE_BYTES" -gt 0 ] 2>/dev/null \
+      || fatal "Invalid --max-size value: '$MAX_SIZE'"
+  fi
+  if [ -n "${MIN_SIZE:-}" ]; then
+    MIN_SIZE_BYTES=$(_to_bytes "$MIN_SIZE")
+    [ -n "$MIN_SIZE_BYTES" ] && [ "$MIN_SIZE_BYTES" -gt 0 ] 2>/dev/null \
+      || fatal "Invalid --min-size value: '$MIN_SIZE'"
+  fi
+  if [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] \
+     && [ "$MIN_SIZE_BYTES" -gt "$MAX_SIZE_BYTES" ]; then
+    fatal "--min-size ($MIN_SIZE) cannot exceed --max-size ($MAX_SIZE)"
+  fi
 
   # -------------------------
   # Filenames derived from base names
