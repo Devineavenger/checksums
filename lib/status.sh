@@ -117,8 +117,9 @@ status_single_directory() {
           # Stat differs — modified (or rehash with -R to confirm)
           if [ "${NO_REUSE:-0}" -eq 1 ]; then
             local rehash
-            rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO")
-            if [ "$rehash" = "${meta_hash_by_path[$fname]:-}" ]; then
+            if ! rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO"); then
+              _STATUS_DIR_MOD+=("$fname")
+            elif [ "$rehash" = "${meta_hash_by_path[$fname]:-}" ]; then
               _STATUS_DIR_UNCH+=("$fname")
             else
               _STATUS_DIR_MOD+=("$fname")
@@ -149,8 +150,9 @@ status_single_directory() {
         else
           if [ "${NO_REUSE:-0}" -eq 1 ]; then
             local rehash
-            rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO")
-            if [ "$rehash" = "$_hash" ]; then
+            if ! rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO"); then
+              _STATUS_DIR_MOD+=("$fname")
+            elif [ "$rehash" = "$_hash" ]; then
               _STATUS_DIR_UNCH+=("$fname")
             else
               _STATUS_DIR_MOD+=("$fname")
@@ -168,8 +170,9 @@ status_single_directory() {
     if [ "$classified" -eq 0 ]; then
       if [ "${NO_REUSE:-0}" -eq 1 ]; then
         local rehash
-        rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO")
-        if [ "$rehash" = "${manifest_hashes[$idx]}" ]; then
+        if ! rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO"); then
+          _STATUS_DIR_MOD+=("$fname")
+        elif [ "$rehash" = "${manifest_hashes[$idx]}" ]; then
           _STATUS_DIR_UNCH+=("$fname")
         else
           _STATUS_DIR_MOD+=("$fname")

@@ -196,6 +196,7 @@ declare -g count_verified_existing=0  # Directories with existing manifests veri
 declare -g count_skipped=0        # Directories skipped
 declare -g count_overwritten=0    # Directories overwritten (first-run scheduling)
 declare -g count_errors=0         # Errors encountered
+declare -g count_read_errors=0    # Files skipped due to read errors (permission denied, vanished)
 
 # === Run ID (audit trail) ===
 RUN_ID=$(uuidgen 2>/dev/null || printf '%s-%s-%s' "$(date +%s)" "$$" "$RANDOM")

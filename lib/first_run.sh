@@ -67,7 +67,12 @@ verify_md5_file() {
       continue
     fi
 
-    actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}")
+    if ! actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}"); then
+      bad=1
+      [ -n "$FIRST_RUN_LOG" ] && printf 'UNREADABLE: %s\n' "$fpath" >> "$FIRST_RUN_LOG"
+      [ -n "$RUN_LOG" ] && printf 'UNREADABLE: %s\n' "$fpath" >> "$RUN_LOG"
+      continue
+    fi
     if [ "$actual" != "$expected" ]; then
       bad=1
       [ -n "$FIRST_RUN_LOG" ] && \

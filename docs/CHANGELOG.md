@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: graceful permission/read error handling — unreadable or vanished files are skipped from manifests with clear warnings instead of silently writing blank hashes; `file_hash()` returns exit code 2 for read errors; batch workers communicate errors via `ERROR:` sentinel; verification distinguishes `UNREADABLE` from `MISMATCH` in run log; `read_meta()` guards against unreadable meta files; summary reports `count_read_errors`
+
+### Tests
+* test: 12 new tests — `file_hash` error return codes, `_do_hash_batch` ERROR sentinel, `process_single_directory` with vanished files, manifest integrity (no blank hashes), mixed readable/vanished files, sequential verification UNREADABLE detection, `read_meta` permission handling
+
 ## v4.11.0 - 2026-03-11
 
 ### Features

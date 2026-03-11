@@ -325,7 +325,11 @@ _verify_md5_sequential() {
       [ -n "${RUN_LOG:-}" ] && printf 'MISSING: %s\n' "$fpath" >>"${RUN_LOG}"
       continue
     fi
-    actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}")
+    if ! actual=$(file_hash "$fpath" "${PER_FILE_ALGO:-md5}"); then
+      bad=1
+      [ -n "${RUN_LOG:-}" ] && printf 'UNREADABLE: %s\n' "$fpath" >>"${RUN_LOG}"
+      continue
+    fi
     if [ "$actual" != "$expected" ]; then
       bad=1
       [ -n "${RUN_LOG:-}" ] && printf 'MISMATCH: %s\texpected=%s\tactual=%s\n' "$fpath" "$expected" "$actual" >>"${RUN_LOG}"
@@ -433,6 +437,14 @@ _verify_md5_parallel() {
     for worker_out in "$verify_dir"/*.out; do
       [ -f "$worker_out" ] || continue
       while IFS=$'\t' read -r rpath rhash; do
+        # Detect ERROR sentinel from batch workers (file was unreadable/vanished)
+        case "${rhash:-}" in
+          ERROR:*)
+            bad=1
+            [ -n "${RUN_LOG:-}" ] && printf 'UNREADABLE: %s\n' "$rpath" >>"${RUN_LOG}"
+            continue
+            ;;
+        esac
         # Find expected hash for this path
         local j exp=""
         for j in "${!to_hash_paths[@]}"; do

@@ -63,6 +63,11 @@ _meta_canonical_from_lines() {
 read_meta() {
   local meta="$1"
   [ -f "$meta" ] || return 0
+  # Guard against unreadable meta files to prevent fatal errors under set -e
+  if [ ! -r "$meta" ]; then
+    record_error "Meta file unreadable (permission denied): $meta"
+    return 0
+  fi
   # Bash 3.x (macOS) does not support associative arrays. Guard the declaration
   # and let downstream modules use their text-map fallbacks when arrays aren’t available.
   if declare -p -A >/dev/null 2>&1; then

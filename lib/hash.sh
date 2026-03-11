@@ -23,24 +23,39 @@
 #  - The results file format is "path<TAB>hash\n" to be safely parsed by the parent.
 
 file_hash() {
+  # Compute a hash of file $1 using algorithm $2 (md5, sha256, etc.).
+  # Returns: 0 = success (hash on stdout), 1 = no hash tool found, 2 = file read error.
+  # Pre-flight checks ensure the file exists and is readable before invoking
+  # any hash tool. An empty result from the hash tool (e.g. I/O error, race
+  # condition where file vanishes mid-read) is also treated as a read error.
   local f="$1" algo="$2"
+
+  # Pre-flight: file must exist and be readable
+  if [ ! -e "$f" ]; then return 2; fi
+  if [ ! -r "$f" ]; then return 2; fi
+
+  local h=""
   if [ "$algo" = "md5" ]; then
     if command -v md5sum >/dev/null 2>&1; then
-      md5sum --binary -- "$f" 2>/dev/null | cut -d' ' -f1
+      h=$(md5sum --binary -- "$f" 2>/dev/null | cut -d' ' -f1)
     else
-      md5 -r -- "$f" 2>/dev/null | cut -d' ' -f1
+      h=$(md5 -r -- "$f" 2>/dev/null | cut -d' ' -f1)
     fi
   else
     # Generic SHA variant: try ${algo}sum first (sha1sum, sha256sum, etc.),
     # then fall back to shasum -a N
     if command -v "${algo}sum" >/dev/null 2>&1; then
-      "${algo}sum" --binary -- "$f" 2>/dev/null | cut -d' ' -f1
+      h=$("${algo}sum" --binary -- "$f" 2>/dev/null | cut -d' ' -f1)
     elif command -v shasum >/dev/null 2>&1; then
-      shasum -a "${algo#sha}" -- "$f" 2>/dev/null | cut -d' ' -f1
+      h=$(shasum -a "${algo#sha}" -- "$f" 2>/dev/null | cut -d' ' -f1)
     else
       return 1
     fi
   fi
+
+  # Guard against empty output from hash tool failure (I/O error, race condition)
+  if [ -z "$h" ]; then return 2; fi
+  printf '%s' "$h"
 }
 
 # Parallel job control state (namespaced to avoid collisions)
@@ -141,10 +156,15 @@ _sem_release() {
 
 _do_hash_task() {
   # Worker invoked in background: compute hash and append to results file.
+  # On read error, writes an ERROR: sentinel instead of a blank hash so callers
+  # can distinguish hash failures from empty results.
   local path="$1" algo="$2" results_file="$3"
   local h
-  h=$(file_hash "$path" "$algo") || h=""
-  printf '%s\t%s\n' "$path" "$h" >> "$results_file"
+  if h=$(file_hash "$path" "$algo"); then
+    printf '%s\t%s\n' "$path" "$h" >> "$results_file"
+  else
+    printf '%s\tERROR:read error\n' "$path" >> "$results_file"
+  fi
 }
 
 # New: batch worker — hashes multiple files sequentially and writes all results.
@@ -152,12 +172,17 @@ _do_hash_task() {
 _do_hash_batch() {
   # Each worker runs in a subshell; this EXIT trap ensures the semaphore token
   # is released even if hashing fails or the subshell crashes.
+  # On read error for any file, writes an ERROR: sentinel to the results file
+  # so callers can detect and handle the failure without silently writing blank hashes.
   [ -n "${SEM_FD:-}" ] && trap '_sem_release' EXIT
   local algo="$1" results_file="$2"
   shift 2
   for path in "$@"; do
     local h
-    h=$(file_hash "$path" "$algo") || h=""
-    printf '%s\t%s\n' "$path" "$h" >> "$results_file"
+    if h=$(file_hash "$path" "$algo"); then
+      printf '%s\t%s\n' "$path" "$h" >> "$results_file"
+    else
+      printf '%s\tERROR:read error\n' "$path" >> "$results_file"
+    fi
   done
 }

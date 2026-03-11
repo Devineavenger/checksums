@@ -561,7 +561,7 @@ run_checksums() {
       local _proc_out="$_proc_results_dir/worker_${_proc_idx}.result"
       (
         count_verified=0; count_verified_existing=0; count_created=0
-        count_errors=0; errors=()
+        count_errors=0; count_read_errors=0; errors=()
         record_error() { errors+=("$*"); count_errors=$((count_errors+1)); }
 
         process_single_directory "$d"
@@ -570,6 +570,7 @@ run_checksums() {
           printf 'COUNTER:count_verified:%d\n' "$count_verified"
           printf 'COUNTER:count_verified_existing:%d\n' "$count_verified_existing"
           printf 'COUNTER:count_created:%d\n' "$count_created"
+          printf 'COUNTER:count_read_errors:%d\n' "$count_read_errors"
           for e in "${errors[@]}"; do printf 'ERROR:%s\n' "$e"; done
         } > "$_proc_out"
       ) &
@@ -596,6 +597,7 @@ run_checksums() {
           COUNTER:count_verified:*)          count_verified=$((count_verified + ${_line##*:})) ;;
           COUNTER:count_verified_existing:*) count_verified_existing=$((count_verified_existing + ${_line##*:})) ;;
           COUNTER:count_created:*)           count_created=$((count_created + ${_line##*:})) ;;
+          COUNTER:count_read_errors:*)       count_read_errors=$((count_read_errors + ${_line##*:})) ;;
           ERROR:*)                           record_error "${_line#ERROR:}" ;;
         esac
       done < "$_proc_out"
@@ -637,6 +639,9 @@ run_checksums() {
   log "  Processed (total):             ${_C_GREEN}$count_processed${_C_RST}"
   log "  Skipped:     ${_C_YELLOW}$count_skipped${_C_RST}"
   log "  Overwritten: ${_C_MAGENTA}$count_overwritten${_C_RST}"
+  if [ "$count_read_errors" -gt 0 ]; then
+    log "  Read errors: ${_C_RED}$count_read_errors${_C_RST} file(s) skipped"
+  fi
   if [ "$count_errors" -gt 0 ]; then
     log "  Errors:      ${_C_RED}$count_errors${_C_RST}"
   else

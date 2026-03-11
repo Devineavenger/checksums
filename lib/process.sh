@@ -580,6 +580,16 @@ process_single_directory() {
     for worker_out in "$results_dir"/*.out; do
       [ -f "$worker_out" ] || continue
       while IFS=$'\t' read -r rpath rhash; do
+        # Detect ERROR sentinel from batch workers (file was unreadable/vanished)
+        case "${rhash:-}" in
+          ERROR:*)
+            record_error "Cannot read file: $rpath (${rhash#ERROR:})"
+            count_read_errors=$((count_read_errors + 1))
+            _progress_file_done
+            _progress_update
+            continue
+            ;;
+        esac
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
           path_to_hash["$rpath"]="${rhash:-}"
           local id="${path_to_inode[$rpath]:-}"
@@ -610,7 +620,14 @@ process_single_directory() {
         fname=${fpath##*/}
         h="${path_to_hash[$fpath]:-}"
         if [ -z "$h" ]; then
-          h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          # Hash missing — file was either errored in batch or never hashed; retry once
+          if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+            h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          else
+            record_error "Skipping unreadable file from manifest: $fpath"
+            count_read_errors=$((count_read_errors + 1))
+            continue
+          fi
         fi
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         if [ "${MINIMAL:-0}" -eq 0 ]; then
@@ -624,7 +641,14 @@ process_single_directory() {
         fname=${fpath##*/}
         h="$(map_get "$MAP_path_to_hash" "$fpath")"
         if [ -z "$h" ]; then
-          h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          # Hash missing — file was either errored in batch or never hashed; retry once
+          if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+            h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          else
+            record_error "Skipping unreadable file from manifest: $fpath"
+            count_read_errors=$((count_read_errors + 1))
+            continue
+          fi
         fi
         printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
         if [ "${MINIMAL:-0}" -eq 0 ]; then
@@ -668,9 +692,15 @@ process_single_directory() {
       fname="$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')"
       if [ -z "$hash" ] || [[ "$hash" =~ ^[[:space:]]*$ ]]; then
         local fpath="$d/$fname"
-        local newhash
-        newhash="$(file_hash "$fpath" "$PER_FILE_ALGO")"
-        printf '%s  ./%s\n' "$newhash" "$fname" >> "$tmp_fixed"
+        # Attempt to rehash; if file is unreadable, drop it from the manifest
+        if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+          local newhash
+          newhash="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          printf '%s  ./%s\n' "$newhash" "$fname" >> "$tmp_fixed"
+        else
+          record_error "Dropping unreadable file from manifest: $fpath"
+          count_read_errors=$((count_read_errors + 1))
+        fi
         repaired=1
       else
         printf '%s\n' "$line" >> "$tmp_fixed"
