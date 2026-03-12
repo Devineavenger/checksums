@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v5.0.0 - 2026-03-13
+
 ### Features
 * feat: man page generation — `docs/checksums.1.in` roff template with `%%VERSION%%`/`%%DATE%%` placeholders; `make man` generates `docs/checksums.1` via sed substitution; `make man-preview` renders in terminal; covers all 10 option categories (General, File Naming, Hashing, Run Control, First-run, Verification, Status, Directory Handling, File Filtering, Logging), CONFIGURATION, PATTERNS, EXAMPLES (5 common usage patterns), EXIT STATUS, FILES, ENVIRONMENT, SEE ALSO, AUTHOR, COPYRIGHT sections
 * feat: man page integrated into install/uninstall — `make install`/`make uninstall` and `scripts/install.sh`/`scripts/uninstall.sh` handle `$PREFIX/share/man/man1/checksums.1`; `scripts/release.sh` auto-regenerates man page with updated version at release time
