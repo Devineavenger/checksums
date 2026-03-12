@@ -1,0 +1,502 @@
+.\" Source: docs/checksums.1.in — keep synchronized with lib/usage.sh
+.\" Generated from this template by: make man
+.\"
+.TH CHECKSUMS 1 "%%DATE%%" "checksums %%VERSION%%" "User Commands"
+.\"
+.SH NAME
+checksums \- generate and verify per\-file integrity metadata
+.\"
+.SH SYNOPSIS
+.B checksums
+.RI [ options ]
+.I DIRECTORY
+.br
+.B checksums
+.B \-c
+.I FILE
+.RI [ \-a
+.IR ALGO ]
+.RI [ \-p
+.IR N ]
+.RI [ \-q ]
+.RI [ DIRECTORY ]
+.\"
+.SH DESCRIPTION
+.B checksums
+generates and verifies per\-file integrity metadata using sidecar files.
+For each directory under
+.IR DIRECTORY ,
+it computes per\-file checksums (md5, sha1, sha224, sha256, sha384, or sha512)
+and writes them to a manifest file whose extension matches the algorithm
+(e.g.\&
+.IR .md5 ,
+.IR .sha256 ).
+Rich metadata (inode, device, mtime, size, hash) is stored in a companion
+.I .meta
+file, and a run log tracks each operation.
+.PP
+On subsequent runs,
+.B checksums
+compares stored metadata against disk state (inode, device, mtime, size) and
+only rehashes files that have changed, providing fast incremental updates.
+File replacements that preserve mtime and size are detected via inode changes.
+.PP
+By default, the tool uses md5 for per\-file hashes and sha256 for meta
+signatures.
+Sidecar files are named with a configurable base name (default:
+.BR #####checksums##### )
+and placed alongside the data files, or in a central store directory when
+.B \-\-store\-dir
+is used.
+.PP
+Running
+.RB \(lq checksums
+.IR DIRECTORY \(rq
+with no options will:
+.IP \(bu 2
+Use md5 for per\-file hashes and sha256 for meta signatures.
+.IP \(bu 2
+Create sidecar files:
+.IR #####checksums#####.md5 ,
+.IR #####checksums#####.meta ,
+.IR #####checksums#####.log .
+.IP \(bu 2
+Skip empty or container\-only directories.
+.IP \(bu 2
+Keep the root DIRECTORY clean (no sidecar files in root).
+.IP \(bu 2
+Reuse existing hashes when files are unchanged.
+.IP \(bu 2
+Run single\-threaded (PARALLEL_JOBS=1).
+.IP \(bu 2
+Prompt for confirmation before processing.
+.IP \(bu 2
+Write a run log:
+.IR #####checksums#####.run.log .
+.\"
+.SH OPTIONS
+.SS General Options
+.TP
+.BR \-h ", " \-\-help
+Show usage information and exit.
+.TP
+.B \-\-version
+Show version and exit.
+.TP
+.BI \-\-config " FILE"
+Load configuration from
+.I FILE
+(overrides default config lookup).
+.\"
+.SS File Naming Options
+.TP
+.BI \-f " NAME" "\fR,\fB \-\-base\-name " NAME
+Base name for sidecar files (.md5/.meta/.log).
+Default:
+.BR #####checksums##### .
+.TP
+.BI \-l " LOGNAME" "\fR,\fB \-\-log\-base " LOGNAME
+Log base name.
+Default: same as
+.BR \-f .
+.TP
+.BI \-D " DIR" "\fR,\fB \-\-store\-dir " DIR
+Store all sidecar files in
+.I DIR
+using a mirror tree layout.
+Keeps source directories clean;
+.I DIR
+is created if needed.
+Migrates existing scattered sidefiles on first use.
+.\"
+.SS Hashing Options
+.TP
+.BI \-a " ALGO" "\fR,\fB \-\-per\-file\-algo " ALGO
+Per\-file checksum algorithm.
+Default:
+.BR md5 .
+Supported:
+.BR md5 ,
+.BR sha1 ,
+.BR sha224 ,
+.BR sha256 ,
+.BR sha384 ,
+.BR sha512 .
+The manifest file extension matches the algorithm.
+.TP
+.BI \-m " ALGO" "\fR,\fB \-\-meta\-sig " ALGO
+Meta signature algorithm:
+.B sha256
+(default),
+.BR md5 ,
+or
+.BR none .
+.TP
+.BR \-R ", " \-\-no\-reuse
+Disable reuse heuristics; force rehash of all files.
+Use with
+.B \-r
+for a full forced rebuild.
+.TP
+.BI \-p " N" "\fR,\fB \-\-parallel " N
+Number of parallel hashing/verification jobs.
+Default:
+.BR 1 .
+Accepts: integer,
+.B auto
+(all cores), or fraction (3/4, 1/2, etc.).
+.TP
+.BI \-P " N" "\fR,\fB \-\-parallel\-dirs " N
+Number of directories to process in parallel.
+Default:
+.BR 1 .
+Accepts: integer,
+.B auto
+(all cores), or fraction (3/4, 1/2, etc.).
+When > 1,
+.B \-p
+controls the shared worker pool across all directories.
+.TP
+.BI \-b " RULES" "\fR,\fB \-\-batch " RULES
+Adaptive batching rules.
+Default:
+.BR \(dq0\-10M:20,10M\-40M:20,>40M:5\(dq .
+Format:
+.B LOW\-HIGH:COUNT,>HIGH:COUNT
+with K/M/G suffixes.
+.\"
+.SS Run Control Options
+.TP
+.BR \-n ", " \-\-dry\-run
+Dry\-run mode (no writes).
+.TP
+.BR \-d ", " \-\-debug
+Increase debug verbosity (repeatable).
+.TP
+.BR \-v ", " \-\-verbose
+Increase verbosity (repeatable).
+.TP
+.BR \-r ", " \-\-force\-rebuild
+Force rebuild (ignore existing manifests).
+.TP
+.BR \-y ", " \-\-assume\-yes
+Assume \(lqyes\(rq for all prompts (non\-interactive).
+.TP
+.B \-\-assume\-no
+Assume \(lqno\(rq for all prompts (non\-interactive).
+.TP
+.BR \-q ", " \-\-quiet
+Suppress all output except errors.
+.TP
+.BR \-Q ", " \-\-no\-progress
+Disable live progress reporting (default: on for TTY).
+.TP
+.BR \-M ", " \-\-minimal
+Hash\-only mode: write .md5 manifest only, skip .meta/.log.
+No first\-run logic, no meta signatures, no run log.
+.\"
+.SS First\-run Options
+.TP
+.BR \-F ", " \-\-first\-run
+Bootstrap mode: verify existing .md5 files lacking .meta/.log.
+.TP
+.BI \-C " CHOICE" "\fR,\fB \-\-first\-run\-choice " CHOICE
+First\-run choice:
+.BR skip ,
+.BR overwrite ,
+or
+.B prompt
+(default).
+.TP
+.BR \-K ", " \-\-first\-run\-keep
+Keep the first\-run log after overwrites (audit trail).
+Default: delete stale first\-run log post\-overwrite.
+.PP
+Environment:
+.B FIRST_RUN_KEEP=1
+is equivalent to
+.BR \-\-first\-run\-keep .
+.\"
+.SS Verification Options
+.TP
+.BR \-V ", " \-\-verify\-only
+Audit mode (no writes).
+.TP
+.BI \-c " FILE" "\fR,\fB \-\-check " FILE
+Verify files against an external manifest
+.IR FILE .
+Compatible with
+.BR md5sum\~\-c " / " sha256sum\~\-c .
+Auto\-detects algorithm from file extension
+.RI ( .md5 ,
+.IR .sha256 ,
+etc.).
+Use
+.BI \-a " ALGO"
+to override.
+An optional
+.I DIRECTORY
+argument sets the base path for relative filenames in the manifest.
+Exits 0 if all entries verify, 1 if any failure.
+Use
+.B \-q
+to suppress OK lines (show only failures).
+Use
+.BI \-p " N"
+for parallel verification.
+.TP
+.BR \-z ", " \-\-no\-md5\-details
+Disable per\-directory md5 verification in planning.
+.TP
+.B \-\-md5\-details
+Enable md5 verification in planning (default).
+.\"
+.SS Status Options
+.TP
+.BR \-S ", " \-\-status
+Show what changed since the last manifest (diff mode).
+Reads .md5/.meta manifests and compares against disk state.
+Exits 0 if nothing changed, 1 if changes found.
+Use with
+.B \-R
+to rehash and confirm changes (slower).
+.\"
+.SS Directory Handling Options
+.TP
+.B \-\-skip\-empty
+Skip directories with no files (default).
+.TP
+.B \-\-no\-skip\-empty
+Process empty or container\-only directories too.
+.TP
+.B \-\-allow\-root\-sidefiles
+Allow sidecar files (.md5/.meta/.log) in root
+.IR DIRECTORY .
+Default: root sidefiles disabled.
+.\"
+.SS File Filtering Options
+.TP
+.BI \-e " PATTERN" "\fR,\fB \-\-exclude " PATTERN
+Exclude files matching
+.I PATTERN
+(basename glob, repeatable).
+Supports comma\-separated values:
+.BR "\-\-exclude \(aq*.tmp,*.bak\(aq" .
+.TP
+.BI \-i " PATTERN" "\fR,\fB \-\-include " PATTERN
+Include only files matching
+.I PATTERN
+(basename glob, repeatable).
+Supports comma\-separated values:
+.BR "\-\-include \(aq*.txt,*.md\(aq" .
+If set, only matching files are processed (allowlist).
+.TP
+.BI \-\-max\-size " SIZE"
+Skip files larger than
+.I SIZE
+(e.g., 10M, 1G, 500K).
+.TP
+.BI \-\-min\-size " SIZE"
+Skip files smaller than
+.I SIZE
+(e.g., 1K, 100).
+.\"
+.SS Logging Options
+.TP
+.BI \-o " FORMAT" "\fR,\fB \-\-output " FORMAT
+Log format:
+.B text
+(default),
+.BR json ,
+.BR csv .
+.\"
+.SH CONFIGURATION
+By default,
+.B checksums
+looks for a configuration file named
+.BI < BASE_NAME > .conf
+in the root
+.IR DIRECTORY .
+With the default base name, this is
+.IR #####checksums#####.conf .
+Use
+.BI \-\-config " FILE"
+to specify an alternate path.
+.PP
+The configuration file uses a simple
+.B key=value
+format (one per line).
+Comments (lines starting with
+.BR # )
+and blank lines are ignored.
+Quoting of values is optional and stripped if present.
+CLI arguments always override configuration file settings.
+.PP
+See
+.I example/checksums.conf
+for a complete template with all supported keys.
+.\"
+.SH PATTERNS
+The
+.B \-e
+/
+.B \-\-exclude
+and
+.B \-i
+/
+.B \-\-include
+flags accept basename shell globs (e.g.,
+.BR "*.tmp" ).
+Both flags are repeatable and support comma\-separated values.
+.PP
+If include patterns are set, only matching files are processed (allowlist).
+Exclude patterns always take precedence over include patterns.
+.PP
+Configuration file equivalents:
+.B EXCLUDE_PATTERNS
+and
+.B INCLUDE_PATTERNS
+(comma\-separated).
+.\"
+.SH EXAMPLES
+.SS First\-run Bootstrap
+Initialize meta/logs from existing .md5 files:
+.PP
+.EX
+checksums \-F \-C overwrite \-a md5 \-m sha256 \-p 4 \\
+    \-\-md5\-details \-\-skip\-empty /data/project
+.EE
+.PP
+Verifies existing .md5 manifests that lack .meta/.log, recomputes mismatches,
+and produces a first\-run log.
+.\"
+.SS Verify\-only Audit
+Check integrity without writing anything:
+.PP
+.EX
+checksums \-V \-a md5 \-m sha256 \-p 4 \-\-md5\-details \\
+    \-\-skip\-empty \-\-assume\-yes /data/project
+.EE
+.PP
+Reads existing manifests and reports VERIFIED, MISMATCH, or MISSING per file.
+Ideal for CI/CD pipelines or scheduled audits.
+.\"
+.SS Dry\-run Planning
+Preview what would happen without changes:
+.PP
+.EX
+checksums \-n \-a sha256 \-m sha256 \-p 4 \-v \\
+    \-\-md5\-details \-\-skip\-empty \-\-assume\-yes /data/project
+.EE
+.PP
+Simulates all steps without writing sidecars.
+Perfect for validating config files, exclude/include patterns, and batch rules.
+.\"
+.SS Status/Diff Check
+Show what changed since last manifest:
+.PP
+.EX
+checksums \-S \-\-skip\-empty /data/project
+.EE
+.PP
+Read\-only diff mode.
+Exits 0 if clean, 1 if changes exist (CI\-friendly).
+Add
+.B \-R
+to rehash and confirm changes.
+.\"
+.SS External Manifest Verification
+Verify files against a sha256sum\-compatible manifest:
+.PP
+.EX
+checksums \-c checksums.sha256 \-p 4 /data/project
+.EE
+.PP
+Algorithm auto\-detected from extension.
+Supports both GNU format
+.RI ( "hash\~\~filename" )
+and BSD format
+.RI ( "ALGO (file) = hash" ).
+Use
+.B \-q
+for quiet mode (failures only).
+.\"
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+Also returned for user abort,
+.BR \-\-help ,
+.BR \-\-version ,
+and
+.BR \-\-assume\-no .
+.TP
+.B 1
+Error (validation failure, runtime error, missing tools).
+Also: changes found in
+.B \-\-status
+mode; check failures in
+.B \-\-check
+mode.
+.TP
+.B 2
+Missing prerequisite (library files not found at startup).
+.TP
+.B 130
+Interrupted (SIGINT / Ctrl\-C).
+.TP
+.B 143
+Terminated (SIGTERM).
+.\"
+.SH FILES
+.TP
+.IB BASE_NAME .md5 "\fR, \fI.sha256\fR, etc."
+Per\-file checksum manifest.
+Extension matches the algorithm set by
+.BR \-a .
+Default base name:
+.BR #####checksums##### .
+.TP
+.IB BASE_NAME .meta
+Rich metadata file (inode, device, mtime, size, hash per file, meta signature).
+.TP
+.IB BASE_NAME .log
+Per\-directory run log (append\-mode).
+.TP
+.IB BASE_NAME .run.log
+Top\-level run log for the entire invocation.
+.TP
+.IB BASE_NAME .first\-run.log
+First\-run verification log (created by
+.BR \-F ).
+.TP
+.IB BASE_NAME .conf
+Configuration file (looked up in root DIRECTORY by default).
+.\"
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+If set, disables all color output.
+See
+.IR https://no\-color.org/ .
+.TP
+.B FIRST_RUN_KEEP
+If set to
+.BR 1 ,
+equivalent to
+.BR \-\-first\-run\-keep .
+.\"
+.SH SEE ALSO
+.BR md5sum (1),
+.BR sha256sum (1),
+.BR shasum (1)
+.\"
+.SH AUTHOR
+Alexandru Barbu
+.\"
+.SH COPYRIGHT
+Source\-available license.
+Permission is granted to use, study, and modify this software for personal,
+educational, or internal purposes only.
+Redistribution, commercial use, and distribution of modified versions or
+derivative works are prohibited.

@@ -1,4 +1,9 @@
 ## [Unreleased]
+
+### Features
+* feat: man page generation — `docs/checksums.1.in` roff template with `%%VERSION%%`/`%%DATE%%` placeholders; `make man` generates `docs/checksums.1` via sed substitution; `make man-preview` renders in terminal; covers all 10 option categories (General, File Naming, Hashing, Run Control, First-run, Verification, Status, Directory Handling, File Filtering, Logging), CONFIGURATION, PATTERNS, EXAMPLES (5 common usage patterns), EXIT STATUS, FILES, ENVIRONMENT, SEE ALSO, AUTHOR, COPYRIGHT sections
+* feat: man page integrated into install/uninstall — `make install`/`make uninstall` and `scripts/install.sh`/`scripts/uninstall.sh` handle `$PREFIX/share/man/man1/checksums.1`; `scripts/release.sh` auto-regenerates man page with updated version at release time
+
 ## v4.13.0 - 2026-03-12
 
 ### Features
@@ -217,7 +222,6 @@
 ### Fixes
 * fix: release.yml — add tag-push publish job for automatic GitHub Releases without re-running release.sh
 
-
 ## v3.9.11 - 2026-03-04
 
 ### Fixes
@@ -225,7 +229,6 @@
 
 ### Documentation
 * docs: deduplicate v3.9.10 and v3.9.9 CHANGELOG headings
-
 
 ## v3.9.10 - 2026-03-03
 
@@ -253,7 +256,6 @@ Automated CI release; no user-facing changes.
 
 ### Fixes
 * fix: resolve remaining codebase inconsistencies
-
 
 ## v3.9.5 - 2026-03-03
 
@@ -312,39 +314,493 @@ Automated CI release; no user-facing changes.
 
 ## v3.8.9 - 2025-11-26
 
+### Changes
+* chore: mirror first-run MISSING/MISMATCH findings to the main run log (`RUN_LOG`) in `first_run.sh`, so verification results are visible without `-K`
+* chore: demote verbose orchestrator messages to `vlog` — `NO_REUSE` notice, `Run ID`, summary counters for verified/created manifests
+* chore: demote process.sh messages to appropriate log levels — sidecar path listing to `dbg`, "no candidate files" and "skipped writing manifests" to `vlog`
+* chore: reduce `user-reinstall` sleep from 1s to 0.3s in Makefile
+
+### Tests
+* test: add `-K` / `--first-run-keep` to short-vs-long flag parity matrix; relax `-l` log-base assertion
+
 ## v3.8.7 - 2025-11-26
+
+### Changes
+* chore: demote internal DEBUG-level orchestrator messages from `log` to `dbg` — scheduled overwrite cleanup, first-run log lifecycle messages now require `-d` to appear on console
 
 ## v3.8.5 - 2025-11-26
 
+### Changes
+* refactor: rewrite `rotate_log()` in logging.sh — replaced fragile GNU/BSD `stat` + `awk` + `xargs` pipeline with `mapfile` + lexicographic sort on timestamp-embedded filenames; platform-independent (no `stat` parsing); added debug output for rotation candidates and survivors; per-file `rm` with diagnostic fallback on failure
+* chore: demote orchestrator `process_single_directory` entry log to `vlog`; demote process.sh `LOG_FILEPATH set` message to `dbg`
+
 ## v3.8.4 - 2025-11-26
+
+Release automation; no user-facing changes.
 
 ## v3.8.3 - 2025-11-26
 
+### Fixes
+* fix: defer run-log creation in `run_checksums()` until `TARGET_DIR` is validated and normalized — prevents accidental run log creation in the current working directory or repository root when `TARGET_DIR` is unset (e.g. in test harnesses); run log now only created if target directory exists and is writable
+
 ## v3.8.1 - 2025-11-26
+
+### Features
+* feat: first-run-keep flag (`-K` / `--first-run-keep` / `FIRST_RUN_KEEP=1`) — preserve the first-run log after scheduled overwrites for audit purposes; default behavior now deletes the stale first-run log post-overwrite; controlled via CLI flag or environment variable
+
+### Changes
+* refactor: move global variable initialization from `parse_args()` to `lib/init.sh` — `parse_args()` no longer re-declares `LOG_BASE`, `LOG_FORMAT`, `VERIFY_ONLY`, `ASSUME_NO`, `CONFIG_FILE`, `VERIFY_MD5_DETAILS`; single source of truth for runtime defaults
+* chore: Makefile `clean` target now removes only `.tar.gz` files inside `dist/` instead of deleting the entire directory
+
+### Tests
+* test: first-run log lifecycle — assert log is removed by default after overwrites; assert log is preserved with `-K` flag and `FIRST_RUN_KEEP=1` environment variable
 
 ## v3.7.16 - 2025-11-26
 
+### Fixes
+* fix: root-guard test now handles CI runners that cannot write to `/` — falls back to asserting refusal message in stdout when run log file is absent
+
 ## v3.7.15 - 2025-11-26
+
+### Changes
+* chore: release.sh dirty-tree guard — stage any post-rebase changes detected after `git stash pop` to keep the release commit consistent
 
 ## v3.7.14 - 2025-11-26
 
+### Fixes
+* fix: orchestrator root-guard now writes refusal run log to `$PWD` instead of attempting to write into `/` (which fails on most systems); redirect `RUN_LOG` to safe location when `TARGET_DIR=/`
+
+### Changes
+* chore: release.sh auto-stash — automatically stash dirty working tree (including untracked files) before syncing with `origin/main` via rebase; restore stash after successful rebase
+
 ## v3.7.13 - 2025-11-26
+
+### Changes
+* chore: vendor bats-support helper instead of submodule
 
 ## v3.7.12 - 2025-11-26
 
+### Changes
+* chore: vendor bats-support as full directory tree (replacing git submodule) for reproducible test helper resolution
+* fix: orchestrator root-guard now writes refusal message to `$RUN_LOG` so tests can assert on it
+
 ## v3.7.11 - 2025-11-26
+
+### Changes
+* chore: release.sh CI tag fallback — when remote tag already exists and `FORCE_TAG_UPDATE` is not set, create a unique CI tag (`v$VER-ci$N` / `v$VER-sha$HASH` / `v$VER-$TIMESTAMP`) instead of failing; use `TAG_TO_USE` throughout push and GitHub release payload
 
 ## v3.7.10 - 2025-11-26
 
+### Changes
+* chore: Makefile `clean` target rewrite — consolidated scattered `find -delete` calls into grouped, verbose `find -print -exec rm` invocations with descriptive echo headers; added `.build/` cleanup; lock directory removal now uses two-pass approach (rmdir then rm -rf)
+
 ## v3.7.9 - 2025-11-26
+
+### Changes
+* chore: release.sh auto-version from VERSION file — when no version argument is provided, reads from `VERSION` file or derives next patch version from latest git tag; replaces hard-coded usage error with intelligent fallback
+* chore: release.sh CHANGELOG promotion rewrite — use `awk index()` instead of regex delimiters to avoid unterminated-regexp issues; insert fresh `[Unreleased]` header at top via `BEGIN` block; `END` block appends version heading if `[Unreleased]` was not found
+
+## v3.7.8 - 2025-11-26
+
+### Changes
+* docs: move CONTRIBUTING.md and CHANGELOG.md into docs/
+
+## v3.7.7 - 2025-11-26
+
+### Changes
+* chore(tests): vendor bats-support test helper into tests/test_helper
+
+## v3.7.6 - 2025-11-25
+
+### Changes
+* refactor: move scripts to `scripts/` directory — `release.sh`, `install.sh`, `uninstall.sh` relocated; Makefile updated to reference `scripts/` paths for all user-install, release, and dist targets
+* chore: add `scripts/license-tool.sh` for license header automation; new Makefile targets `newfile`, `addheader`, `addheaders`, `addheaders-recursive`
+* chore: add `scripts/debug_run.sh` (debug wrapper) and `scripts/run_with_instrument.sh` (profiling wrapper)
+* refactor: Makefile rewrite — fix `ci` target dependency (`tests` instead of `test`), add license header targets, add positional arg support for FILE/DIR, embedded LICENSE_HEADER definition, consistent indentation
+* refactor: expanded comments throughout `args.sh` — documented getopts hack, short-to-long option mapping, defensive initialization rationale
+
+### Tests
+* test: add `tests/test_short_vs_long_flags.bats` — parity tests for all short/long CLI flag pairs
+* test: vendor bats-assert submodule into `tests/test_helper/`
+
+## v3.7.5 - 2025-11-25
+
+### Features
+* feat: `--no-skip-empty` flag — disable default skip-empty behavior to process empty/container-only directories
+
+### Changes
+* refactor: convert all global defaults in `init.sh` from direct assignment to parameter expansion (`: "${VAR:=default}"`) — allows environment variable overrides for CI/test ergonomics while CLI flags still win
+* chore: add `tests/run-bats.sh` wrapper script for bats execution with CI-configurable parallelism; Makefile `tests` target now uses it
+
+### Tests
+* test: add `tests/test_matrix.bats` — integration test matrix covering dry-run, verify-only, force-rebuild, skip-empty, allow-root-sidefiles, parallel, first-run, and per-file algo combinations
+
+## v3.7.4 - 2025-11-24
+
+### Changes
+* chore: unconditional stale-lock purge at `process_single_directory` entry — remove sidecar lock files (`.md5.lock`, `.meta.lock`, `.log.lock`) deterministically before processing, with debug output for removed paths
+* chore: `LOCK_SUFFIX` initialization changed to parameter expansion (`: "${LOCK_SUFFIX:=.lock}"`) for override safety
+
+### Tests
+* test: add `tests/test_process_extra.bats` — 7 tests covering container-only directory skipping, verify-only empty/missing scenarios, dry-run sidecar suppression, stale lock removal, `cleanup_leftover_locks`, and missing directory error handling
+
+## v3.7.3 - 2025-11-24
+
+### Fixes
+* fix: verify-only mode now distinguishes container-only directories (no local files, no manifest) from directories with files but a missing manifest — container-only dirs are skipped without error; files-present-but-no-manifest dirs produce an appropriate error
+
+### Changes
+* refactor: expanded module-level and function-level comments throughout `process.sh` — added high-level overview, adaptive batching rationale, backwards-compatibility notes, Bash < 4 fallback documentation
+
+## v3.7.2 - 2025-11-24
+
+### Features
+* feat: split summary counter `count_processed` into `count_created` (new manifests) and `count_verified_existing` (existing verified) for more granular summary reporting
+
+### Fixes
+* fix: guard incremental hash reuse against empty hash values — both inode-based and path-based reuse paths now check `[ -n "$h" ]` before marking `reuse=1`, preventing blank hashes from propagating into manifests
+* fix: verify-only mode now uses `emit_md5_file_details`/`emit_md5_detail` for proper per-file verification output instead of a simple pass/fail check
+* fix: manifest post-write sanity check — scan for malformed lines (missing hash before filename) and recompute+repair in place; fallback hash computation during manifest assembly when `path_to_hash` entry is empty
+
+## v3.7.1 - 2025-11-24
+
+### Performance
+* perf: replace `awk '{print $1}'` with `cut -d' ' -f1` in `file_hash()` for hash extraction — lighter-weight external process
+* perf: replace `date -u` calls with Bash builtin `printf '%(%Y-%m-%dT%H:%M:%SZ)T' -1` in all logging functions — eliminates 5 `date` forks per log call
+* perf: replace `basename "$fpath"` with `${fpath##*/}` parameter expansion in `process_single_directory` — avoids external process per file
+* perf: replace 4x `awk -F'\t'` stat field extraction with single `IFS=$'\t' read -r` in `process_single_directory` — eliminates 4 forks per file
+* perf: add local per-directory stat cache (`_local_stat_cache`) in `process_single_directory` to avoid repeated `stat_all_fields` calls for the same file path
+
+## v3.6.9 - 2025-11-23
+
+### Performance
+* perf: fs.sh — `_to_bytes()` results cached in `TO_BYTES_CACHE` associative array to avoid repeated subprocess calls during batch threshold lookups
+* perf: logging.sh — `vlog()` and `dbg()` now short-circuit with level check before calling `_global_log()`, avoiding function call overhead when verbose/debug is disabled
+* perf: stat.sh — `stat_all_fields()` results cached in `STAT_CACHE` associative array; subsequent calls for the same file return instantly; `detect_stat()` now uses feature probes (`stat -c %i .` / `stat -f %i .`) instead of `--version` check, with a `fallback` style for unknown platforms
+
+### Fixes
+* fix: process.sh — `classify_batch_size()` input sanitized (strip non-digits, default to 0); threshold key validation added to skip malformed entries; multiple `[ "$var" -eq ... ]` comparisons replaced with arithmetic `(( ))` context to prevent "integer expression expected" errors on empty operands
+* fix: process.sh — `NO_REUSE` normalized once at loop start to avoid repeated empty-string checks; result collection guards all associative array lookups with `:-` defaults
+* fix: process.sh — removed stale flush-last-batch block (redundant with `_par_wait_all`)
+
+## v3.6.8 - 2025-11-23
+
+### Fixes
+* fix: fs.sh — quote variable in `bytes_from_unit()` suffix extraction to prevent glob expansion (`${val#$num}` -> `${val#"$num"}`)
+* fix: process.sh — Bash < 4 `BATCH_THRESHOLDS` fallback changed from empty string to empty array to avoid type mismatch
+
+### Tests
+* test: `test_planner_extra.bats` — added missing module loads; setup now creates valid meta via `process_single_directory()` for realistic planner tests; fixed hidden-dir test to use directory instead of file; fixed meta-verified assertion logic
+* test: `test_robustness.bats` — added missing module loads; refactored space-in-filename test to use NUL-safe loop; refactored many-file test to assert on sidefile content rather than log message
+* test: `test_tools_extra.bats` — rewrote shasum fallback test with isolated `PATH` subshell and sanity assertions for reliable detection
+
+## v3.6.7 - 2025-11-19
+
+### Features
+* feat: portable unit conversion — new `normalize_unit()`, `bytes_from_unit()`, and `_to_bytes()` helpers in `fs.sh`; accept human-readable sizes (K/KB/KiB/M/MB/MiB/G/T/P/E) with `numfmt` preferred and pure-bash fallback; replaces inline `numfmt` calls in batch threshold parsing
+
+### Fixes
+* fix: process.sh — `BATCH_THRESHOLDS` declaration hardened for both Bash >= 4 (proper `-gA` with type check) and Bash < 4 (array fallback + `THRESHOLDS_LIST` string); `init_batch_thresholds()` rewritten with robust parsing, input validation, and whitespace trimming; open-ended rules (`>HIGH:COUNT`) now stored as `"high_bytes-"` key instead of `">high_bytes"`
+* fix: process.sh — `classify_batch_size()` now handles both associative array and `THRESHOLDS_LIST` fallback paths correctly
+* fix: tools.sh — `detect_tools()` refactored: `sha256sum` and `shasum` are now mutually exclusive (shasum only selected when sha256sum absent); paths stored via `command -v` for reliability
+
+### Changes
+* chore: Makefile — fix help text typo (`make test` -> `make tests`)
+
+### Tests
+* test: new `test_edgecases.bats` (4 tests), `test_modes.bats` (3 tests), `test_planner_extra.bats` (3 tests), `test_robustness.bats` (2 tests), `test_tools_extra.bats` (2 tests), `test_units.bats` (8 tests) — covering batch thresholds, verify-only/dry-run modes, planner edge cases, filenames with spaces, shasum fallback, and unit conversion
+* test: `test_integrations.bats` — removed duplicate `verify_md5_file` test (moved to `test_first_run.bats`)
+
+## v3.6.6 - 2025-11-18
+
+### Fixes
+* fix: fs.sh — uncomment and activate safe default exclusion globals (`MD5_EXCL`, `META_EXCL`, `LOG_EXCL`, etc.) so helpers work under `set -u` without requiring `build_exclusions()` to run first
+* fix: fs.sh — `has_files()` and `has_local_files()` now use exclusion variables instead of raw filenames for consistent filtering
+* fix: fs.sh — `find_file_expr()` lock exclusion changed from `$LOCK_EXCL` to `*${LOCK_SUFFIX}` glob for broader match
+* fix: orchestrator.sh — `run_checksums()` returns 1 instead of calling `fatal()`/`exit` on system root, allowing tests to assert on the error
+
+### Changes
+* chore: move `test_parallel.sh` and `time.txt` into `tests/parallel-speed/` subdirectory (not part of bats suite)
+* chore: process.sh — guard meta cache transfer with length check and `:-` defaults to prevent unbound variable errors under `set -u`
+
+### Tests
+* test: 10 new test files — `test_first_run.bats`, `test_fs.bats`, `test_hash.bats`, `test_logging.bats`, `test_meta.bats`, `test_orchestrator.bats`, `test_planner.bats`, `test_process.bats`, `test_stats.bats`, `test_tools.bats` — establishing foundational unit test coverage across all lib modules
+
+## v3.6.5 - 2025-11-18
+
+### Fixes
+* fix: first_run.sh — `verify_md5_file()` GNU format parser now uses parameter expansion instead of `awk` for filename extraction, correctly handling filenames with leading `*` (binary mode indicator) and multiple spaces
+
+### Tests
+* test: new `tests/test_integrations.bats` — 7 integration tests covering `verify_md5_file` multi-file/missing/malformed, `emit_md5_file_details` MISSING/MISMATCH logging, `SKIP_EMPTY` enforcement, `NO_ROOT_SIDEFILES` guard
+* test: `test_helpers.bats` — 3 new tests for `verify_md5_file` multi-file, missing-file (rc=2), and malformed-manifest (rc=1) cases
+
+## v3.6.4 - 2025-11-18
+
+### Fixes
+* fix: init.sh — `RUN_ID` fallback now includes `$$` and `$RANDOM` for uniqueness when `uuidgen` is unavailable (was `date +%s$$` which could collide)
+* fix: process.sh — `init_batch_thresholds()` now checks for `numfmt` availability via `TOOL_numfmt` before calling it, preventing errors on systems without GNU coreutils
+
+### Changes
+* chore: tools.sh — detect `numfmt` in `detect_tools()` and set `TOOL_numfmt` flag; include in debug output
+
+## v3.6.3 - 2025-11-18
+
+### Fixes
+* fix: process.sh — correct `sh -c` argument passing in locked meta removal (`$0` -> `$1` with explicit `sh` as argv[0])
+
+## v3.6.2 - 2025-11-18
+
+### Fixes
+* fix: logging.sh — log rotation now works on both GNU and BSD/macOS `stat` (added `stat -f '%m %N'` fallback path)
+* fix: fs.sh — `build_exclusions()` no longer adds bare `ALT_LOG_EXCL` to exclude patterns, preventing false exclusion of user files whose names happen to start with the log base
+* fix: first_run.sh — Bash 3.x compatibility for `first_run_verify()`: added space-delimited string fallback when associative arrays are unavailable
+* fix: meta.sh — `read_meta()` guarded with Bash version check; skips associative array population on Bash < 4 instead of crashing
+* fix: planner.sh — replaced slow `find | xargs sh -c test -nt` per-file freshness check with native `find -newer` for faster planning
+
+### Changes
+* chore: stat.sh — restore `stat_field()` single-field wrapper alongside `stat_all_fields()` for backward compatibility with planner callers; restore individual format string globals (`STAT_INODE`, `STAT_DEV`, etc.)
+* chore: process.sh — acquire flock before removing invalid meta file to prevent TOCTOU race with concurrent runs
+
+## v3.6.1 - 2025-11-18
+
+### Performance
+* perf: stat.sh — combine four per-file `stat` calls (inode/dev/mtime/size) into a single invocation via `stat_all_fields()` with colon-delimited format; reduces subprocess overhead in hot paths
+* perf: orchestrator.sh — replace per-directory file count loop with single-pass `find | tr | wc` pipeline for faster preview totals
+* perf: process.sh — precompute batch thresholds once per run (`init_batch_thresholds()`) to avoid repeated `numfmt` conversions; use `stat_all_fields()` instead of four `stat_field()` calls per file
+
+### Fixes
+* fix: compat.sh — add fallback default for `BASH_VERSINFO[0]` to prevent unbound variable error on non-standard shells
+* fix: compat.sh — `map_get()` missing `else` branch caused unconditional fallthrough, returning duplicate values
+* fix: fs.sh — `has_files()` refactored to return early on first match via `return 0` instead of using a flag variable
+* fix: logging.sh — log rotation simplified; `MALFORMED` manifest detection now explicitly logged to run log
+
+### Changes
+* chore: fs.sh — introduce `list_files_cached()` helper to centralize `find` invocation for future memoization
+* chore: orchestrator.sh — call `build_exclusions` early to prevent unset-variable errors when helpers run before the standard build step
+
+## v3.5.9 - 2025-11-18
+
+### Changes
+* change: default `BATCH_RULES` tuned from `0-2M:20,2M-50M:10,>50M:1` to `0-1M:20,1M-80M:5,>80M:1` — wider medium bucket and lower batch count for better throughput on mixed workloads
+
+## v3.5.8 - 2025-11-16
+
+### Changes
+* chore: orchestrator.sh — log explicit `NO_REUSE=1` notice at run start when reuse heuristics are disabled, so operators see it in the run log
+
+## v3.5.7 - 2025-11-16
+
+### Fixes
+* fix: process.sh — `--no-reuse` / `-R` now also disables the fallback path-based reuse check (mtime+size match); previously only the inode-based reuse was gated
+
+## v3.5.6 - 2025-11-16
+
+### Features
+* feat: disable reuse heuristics (`-R` / `--no-reuse`) — new flag forces full rehash of all files, bypassing both inode-based and path-based incremental reuse; `NO_REUSE` global in `init.sh`; guards added around both reuse paths in `process.sh`
+
+### Tests
+* test: benchmark script updated to use `-R` flag and drop page cache between runs for accurate disk-bound timings
+
+## v3.5.5 - 2025-11-16
+
+### Tests
+* test: new `tests/test_parallel.sh` — benchmark harness for parallel hashing; creates synthetic dataset (~2.3 GB across 5 file-size tiers), sweeps parallel jobs and batch rule combinations, records elapsed times to CSV
+
+## v3.5.4 - 2025-11-15
+
+### Changes
+* chore: process.sh — add debug logging of effective `BATCH_RULES`, `PARALLEL_JOBS`, and `DRY_RUN` at start of `process_single_directory()`
+
+## v3.5.3 - 2025-11-15
+
+### Features
+* feat: configurable batch rules (`-b RULES` / `--batch RULES`) — user-defined adaptive batching thresholds (e.g. `"0-2M:20,2M-50M:10,>50M:1"`); `BATCH_RULES` global with format validation in `parse_args()`; `classify_batch_size()` now parses the rules string with `numfmt --from=iec` unit conversion; added to `--help` output
+
+## v3.5.2 - 2025-11-15
+
+### Features
+* feat: adaptive batch hashing — new `_do_hash_batch` worker in `hash.sh` hashes multiple files per subprocess instead of one-file-per-fork; `classify_batch_size()` in `process.sh` selects batch size by file size (small <2MB: 20, medium <50MB: 10, large: 1); last partial batch flushed before wait
+
+## v3.5.1 - 2025-11-15
+
+### Fixes
+* fix: process.sh — switch parallel hash results from single shared file to per-worker output files (`results_dir/` with `*.out` per worker) to eliminate write interleaving when multiple workers append concurrently
+
+## v3.4.9 - 2025-11-15
+
+### Changes
+* chore: demote per-file reuse/hash log messages from `log` to `vlog` — "Reusing hash via inode", "Reusing hash for unchanged file", and "Hashed ..." are now verbose-only, reducing console noise at default verbosity
+* chore: elevate `verify_md5_file` startup message from `dbg` to `vlog` for better operator visibility
+* chore: `-vv` (double verbose) now unlocks debug-level logging (`log_level=3`) without requiring `-d`
+
+## v3.4.8 - 2025-11-15
+
+### Features
+* feat: per-directory MD5-details verification during planning — `emit_md5_file_details()` in logging.sh parses `.md5` manifests (GNU and BSD format) and writes per-file `MISSING:` / `MISMATCH:` / `VERIFIED:` lines to the run log; `emit_md5_detail()` emits compact summary to console; planner invokes details for all three scheduling paths
+* feat: `--md5-details` / `--no-md5-details` / `-z` CLI flags — toggle per-directory MD5 verification during planning; `VERIFY_MD5_DETAILS` global (default 1)
+
+### Changes
+* chore: hash.sh — rename parallel job arrays `pids`/`pids_count` to `HASH_PIDS`/`HASH_PIDS_COUNT` to avoid collisions with other parallel subsystems
+* chore: compat.sh — `map_set`/`map_get`/`map_del` now use `with_lock()` when `flock` is available to prevent lost updates under concurrent access
+* chore: process.sh — replace RETURN trap with explicit `_proc_cleanup()` call at function exit for deterministic temp file cleanup
+* chore: meta.sh — `with_lock()` no longer removes the lockfile after releasing, avoiding races with concurrent openers
+* chore: logging.sh — log rotation pruning uses `base_noext.*.log` pattern and fixes off-by-one in rotated file pruning
+
+## v3.4.7 - 2025-11-15
+
+### Features
+* feat: `--md5-details` / `--no-md5-details` / `-z` CLI flags — enable or disable per-directory MD5 verification in the planner; `VERIFY_MD5_DETAILS` global default 1; usage text updated
+* feat: planner emits verbose `PLAN: skip/process $d reason=...` diagnostic lines with structured reason tags (hidden, root-protected, verify-only, first-run-md5-only, no-user-files, newer-file-detected, filecount-mismatch, meta-verified, meta-missing, meta-invalid, no-sumfile)
+
+### Fixes
+* fix: planner.sh — guard `verify_meta_sig` call with `[ -f "$metaf" ]` to avoid errors when meta file does not exist
+* fix: process.sh — remove early `DRY RUN:` guard that prevented temp file creation, fixing downstream writes that rely on `tmp_sum`/`tmp_meta` being initialized
+
+## v3.4.6 - 2025-11-15
+
+### Fixes
+* fix: `has_files()` / `has_local_files()` — rotated log exclusion now matches `ALT_LOG_EXCL.*.log` pattern instead of `LOG_BASE.*.log`, preventing user files with similar names from being incorrectly excluded
+* fix: `build_exclusions()` — `ALT_LOG_EXCL` now strips `.log` suffix so rotated file patterns match correctly
+* fix: logging.sh `rotate_log()` — strip trailing `.log` from base name before appending timestamp, producing `base.TIMESTAMP.log` instead of `base.log.TIMESTAMP.log`
+* fix: meta.sh `with_lock()` — add fallback warning via `record_error` when fd 9 open fails; close fd via `eval` for shell portability
+* fix: logging.sh `record_error()` — add defensive `declare -ga errors` to ensure array exists even if init.sh was not sourced
+
+## v3.4.5 - 2025-11-15
+
+### Features
+* feat: `has_local_files()` helper in fs.sh — returns 0 if a directory has any non-tool regular file directly inside it (maxdepth 1); mirrors `has_files()` exclusion logic
+* feat: Makefile — add `user-reinstall` target (uninstall + install)
+
+### Changes
+* chore: first_run.sh — simplify scheduling logic to a single definitive rule: schedule only if `has_files()`, otherwise skip with clear log message
+* chore: planner.sh — quick preview now uses `has_files()` + `has_local_files()` dual check; SKIP_EMPTY check consolidated to top-level `has_files()` guard
+* chore: process.sh — SKIP_EMPTY guard now uses `has_local_files()` instead of `has_files()` (skip only if no files directly in directory)
+* chore: fs.sh — remove stale `lib/checksums.sh` entrypoint
+
+## v3.4.4 - 2025-11-15
+
+### Fixes
+* fix: first_run.sh — pass directory as first argument to `dir_log_append()` calls (was passing log message as directory)
+* fix: `has_files()` — replace subshell pipe loop with process substitution so early-exit propagates correctly
+* fix: hash.sh `_par_wait_all()` — guard empty pids array and null entries before `wait` to prevent unbound variable errors under `set -u`
+* fix: loader.sh — skip `checksums.sh` during dynamic lib sourcing to prevent re-entry when entrypoint lives in `lib/`
+* fix: planner.sh — use POSIX-safe `sh -c` instead of `bash -c` in `-newer` xargs check; add `-r` flag to xargs
+
+## v3.4.3 - 2025-11-15
+
+### Features
+* feat: add `lib/checksums.sh` — standalone entrypoint that sources init.sh + loader.sh and calls `main()`, preserving original CLI behavior; includes candidate search paths for system installs
+
+### Changes
+* chore: first_run.sh — SKIP_EMPTY now distinguishes `.md5`-only directories (still schedule overwrite) from truly empty directories (skip scheduling)
+* chore: orchestrator.sh — first-run overwrite lookup rebuilt with `declare -gA` / `unset` cycle for clean state; null-guard `$d` before map operations
+* chore: planner.sh — first-run carve-out in full planner requires `has_local_files()` in addition to missing `.meta`/`.log`
+
+## v3.4.2 - 2025-11-14
+
+### Changes
+* chore: first_run.sh — SKIP_EMPTY now respected in all scheduling paths (verified-OK, overwrite, and interactive prompt); prevents scheduling empty/container-only directories for processing
+
+## v3.4.1 - 2025-11-14
+
+### Fixes
+* fix: init.sh — restore proper quoting in `determine_VER()` whitespace-trim expression (broken in v3.3.9)
+* fix: orchestrator.sh — move `build_exclusions()` call after config/CLI parsing so exclusion patterns reflect runtime settings
+* fix: planner.sh — quick preview SKIP_EMPTY uses `find -maxdepth 1` shallow test for faster preview; full planner uses POSIX-safe `-newer` check via `sh -c` with positional args
+
+## v3.3.9 - 2025-11-14
+
+### Features
+* feat: `has_files()` in fs.sh now excludes tool-generated artifacts (`.md5`, `.meta`, `.log`, rotated logs, run logs, lock files, `EXCLUDE_PATTERNS`) so directories containing only sidecar files are correctly treated as empty
+
+### Changes
+* chore: process.sh — first-run overwrite lookup allows SKIP_EMPTY to be bypassed for explicitly scheduled directories
+* chore: orchestrator.sh — build lookup from `first_run_overwrite` array; clean up entries after processing
+* chore: init.sh — declare `first_run_overwrite_set` associative array and `first_run_overwrite` indexed array at init time
+
+## v3.3.8 - 2025-11-14
+
+### Features
+* feat: `has_files()` helper in fs.sh — fast recursive check for any regular file under a directory; replaces inline `find -type f -print -quit | grep -q .` pattern across codebase
+
+### Changes
+* chore: logging.sh — `rotate_log()` now checks for `#run` header before rotating (avoids creating rotated file on first write); rotated files use `.log` suffix
+* chore: replace inline `find -type f` empty-directory checks in orchestrator.sh, planner.sh, process.sh, and logging.sh with `has_files()` calls
+* chore: process.sh — root guard now compares canonical paths via `cd && pwd -P` to handle trailing slashes and symlinks
+
+## v3.3.7 - 2025-11-14
+
+### Changes
+* chore: process.sh — ensure associative `meta_inode_dev`/`meta_size`/`meta_hash_by_path` arrays are declared at module load time to prevent unbound variable errors when process.sh is sourced before init.sh meta declarations
+
+## v3.3.5 - 2025-11-14
+
+Release automation; no user-facing changes.
+
+## v3.3.4 - 2025-11-14
+
+Release automation; no user-facing changes.
+
+## v3.3.2 - 2025-11-14
+
+Release automation; no user-facing changes.
+
+## v3.3.1 - 2025-11-14
+
+### Features
+* feat: separate first-run log file (`.first-run.log`) instead of sharing run log; first-run targets now selected when either `.meta` OR `.log` is missing (was: both missing); deduplication via `_fr_seen` associative array; MISMATCH log format changed to tab-delimited with full file paths
+
+### Changes
+* chore: fs.sh — `build_exclusions()` adds `RUN_EXCL` and `FIRST_RUN_EXCL` basenames; `find_file_expr` excludes first-run log; `EXCLUDE_PATTERNS` array populated with all tool-generated basenames
+* chore: orchestrator.sh — expanded header comments documenting responsibilities and rationale; `processed_dirs` tracking to prevent skip-log clobbering of already-processed directories; `_in_array()` helper
+* chore: first_run.sh — log messages route through `dir_log_append` instead of `log` for per-directory log files
+
+## v3.2.7 - 2025-11-13
+
+Release automation; no user-facing changes.
+
+## v3.2.6 - 2025-11-13
+
+Release automation; no user-facing changes.
+
+## v3.2.5 - 2025-11-13
+
+### Changes
+* chore: Makefile — normalize `help` target alignment (replace mixed tabs with consistent spacing)
+
+## v3.2.4 - 2025-10-20
+
+Release automation; no user-facing changes.
+
+## v3.2.3 - 2025-10-20
+
+Release automation; no user-facing changes.
 
 ## v3.2.2 - 2025-10-19
 
+Release automation; no user-facing changes.
+
 ## v3.2.1 - 2025-10-19
+
+Release automation; no user-facing changes.
 
 ## v3.2.0 - 2025-10-19
 
+### Changes
+* chore: args.sh — rewrite with structured header comments documenting purpose, design notes, expected globals, and example usage; guard missing positional `DIRECTORY` under `set -u` with explicit `$#` check
+* chore: init.sh — rewrite header comments to document responsibilities, key features, and configuration
+
 ## v3.1.2 - 2025-10-19
+
+### Features
+* feat: `--skip-empty` and `--allow-root-sidefiles` CLI flags — expose `SKIP_EMPTY` and `NO_ROOT_SIDEFILES` controls introduced in v3.0.0 as command-line options; usage text updated with examples
+
+### Changes
+* chore: logging.sh — `dir_log_append()` and `dir_log_skip()` honor `NO_ROOT_SIDEFILES` and `SKIP_EMPTY` guards
+* chore: planner.sh — both quick and full planners skip root directory when `NO_ROOT_SIDEFILES=1` and skip empty directories when `SKIP_EMPTY=1`
+* chore: process.sh — `process_single_directory()` has root guard and SKIP_EMPTY early-return before any side effects; `decide_directories_plan()` moved to planner.sh
+* chore: init.sh — set `MD5_FILENAME`/`META_FILENAME`/`LOG_FILENAME` eagerly at declaration; use `declare -g`/`declare -ga`/`declare -gA` for globals
 
 ## v3.0.0 - 2025-10-19
 
@@ -355,35 +811,98 @@ Automated CI release; no user-facing changes.
 
 ## v2.12.5 - 2025-10-19
 
+### Fixes
+* fix: release.sh — replace first-match-only `sed -E "0,/^# Version:/s//"` with global `sed` substitution for portable version-line replacement (the `0,` address is a GNU sed extension)
+
 ## v2.12.4 - 2025-10-19
+
+### Fixes
+* fix: release.sh — replace fragile awk-based version-line injection with simple `sed` in-place substitution (fixes double-version bug from prior awk logic); add structured header comment documenting the release flow
 
 ## v2.12.3 - 2025-10-19
 
+Release automation; no user-facing changes.
+
 ## v2.12.2 - 2025-10-19
+
+### Fixes
+* fix: checksums.sh — replace scalar fallback assignments with proper `declare -gA ...=()` empty-array initialization to prevent SC2178 array-to-string conversion; use `declare -p -A` capability check instead of no-op subshell test
 
 ## v2.12.1 - 2025-10-19
 
+### Fixes
+* fix: checksums.sh — declare global associative `meta_*` arrays with `declare -gA` when supported, preventing unbound-variable errors on first reference
+* fix: checksums.sh — guard `${#meta_mtime[@]}` loops to skip iteration when arrays are empty (avoids "bad array subscript" on Bash 4.x)
+* fix: checksums.sh — add `${..:-}` default-value guards on all associative array lookups to prevent unbound-variable errors under `set -u`
+* fix: logging.sh — replace `ls -1t` log-rotation fallback with `find` + `stat` pipe for safe filename handling
+
 ## v2.12.0 - 2025-10-19
+
+### Features
+* feat: two-phase planning — `decide_quick_plan()` fast directory preview (no disk I/O) shown before user confirmation; `decide_directories_plan()` accurate stat-based planning moved to side-effect-free temp files (NUL-delimited)
+* feat: orchestrator in checksums.sh — top-level `run_checksums()` with quick preview, user confirmation prompt (`-y` to skip), accurate planning, per-directory processing loop, first-run overwrite scheduling, cleanup, and summary
+* feat: first_run.sh — non-destructive first-run verification; schedules overwrites in `first_run_overwrite` array for later execution by orchestrator
+
+### Changes
+* refactor: process.sh — extract `decide_directories_plan()` as standalone side-effect-free function; write manifest filenames with leading `./` to match standard `md5sum` output format
+* refactor: meta.sh — canonical signature computation covering only stable data lines; `LC_ALL=C` locale pinning for deterministic hashes; fix awk `\b` misuse (backspace, not word boundary)
+* refactor: logging.sh — unified verbosity via `log_level` (0-3); add `dir_log_append()`, `dir_log_skip()` helpers; harden `rotate_log()` with basename-only matching
+* refactor: fs.sh — harden `build_exclusions()` to strip directory components; exclude rotated logs and run logs
 
 ## v2.5.25 - 2025-10-19
 
+### Fixes
+* fix: fs.sh — replace broken `${INCLUDE_PATTERNS[@]:=}` / `${EXCLUDE_PATTERNS[@]:=}` default-value syntax with proper `declare -a PATTERNS=()` initialization (fixes array-to-string coercion on startup)
+
 ## v2.5.24 - 2025-10-19
+
+### Changes
+* feat: multi-path library loader — checksums.sh searches `$BASE_DIR/lib`, `/usr/local/share/checksums/lib`, `/usr/share/checksums/lib` and exits 2 if none found
+* fix: Makefile — split `LIBDIR` into `SHAREDIR` and `LIBDIR` (lib subdirectory); rename `uninstall-user` target to `user-uninstall`
+* fix: install.sh — install libs to `SHAREDIR/lib/` subdirectory; add write-permission preflight check for `PREFIX`
 
 ## v2.5.23 - 2025-10-19
 
+### Changes
+* chore: release.sh — move dist tarball build before commit so artifacts are included in release; renumber steps
+
 ## v2.5.22 - 2025-10-19
+
+### Changes
+* chore: add `#` comment-block separators to lib file headers for consistent formatting
+* chore: overhaul release.sh — rewrite version-line injection with awk, replace sed-based CHANGELOG promotion, add detached-HEAD branch handling, switch from `gh release create` to GitHub REST API with artifact upload
 
 ## v2.5.21 - 2025-10-19
 
+Release automation; no user-facing changes.
+
 ## v2.5.20 - 2025-10-19
+
+Release automation; no user-facing changes.
 
 ## v2.5.19 - 2025-10-19
 
+Release automation; no user-facing changes.
+
 ## v2.5.18 - 2025-10-19
+
+Release automation; no user-facing changes.
 
 ## v2.5.17 - 2025-10-19
 
+Release automation; no user-facing changes.
+
 ## v2.5.16 - 2025-10-19
+
+Release automation; no user-facing changes.
+
+## v2.5.15 - 2025-10-19
+
+Release automation; no user-facing changes.
+
+## v2.5.14 - 2025-10-19
+
+Release automation; no user-facing changes.
 
 ## v2.7 — date not recorded
 

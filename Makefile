@@ -2,6 +2,7 @@ PREFIX        ?= /usr/local
 BINDIR        ?= $(PREFIX)/bin
 SHAREDIR      ?= $(PREFIX)/share/checksums
 LIBDIR        ?= $(SHAREDIR)/lib
+MANDIR        ?= $(PREFIX)/share/man/man1
 MAIN_SCRIPT   := checksums.sh
 VERSION_FILE  := VERSION
 DESTDIR       ?=
@@ -19,7 +20,8 @@ export LICENSE_HEADER_FILE
 
 .PHONY: all install uninstall user-install user-uninstall user-reinstall \
 	tests lint dos2unix ci version dist release changelog changelog-draft \
-	clean check help newfile addheader addheaders addheaders-recursive _positional
+	clean check help newfile addheader addheaders addheaders-recursive \
+	man man-preview _positional
 
 _positional:
 	@true
@@ -39,6 +41,10 @@ install:
 	else \
 	  true; \
 	fi
+	@if [ -f docs/checksums.1 ]; then \
+	  install -d $(DESTDIR)$(MANDIR); \
+	  install -m 0644 docs/checksums.1 $(DESTDIR)$(MANDIR)/checksums.1; \
+	fi
 	@printf '==> Installed checksums %s to %s\n' "$$(cat VERSION 2>/dev/null || echo unknown)" "$(DESTDIR)$(PREFIX)"
 
 uninstall:
@@ -48,6 +54,7 @@ uninstall:
 	  printf '==> Uninstalling checksums\n'; \
 	fi
 	rm -f $(DESTDIR)$(BINDIR)/checksums
+	rm -f $(DESTDIR)$(MANDIR)/checksums.1
 	rm -rf $(DESTDIR)$(SHAREDIR)
 
 user-install:
@@ -88,6 +95,18 @@ dist:
 	cp -a $(MAIN_SCRIPT) $(VERSION_FILE) Makefile README.md LICENSE.md docs scripts lib tests .github "$$tmp/$$name/" 2>/dev/null || true; \
 	tar -C "$$tmp" -czf dist/$$name.tar.gz "$$name"; \
 	rm -rf "$$tmp"
+
+man: docs/checksums.1
+
+docs/checksums.1: docs/checksums.1.in VERSION
+	@ver=$$(cat VERSION); \
+	date_str=$$(LC_ALL=C date +'%B %Y'); \
+	sed -e "s/%%VERSION%%/$$ver/g" -e "s/%%DATE%%/$$date_str/g" \
+	    docs/checksums.1.in > docs/checksums.1
+	@printf '==> Generated docs/checksums.1 (version %s)\n' "$$(cat VERSION)"
+
+man-preview: man
+	@man ./docs/checksums.1
 
 release:
 	@if [ -z "$(NEW_VER)" ]; then \
@@ -191,6 +210,8 @@ help:
 	@echo "  make changelog                    - Preview commits since last release tag"
 	@echo "  make changelog-draft              - Prepend [Unreleased] draft to CHANGELOG"
 	@echo "                                      (skipped if [Unreleased] already exists)"
+	@echo "  make man                          - Generate man page from template"
+	@echo "  make man-preview                  - Generate and preview man page"
 	@echo "  make clean                        - Remove dist tarballs and temp files"
 	@echo "  make newfile FILE=path            - Create new file with license header"
 	@echo "  make addheader FILE=path          - Prepend license header to one file"

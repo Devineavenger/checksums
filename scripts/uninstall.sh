@@ -108,6 +108,13 @@ else
   echo -e "${RED}!! $BINDIR/checksums not found${RESET}"
 fi
 
+# Remove man page
+MANDIR="$PREFIX/share/man/man1"
+if [ -f "$MANDIR/checksums.1" ]; then
+  echo -e "${YELLOW}==> Removing $MANDIR/checksums.1${RESET}"
+  rm -f "$MANDIR/checksums.1"
+fi
+
 # Remove library directory (recursively)
 if [ -d "$LIBDIR" ]; then
   echo -e "${YELLOW}==> Removing $LIBDIR${RESET}"

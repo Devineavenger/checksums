@@ -201,6 +201,13 @@ else
   echo "==> lib/init.sh not found; skipping init version update"
 fi
 
+# Step 3.5: regenerate man page with updated version
+if [ -f docs/checksums.1.in ]; then
+  echo "==> Regenerating docs/checksums.1 for version ${NEW_VER}"
+  make man
+  git add docs/checksums.1
+fi
+
 ## Step 4: promote [Unreleased] in docs/CHANGELOG.md and reinsert a fresh one
 DATE="$(date +"%Y-%m-%d")"
 CHANGELOG_PATH="docs/CHANGELOG.md"
