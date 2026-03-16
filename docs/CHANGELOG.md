@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v5.2.0 - 2026-03-16
+
 ### Features
 * feat: symlink handling flags (`-L` / `--follow-symlinks` / `--no-follow-symlinks`) — explicit control over symbolic link traversal during file and directory discovery; default off (matches prior behavior: symlinks not followed); when enabled, symlinked files are included in manifests and symlinked directories are descended into; `_find()` wrapper in `fs.sh` centralizes `-L` injection for all 13 core `find` calls across 6 modules (`fs.sh`, `planner.sh`, `orchestrator.sh`, `status.sh`, `first_run.sh`); `FOLLOW_SYMLINKS` config key in `_load_config()`; broken symlinks silently skipped (find -L + `-type f` naturally excludes dangling links); compatible with all modes (`--status`, `--check`, `--verify-only`, etc.)
 
