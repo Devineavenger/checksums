@@ -126,6 +126,7 @@ _load_config() {
       SKIP_EMPTY)         SKIP_EMPTY="$val" ;;
       NO_REUSE)           NO_REUSE="$val" ;;
       NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
+      FOLLOW_SYMLINKS)    FOLLOW_SYMLINKS="$val" ;;
       PROGRESS)           PROGRESS="$val" ;;
       MINIMAL)            MINIMAL="$val" ;;
       QUIET)              QUIET="$val" ;;
@@ -244,7 +245,7 @@ parse_args() {
   # long option name; we handle it in the '-' branch below.
   #
   # Short flags included: f a m l n d v r R F C z p P b o y V h K Q M S
-  while getopts "f:a:c:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:e:i:-:" opt 2>/dev/null; do
+  while getopts "f:a:c:m:l:ndvrRFC:p:P:b:o:yVhKzSQMqD:e:i:L-:" opt 2>/dev/null; do
     case "$opt" in
       # -------------------------
       # Short options (legacy)
@@ -275,6 +276,7 @@ parse_args() {
       Q) PROGRESS=0 ;;                   # -Q : disable progress reporting
       M) MINIMAL=1 ;;                    # -M : minimal mode (hash-only, no sidecars)
       q) QUIET=1 ;;                      # -q : quiet mode (errors only)
+      L) FOLLOW_SYMLINKS=1 ;;            # -L : follow symbolic links
       D) STORE_DIR=$OPTARG ;;            # -D DIR : central manifest store directory
       e)                                 # -e PATTERN : exclude files matching glob (repeatable)
         local _ep
@@ -374,6 +376,14 @@ parse_args() {
           allow-root-sidefiles)
             # Affirmative: allow sidecar files (.md5/.meta/.log) in root (default is protected)
             NO_ROOT_SIDEFILES=0
+            ;;
+          follow-symlinks)
+            # Follow symbolic links when scanning directories and files
+            FOLLOW_SYMLINKS=1
+            ;;
+          no-follow-symlinks)
+            # Do not follow symbolic links (default behavior)
+            FOLLOW_SYMLINKS=0
             ;;
           store-dir)
             STORE_DIR="${!OPTIND}"; OPTIND=$((OPTIND + 1))

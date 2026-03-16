@@ -71,7 +71,7 @@ decide_quick_plan() {
 
     # For quick preview we classify everything else as to_process
     printf '%s\0' "$d" >> "$out_proc"
-  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
+  done < <(_find "$base" -type d -print0 | LC_ALL=C sort -z)
 }
 
 # ---------------------------------------------------------------------
@@ -93,7 +93,7 @@ decide_directories_plan() {
   local -a _plan_dirs=()
   while IFS= read -r -d '' d; do
     _plan_dirs+=("$d")
-  done < <(find "$base" -type d -print0 | LC_ALL=C sort -z)
+  done < <(_find "$base" -type d -print0 | LC_ALL=C sort -z)
 
   if [ "${PARALLEL_JOBS:-1}" -gt 1 ] && [ "${#_plan_dirs[@]}" -gt 1 ]; then
     _plan_parallel "$plan_to_process_file" "$plan_skipped_file"
@@ -189,7 +189,7 @@ _plan_one_directory() {
     for _se in "${SUM_EXCLS[@]}"; do
       _plan_excl_args+=(! -name "$_se")
     done
-    if find "$d" -maxdepth 1 -type f \
+    if _find "$d" -maxdepth 1 -type f \
          "${_plan_excl_args[@]}" \
          ! -name "$META_EXCL" \
          ! -name "$LOG_EXCL" \

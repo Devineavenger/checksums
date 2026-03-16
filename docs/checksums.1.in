@@ -280,6 +280,15 @@ Process empty or container\-only directories too.
 Allow sidecar files (.md5/.meta/.log) in root
 .IR DIRECTORY .
 Default: root sidefiles disabled.
+.TP
+.BR \-L ", " \-\-follow\-symlinks
+Follow symbolic links when scanning directories and files.
+By default, symlinks are not followed (safer, avoids loops).
+When enabled, symlinks to files are included in manifests and symlinks
+to directories are descended into.
+.TP
+.B \-\-no\-follow\-symlinks
+Do not follow symbolic links (default).
 .\"
 .SS File Filtering Options
 .TP

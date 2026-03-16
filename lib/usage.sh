@@ -123,6 +123,11 @@ ${B}Directory Handling Options:${R}
   --allow-root-sidefiles
                      allow sidecar files (.md5/.meta/.log) in root DIRECTORY
                      (default: root sidefiles disabled)
+  -L, --follow-symlinks
+                     follow symbolic links when scanning directories and files
+                     by default, symlinks are not followed (safer, avoids loops)
+  --no-follow-symlinks
+                     do not follow symbolic links (default)
 
 ${B}File Filtering Options:${R}
   -e PATTERN, --exclude PATTERN

@@ -66,6 +66,18 @@ _safe_name() {
   [ -n "$n" ] && printf '%s' "$n" || printf '%s' '__DO_NOT_MATCH__'
 }
 
+# _find — wrapper around find(1) that follows symlinks when FOLLOW_SYMLINKS=1.
+# When enabled, prepends -L so symlinked files match -type f and symlinked
+# directories are descended into. All file/directory discovery commands should
+# use _find instead of find directly so the flag is honored uniformly.
+_find() {
+  if [ "${FOLLOW_SYMLINKS:-0}" -eq 1 ]; then
+    command find -L "$@"
+  else
+    command find "$@"
+  fi
+}
+
 # Ensure derived exclusion names are available even if build_exclusions() hasn't been run.
 # This makes the helpers safe to call in isolation (interactive tests, unit probes).
 # We provide safe defaults here to avoid unbound variables under `set -u`.
@@ -154,7 +166,7 @@ to_bytes() {
 # making it easier to swap for memoization if needed without touching callers.
 list_files_cached() {
   local d="$1"
-  find "$d" -type f -print0 2>/dev/null
+  _find "$d" -type f -print0 2>/dev/null
 }
 
 # has_files DIR
@@ -272,7 +284,7 @@ has_local_files() {
         return 0
         ;;
     esac
-  done < <(find "$d" -maxdepth 1 -type f -print0 2>/dev/null)
+  done < <(_find "$d" -maxdepth 1 -type f -print0 2>/dev/null)
   return 1
 }
 
@@ -349,7 +361,7 @@ find_file_expr() {
   for _se in "${SUM_EXCLS[@]}"; do
     _sum_excl_args+=(! -name "$_se")
   done
-  find "$d" -maxdepth 1 -type f \
+  _find "$d" -maxdepth 1 -type f \
     ! -name '.DS_Store' ! -name '._*' \
     "${_sum_excl_args[@]}" \
     ! -name "$META_EXCL" \
@@ -401,7 +413,7 @@ cleanup_leftover_locks() {
   # empty or older than one day (mtime +0). This is a best-effort cleanup:
   # don't fail the run if removal fails.
   local base_dir="$1"
-  find "$base_dir" -type f -name "*${LOCK_SUFFIX}" -print0 2>/dev/null \
+  _find "$base_dir" -type f -name "*${LOCK_SUFFIX}" -print0 2>/dev/null \
     | while IFS= read -r -d '' lf; do
         case "$lf" in *".meta.lock"*)
           if [ ! -s "$lf" ] || [ "$(find "$lf" -mtime +0 -print 2>/dev/null)" ]; then

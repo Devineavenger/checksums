@@ -139,6 +139,11 @@ ME="$(basename "$0")"
 MAX_SIZE_BYTES=0        # parsed byte value (0 = no limit)
 MIN_SIZE_BYTES=0        # parsed byte value (0 = no limit)
 
+# Symlink handling: when enabled, find(1) uses -L to follow symbolic links.
+# Symlinked files are included in manifests and symlinked directories are descended into.
+# Default off: safer, avoids potential loops, matches traditional find behavior.
+: "${FOLLOW_SYMLINKS:=0}"
+
 # External manifest check mode: verify files against an external manifest file
 # (sha256sum -c / md5sum -c interop). Set via -c FILE / --check FILE.
 # When non-empty, main() dispatches to run_check_mode() instead of run_checksums().

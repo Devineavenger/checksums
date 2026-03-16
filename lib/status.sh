@@ -354,7 +354,7 @@ run_status() {
 
     _status_print_directory "$d" "$dir_has_changes"
 
-  done < <(find "$TARGET_DIR" -type d -print0 | LC_ALL=C sort -z)
+  done < <(_find "$TARGET_DIR" -type d -print0 | LC_ALL=C sort -z)
 
   # Print untracked directories section
   if [ "$has_untracked" -eq 1 ]; then

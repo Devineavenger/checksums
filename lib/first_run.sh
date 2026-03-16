@@ -322,7 +322,7 @@ first_run_verify() {
           _fr_seen["$d"]=1
         fi
       fi
-    done < <(find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(_find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   else
     # Bash < 4: use a space-delimited "seen_list" to prevent duplicates.
     local seen_list=""
@@ -344,7 +344,7 @@ first_run_verify() {
           *) targets+=("$d"); seen_list="$seen_list $d" ;;
         esac
       fi
-    done < <(find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
+    done < <(_find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
   fi
 
   if [ "${#targets[@]}" -eq 0 ]; then

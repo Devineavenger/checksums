@@ -258,7 +258,7 @@ run_checksums() {
     for _sf in "${SUM_FILENAMES[@]}"; do
       _find_name_args+=(-o -name "$_sf")
     done
-    _scattered_count=$(find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) 2>/dev/null \
+    _scattered_count=$(_find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) 2>/dev/null \
       | grep -cv "^${STORE_DIR_EXCL:-__NOMATCH__}" 2>/dev/null || echo 0)
     if [ "$_scattered_count" -gt 0 ]; then
       log "${_C_YELLOW}WARNING:${_C_RST} Found $_scattered_count existing sidecar file(s) in source directories."
@@ -295,7 +295,7 @@ run_checksums() {
             mv -f "$_sf" "$_dest" 2>/dev/null && _migrated=$((_migrated+1))
             vlog "Migrated: $_sf -> $_dest"
           fi
-        done < <(find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) -print0 2>/dev/null)
+        done < <(_find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) -print0 2>/dev/null)
         log "Migrated $_migrated file(s) into store."
       else
         log "Leaving existing sidecar files in place."
@@ -319,6 +319,7 @@ run_checksums() {
   fi
   [ "${MAX_SIZE_BYTES:-0}" -gt 0 ] && vlog "Max file size: $MAX_SIZE ($MAX_SIZE_BYTES bytes)"
   [ "${MIN_SIZE_BYTES:-0}" -gt 0 ] && vlog "Min file size: $MIN_SIZE ($MIN_SIZE_BYTES bytes)"
+  [ "${FOLLOW_SYMLINKS:-0}" -eq 1 ] && log "Following symbolic links (-L)"
 
   # ----------------------------
   # Quick preview (very fast)
@@ -362,12 +363,15 @@ run_checksums() {
   if [ "${#preview_proc[@]}" -gt 0 ]; then
     # Single pass: count NULs across all to‑process dirs
     # Faster and fewer forks than per‑dir loops; preserves "approximate" semantics
-    # Use -L only if desirable globally; otherwise default to non-following for performance
+    # Honour FOLLOW_SYMLINKS: prepend -L to find when enabled so symlinked files are counted.
+    # Cannot use _find() wrapper inside xargs, so pass the flag via an unquoted variable.
+    local _find_L=""
+    [ "${FOLLOW_SYMLINKS:-0}" -eq 1 ] && _find_L="-L"
     # Note: find –print0 paths are concatenated via xargs to avoid hitting ARG_MAX
     total_files_preview=$(
       printf '%s\0' "${preview_proc[@]}" \
         | tr '\n' '\0' \
-        | xargs -0 -r -n1 -I{} find "{}" -maxdepth 1 -type f -print0 2>/dev/null \
+        | xargs -0 -r -n1 -I{} find $_find_L "{}" -maxdepth 1 -type f -print0 2>/dev/null \
         | tr -cd '\0' \
         | wc -c
     )
