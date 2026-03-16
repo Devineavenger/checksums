@@ -9,7 +9,7 @@
 # arising from its use.
 
 # checksums.sh — modular entrypoint
-# Version: 5.2.0
+# Version: 5.3.0
 #
 # Sources lib/init.sh (globals, defaults) and lib/loader.sh (dynamic library
 # sourcing for all other lib/*.sh modules), then calls main().
