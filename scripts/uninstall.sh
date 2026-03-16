@@ -115,6 +115,20 @@ if [ -f "$MANDIR/checksums.1" ]; then
   rm -f "$MANDIR/checksums.1"
 fi
 
+# Remove shell completions
+BASH_COMPDIR="$PREFIX/share/bash-completion/completions"
+ZSH_COMPDIR="$PREFIX/share/zsh/site-functions"
+
+if [ -f "$BASH_COMPDIR/checksums" ]; then
+  echo -e "${YELLOW}==> Removing $BASH_COMPDIR/checksums${RESET}"
+  rm -f "$BASH_COMPDIR/checksums"
+fi
+
+if [ -f "$ZSH_COMPDIR/_checksums" ]; then
+  echo -e "${YELLOW}==> Removing $ZSH_COMPDIR/_checksums${RESET}"
+  rm -f "$ZSH_COMPDIR/_checksums"
+fi
+
 # Remove library directory (recursively)
 if [ -d "$LIBDIR" ]; then
   echo -e "${YELLOW}==> Removing $LIBDIR${RESET}"

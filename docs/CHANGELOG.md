@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: shell completions (bash + zsh) — tab-completion for all CLI flags, enumerated values (algorithms, formats, first-run choices), file/directory arguments, and the positional DIRECTORY parameter; `completions/checksums.bash` uses the bash-completion framework (`_init_completion`/`_filedir`) with fallback for systems without it; `completions/_checksums` uses zsh `_arguments` with comma-separated multi-algo support (`_values -s ,`), repeatable flags, and descriptive value menus; integrated into `make install`/`make uninstall`, `scripts/install.sh`/`scripts/uninstall.sh`, and `make dist`; `make lint` now includes shellcheck on bash completion file; install paths: `PREFIX/share/bash-completion/completions/checksums` and `PREFIX/share/zsh/site-functions/_checksums`
+
+### Tests
+* test: new `tests/test_completions.bats` — 16 tests covering file existence, bash/zsh syntax validity, function names and registration directives, short flag coverage (29 flags), long flag coverage (37 flags), algorithm names, log formats, first-run choices, and parallel keyword completions
+
 ## v5.3.0 - 2026-03-16
 
 ### Features

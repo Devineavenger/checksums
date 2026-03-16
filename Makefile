@@ -3,6 +3,8 @@ BINDIR        ?= $(PREFIX)/bin
 SHAREDIR      ?= $(PREFIX)/share/checksums
 LIBDIR        ?= $(SHAREDIR)/lib
 MANDIR        ?= $(PREFIX)/share/man/man1
+BASH_COMPDIR  ?= $(PREFIX)/share/bash-completion/completions
+ZSH_COMPDIR   ?= $(PREFIX)/share/zsh/site-functions
 MAIN_SCRIPT   := checksums.sh
 VERSION_FILE  := VERSION
 DESTDIR       ?=
@@ -45,6 +47,14 @@ install:
 	  install -d $(DESTDIR)$(MANDIR); \
 	  install -m 0644 docs/checksums.1 $(DESTDIR)$(MANDIR)/checksums.1; \
 	fi
+	@if [ -f completions/checksums.bash ]; then \
+	  install -d $(DESTDIR)$(BASH_COMPDIR); \
+	  install -m 0644 completions/checksums.bash $(DESTDIR)$(BASH_COMPDIR)/checksums; \
+	fi
+	@if [ -f completions/_checksums ]; then \
+	  install -d $(DESTDIR)$(ZSH_COMPDIR); \
+	  install -m 0644 completions/_checksums $(DESTDIR)$(ZSH_COMPDIR)/_checksums; \
+	fi
 	@printf '==> Installed checksums %s to %s\n' "$$(cat VERSION 2>/dev/null || echo unknown)" "$(DESTDIR)$(PREFIX)"
 
 uninstall:
@@ -55,6 +65,8 @@ uninstall:
 	fi
 	rm -f $(DESTDIR)$(BINDIR)/checksums
 	rm -f $(DESTDIR)$(MANDIR)/checksums.1
+	rm -f $(DESTDIR)$(BASH_COMPDIR)/checksums
+	rm -f $(DESTDIR)$(ZSH_COMPDIR)/_checksums
 	rm -rf $(DESTDIR)$(SHAREDIR)
 
 user-install:
@@ -73,6 +85,7 @@ tests:
 
 lint:
 	shellcheck $(MAIN_SCRIPT) lib/*.sh
+	@if ls completions/*.bash >/dev/null 2>&1; then shellcheck completions/*.bash; fi
 
 dos2unix:
 	@./scripts/dos2unix.sh
@@ -92,7 +105,7 @@ dist:
 	mkdir -p dist; \
 	tmp=$$(mktemp -d); \
 	mkdir -p "$$tmp/$$name"; \
-	cp -a $(MAIN_SCRIPT) $(VERSION_FILE) Makefile README.md LICENSE.md docs scripts lib tests .github "$$tmp/$$name/" 2>/dev/null || true; \
+	cp -a $(MAIN_SCRIPT) $(VERSION_FILE) Makefile README.md LICENSE.md docs scripts lib tests completions .github "$$tmp/$$name/" 2>/dev/null || true; \
 	tar -C "$$tmp" -czf dist/$$name.tar.gz "$$name"; \
 	rm -rf "$$tmp"
 

@@ -1,0 +1,94 @@
+#compdef checksums
+# SPDX-License-Identifier: LicenseRef-SourceAvailable-NoRedistribution-NoCommercial-NoDerivatives
+# Copyright (c) 2025 Alexandru Barbu
+#
+# Permission is granted to use, study, and modify this software for personal, educational, or internal purposes only.
+# Redistribution, commercial use, and distribution of modified versions or derivative works are prohibited.
+#
+# This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
+# arising from its use.
+
+# _checksums — Zsh tab-completion for the checksums CLI tool.
+#
+# Installation:
+#   Install to a directory in $fpath:
+#     install -m 0644 _checksums /usr/local/share/zsh/site-functions/_checksums
+#   Then restart your shell or run:  autoload -Uz compinit && compinit
+
+_checksums() {
+    # Enumerated value lists with descriptions for the completion menu.
+    local -a algo_values meta_values format_values choice_values
+
+    algo_values=(
+        'md5:MD5 checksum (128-bit)'
+        'sha1:SHA-1 checksum (160-bit)'
+        'sha224:SHA-224 checksum (224-bit)'
+        'sha256:SHA-256 checksum (256-bit)'
+        'sha384:SHA-384 checksum (384-bit)'
+        'sha512:SHA-512 checksum (512-bit)'
+    )
+
+    meta_values=(
+        'sha256:SHA-256 meta signature (default)'
+        'md5:MD5 meta signature'
+        'none:disable meta signatures'
+    )
+
+    format_values=(
+        'text:plain text log format (default)'
+        'json:JSON log format'
+        'csv:CSV log format'
+    )
+
+    choice_values=(
+        'skip:skip mismatched manifests'
+        'overwrite:overwrite mismatched manifests'
+        'prompt:prompt for each mismatch (default)'
+    )
+
+    # -s: allow short option stacking (e.g. -dvr)
+    # -S: support --flag=value syntax
+    _arguments -s -S \
+        '(- *)'{-h,--help}'[show help and exit]' \
+        '(- *)--version[show version and exit]' \
+        '--config[load configuration from FILE]:config file:_files' \
+        {-f,--base-name}'[base name for sidecar files]:name: ' \
+        {-l,--log-base}'[log base name]:name: ' \
+        {-D,--store-dir}'[store all sidecar files in DIR]:directory:_directories' \
+        {-a,--per-file-algo}'[per-file checksum algorithm]:algorithm:_values -s , "algorithm" $algo_values' \
+        {-m,--meta-sig}'[meta signature algorithm]:algorithm:(($meta_values))' \
+        {-R,--no-reuse}'[disable reuse heuristics]' \
+        {-p,--parallel}'[parallel hashing jobs]:jobs:(auto 1 2 4 8)' \
+        {-P,--parallel-dirs}'[parallel directory workers]:dirs:(auto 1 2 4 8)' \
+        {-b,--batch}'[adaptive batching rules]:rules: ' \
+        {-n,--dry-run}'[dry-run mode (no writes)]' \
+        '*'{-d,--debug}'[increase debug verbosity (repeatable)]' \
+        '*'{-v,--verbose}'[increase verbosity (repeatable)]' \
+        {-r,--force-rebuild}'[force rebuild (ignore manifests)]' \
+        {-y,--assume-yes}'[assume yes for all prompts]' \
+        '(--assume-yes -y)--assume-no[assume no for all prompts]' \
+        {-q,--quiet}'[suppress all output except errors]' \
+        {-Q,--no-progress}'[disable live progress reporting]' \
+        {-M,--minimal}'[hash-only mode (skip .meta/.log)]' \
+        {-F,--first-run}'[bootstrap mode for existing .md5 files]' \
+        {-C,--first-run-choice}'[first-run mismatch handling]:choice:(($choice_values))' \
+        {-K,--first-run-keep}'[keep first-run log after overwrites]' \
+        {-V,--verify-only}'[audit mode (no writes)]' \
+        {-c,--check}'[verify against external manifest]:manifest file:_files' \
+        {-z,--no-md5-details}'[disable per-directory md5 verification]' \
+        '--md5-details[enable md5 verification in planning]' \
+        {-S,--status}'[show changes since last manifest (diff mode)]' \
+        '--skip-empty[skip directories with no files]' \
+        '--no-skip-empty[process empty directories too]' \
+        '--allow-root-sidefiles[allow sidecar files in root directory]' \
+        {-L,--follow-symlinks}'[follow symbolic links]' \
+        '--no-follow-symlinks[do not follow symbolic links]' \
+        '*'{-e,--exclude}'[exclude files matching pattern (repeatable)]:pattern: ' \
+        '*'{-i,--include}'[include only files matching pattern (repeatable)]:pattern: ' \
+        '--max-size[skip files larger than SIZE]:size: ' \
+        '--min-size[skip files smaller than SIZE]:size: ' \
+        {-o,--output}'[log format]:format:(($format_values))' \
+        '*:target directory:_directories'
+}
+
+_checksums "$@"

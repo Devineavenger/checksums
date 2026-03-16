@@ -64,6 +64,22 @@ if [ -f docs/checksums.1 ]; then
   install -m 0644 docs/checksums.1 "$MANDIR/checksums.1"
 fi
 
+# Install shell completions if available
+BASH_COMPDIR="$PREFIX/share/bash-completion/completions"
+ZSH_COMPDIR="$PREFIX/share/zsh/site-functions"
+
+if [ -f completions/checksums.bash ]; then
+  echo -e "${YELLOW}==> Installing bash completions to $BASH_COMPDIR${RESET}"
+  mkdir -p "$BASH_COMPDIR"
+  install -m 0644 completions/checksums.bash "$BASH_COMPDIR/checksums"
+fi
+
+if [ -f completions/_checksums ]; then
+  echo -e "${YELLOW}==> Installing zsh completions to $ZSH_COMPDIR${RESET}"
+  mkdir -p "$ZSH_COMPDIR"
+  install -m 0644 completions/_checksums "$ZSH_COMPDIR/_checksums"
+fi
+
 # Detect OS for friendly message
 OS="$(uname -s)"
 case "$OS" in
