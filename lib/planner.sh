@@ -119,12 +119,22 @@ _plan_one_directory() {
   fi
 
   sumf="$(_sidecar_path "$d" "$SUM_FILENAME")"
+  # Multi-algo: directory needs processing if ANY manifest is missing
+  local _all_sumf_exist=1
+  local _sf
+  for _sf in "${SUM_FILENAMES[@]}"; do
+    if [ ! -f "$(_sidecar_path "$d" "$_sf")" ]; then
+      _all_sumf_exist=0
+      break
+    fi
+  done
   if [ "${DEBUG:-0}" -gt 0 ]; then
     if [ -f "$sumf" ]; then
       dbg "sumfile present for $d -> $sumf"
     else
       dbg "sumfile missing for $d -> $sumf"
     fi
+    [ "${#SUM_FILENAMES[@]}" -gt 1 ] && dbg "multi-algo: all manifests exist=$_all_sumf_exist"
   fi
   metaf="$(_sidecar_path "$d" "$META_FILENAME")"
   reason="unknown"
@@ -172,9 +182,15 @@ _plan_one_directory() {
     return
   fi
 
-  if [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
+  if [ "$_all_sumf_exist" -eq 1 ] && [ -f "$sumf" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
+    # Build dynamic exclusion args for all manifest filenames (multi-algo support)
+    local -a _plan_excl_args=()
+    local _se
+    for _se in "${SUM_EXCLS[@]}"; do
+      _plan_excl_args+=(! -name "$_se")
+    done
     if find "$d" -maxdepth 1 -type f \
-         ! -name "$SUM_EXCL" \
+         "${_plan_excl_args[@]}" \
          ! -name "$META_EXCL" \
          ! -name "$LOG_EXCL" \
          ! -name "$LOCK_EXCL" \

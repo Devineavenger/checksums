@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: multi-algorithm single pass (`-a md5,sha256`) — hash files once per algorithm in a single run, writing one manifest per algorithm (e.g. `.md5` and `.sha256`); comma-separated `-a` flag and `PER_FILE_ALGO` config key; OS page cache amortizes sequential per-algo reads; `.meta` stores primary (first) algo hash only; reuse disabled for multi-algo (v1); incompatible with `--check`, `--status`, `--verify-only`; `check_required_tools()` validates all requested algorithms; `build_exclusions()` and `find_file_expr()` exclude all manifest filenames; planner schedules directory if any manifest is missing; new `_do_hash_batch_multi()` batch worker in `hash.sh`; usage/man page updated with multi-algo syntax and example
+
+### Tests
+* test: new `tests/test_multi_algo.bats` — 17 tests covering two-algo and three-algo manifest creation with hash correctness verification, `.meta` primary hash storage, backward compatibility (single algo), invalid algo rejection, conflict detection with `--check`/`--status`/`--verify-only`, manifest filename exclusion from scanning, planner scheduling on missing manifest, dry-run output, config file support, minimal mode
+
 ## v5.0.0 - 2026-03-13
 
 ### Features

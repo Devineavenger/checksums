@@ -173,3 +173,31 @@ _do_hash_batch() {
     fi
   done
 }
+
+# Multi-algo batch worker — hashes each file with every algorithm in PER_FILE_ALGOS.
+# Output format: path\thash1\thash2\t...\thashN (tab-separated, order matches PER_FILE_ALGOS).
+# On read error for any algorithm, writes ERROR: sentinel so callers can detect the failure.
+# The OS page cache ensures sequential reads of the same file are served from memory,
+# making per-algo file_hash() calls nearly free after the first read.
+_do_hash_batch_multi() {
+  [ -n "${SEM_FD:-}" ] && trap '_sem_release' EXIT
+  local results_file="$1"
+  shift
+  for path in "$@"; do
+    local line="$path" any_error=0
+    for algo in "${PER_FILE_ALGOS[@]}"; do
+      local h
+      if h=$(file_hash "$path" "$algo"); then
+        line+=$'\t'"$h"
+      else
+        any_error=1
+        break
+      fi
+    done
+    if [ "$any_error" -eq 1 ]; then
+      printf '%s\tERROR:read error\n' "$path" >> "$results_file"
+    else
+      printf '%s\n' "$line" >> "$results_file"
+    fi
+  done
+}

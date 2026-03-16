@@ -56,6 +56,9 @@ ${B}Hashing Options:${R}
                      per-file checksum algorithm (default: md5)
                      supported: md5, sha1, sha224, sha256, sha384, sha512
                      manifest extension matches algorithm (.md5, .sha256, etc.)
+                     comma-separated for multi-algo: -a md5,sha256
+                     writes one manifest per algorithm in a single pass
+                     incompatible with --check, --status, --verify-only
   -m ALGO, --meta-sig ALGO
                      meta signature algorithm: sha256 (default), md5, or none
   -R, --no-reuse     disable reuse heuristics; force rehash of all files
@@ -156,6 +159,7 @@ ${B}Quick Examples:${R}
   $ME --exclude '*.tmp,*.bak' --include '*.txt,*.md' -y /data/project
   $ME -F -C overwrite /data/project
   $ME -c checksums.sha256 /data/project
+  $ME -a md5,sha256 -y /data/project
   $ME -c manifest.md5 -p 4 -q /data/project
 
 ${B}Common Usage Patterns:${R}

@@ -523,11 +523,25 @@ parse_args() {
   # Normalize and validate individual options
   # -------------------------
 
-  # per-file algo validation: md5, sha1, sha224, sha256, sha384, sha512
-  case "${PER_FILE_ALGO:-md5}" in
-    md5|sha1|sha224|sha256|sha384|sha512) PER_FILE_ALGO="${PER_FILE_ALGO:-md5}" ;;
-    *) fatal "Unsupported per-file algo: ${PER_FILE_ALGO} (use md5, sha1, sha224, sha256, sha384, or sha512)" ;;
-  esac
+  # per-file algo validation: parse comma-separated list for multi-algo mode
+  # (e.g. -a md5,sha256). Each element must be a supported algorithm.
+  IFS=',' read -ra PER_FILE_ALGOS <<< "${PER_FILE_ALGO:-md5}"
+  local _algo
+  for _algo in "${PER_FILE_ALGOS[@]}"; do
+    case "$_algo" in
+      md5|sha1|sha224|sha256|sha384|sha512) ;;
+      *) fatal "Unsupported per-file algo: $_algo (use md5, sha1, sha224, sha256, sha384, or sha512)" ;;
+    esac
+  done
+  # Primary algorithm is always the first element (backward compatible)
+  PER_FILE_ALGO="${PER_FILE_ALGOS[0]}"
+
+  # Multi-algo conflict checks: comma-separated -a is incompatible with read-only modes
+  if [ "${#PER_FILE_ALGOS[@]}" -gt 1 ]; then
+    [ -n "${CHECK_FILE:-}" ] && fatal "Multi-algo (-a md5,sha256) is incompatible with --check"
+    [ "${STATUS_ONLY:-0}" -eq 1 ] && fatal "Multi-algo (-a md5,sha256) is incompatible with --status"
+    [ "${VERIFY_ONLY:-0}" -eq 1 ] && fatal "Multi-algo (-a md5,sha256) is incompatible with --verify-only"
+  fi
 
   # meta signature algo must be sha256, md5, or none; default to sha256
   case "${META_SIG_ALGO:-sha256}" in
@@ -628,6 +642,11 @@ parse_args() {
   BASE_NAME="${BASE_NAME%%.md5}"
   BASE_NAME="${BASE_NAME%%.sha[0-9]*}"
   SUM_FILENAME="${BASE_NAME}.${PER_FILE_ALGO}"
+  # Multi-algo: derive one manifest filename per algorithm
+  SUM_FILENAMES=()
+  for _algo in "${PER_FILE_ALGOS[@]}"; do
+    SUM_FILENAMES+=("${BASE_NAME}.${_algo}")
+  done
   META_FILENAME="${BASE_NAME}.meta"
   LOG_BASE="${LOG_BASE:-$BASE_NAME}"
   LOG_FILENAME="${LOG_BASE}.log"

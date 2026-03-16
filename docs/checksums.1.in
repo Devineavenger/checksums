@@ -123,6 +123,13 @@ Supported:
 .BR sha384 ,
 .BR sha512 .
 The manifest file extension matches the algorithm.
+Comma\-separated for multi\-algo:
+.BR "\-a md5,sha256" .
+Writes one manifest per algorithm in a single pass.
+Incompatible with
+.BR \-\-check ,
+.BR \-\-status ,
+.BR \-\-verify\-only .
 .TP
 .BI \-m " ALGO" "\fR,\fB \-\-meta\-sig " ALGO
 Meta signature algorithm:
@@ -404,6 +411,17 @@ Exits 0 if clean, 1 if changes exist (CI\-friendly).
 Add
 .B \-R
 to rehash and confirm changes.
+.\"
+.SS Multi\-Algorithm Single Pass
+Generate both .md5 and .sha256 manifests in one run:
+.PP
+.EX
+checksums \-a md5,sha256 \-y /data/project
+.EE
+.PP
+Each file is hashed once per algorithm (OS page cache amortizes re\-reads).
+Writes one manifest file per algorithm.
+Meta (.meta) stores only the primary (first) algorithm's hash.
 .\"
 .SS External Manifest Verification
 Verify files against a sha256sum\-compatible manifest:

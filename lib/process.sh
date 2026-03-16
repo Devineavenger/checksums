@@ -8,7 +8,7 @@
 # This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
 # arising from its use.
 
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034,SC2153
 # process.sh
 # shellcheck source=lib/init.sh
 # shellcheck source=lib/logging.sh
@@ -219,6 +219,12 @@ classify_batch_size() {
 
 process_single_directory() {
   # Entry point for a single directory. Defensive, side-effect-aware, and consistent.
+  # Sync multi-algo arrays from scalar PER_FILE_ALGO/SUM_FILENAME when tests or
+  # direct callers set the scalar without updating the arrays.
+  if [ "${PER_FILE_ALGOS[0]:-}" != "$PER_FILE_ALGO" ]; then
+    PER_FILE_ALGOS=("$PER_FILE_ALGO")
+    SUM_FILENAMES=("$SUM_FILENAME")
+  fi
   if [ "${DEBUG:-0}" -gt 0 ]; then
     dbg "Effective BATCH_RULES=$BATCH_RULES PARALLEL_JOBS=$PARALLEL_JOBS DRY_RUN=$DRY_RUN"
   fi
@@ -372,7 +378,7 @@ process_single_directory() {
     : > "$LOG_FILEPATH"
     log_run_header "$LOG_FILEPATH"
   elif [ "$DRY_RUN" -eq 1 ]; then
-    log "${_C_YELLOW}DRYRUN:${_C_RST} $total_files file(s) would be hashed in $d with $PER_FILE_ALGO (no changes made)"
+    log "${_C_YELLOW}DRYRUN:${_C_RST} $total_files file(s) would be hashed in $d with ${PER_FILE_ALGOS[*]} (no changes made)"
   fi
 
   # Build old manifest maps and inode-based cache (for hardlinks).
@@ -439,6 +445,10 @@ process_single_directory() {
 
   local no_reuse_val="${NO_REUSE:-0}"
   [ -z "$no_reuse_val" ] && no_reuse_val=0
+  # Multi-algo mode: disable reuse (v1 limitation; page cache amortizes re-reads)
+  if [ "${#PER_FILE_ALGOS[@]}" -gt 1 ]; then
+    no_reuse_val=1
+  fi
   NO_REUSE="$no_reuse_val"
 
   declare -A _local_stat_cache=()
@@ -535,7 +545,7 @@ process_single_directory() {
     fi
 
     if (( DRY_RUN == 1 )); then
-      vlog "${_C_YELLOW}DRYRUN:${_C_RST} would hash $fpath with $PER_FILE_ALGO"
+      vlog "${_C_YELLOW}DRYRUN:${_C_RST} would hash $fpath with ${PER_FILE_ALGOS[*]}"
       if [ "${USE_ASSOC:-0}" -eq 1 ]; then
         path_to_hash["$fpath"]=""
       else
@@ -550,7 +560,11 @@ process_single_directory() {
       if (( current_batch_size >= batch_size )); then
         _par_maybe_wait
         local worker_out="$results_dir/batch_${batch_id}.out"
-        _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+        if [ "${#PER_FILE_ALGOS[@]}" -gt 1 ]; then
+          _do_hash_batch_multi "$worker_out" "${batch_files[@]}" &
+        else
+          _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+        fi
         HASH_PIDS+=("$!")
         HASH_PIDS_COUNT=${#HASH_PIDS[@]}
         batch_files=()
@@ -568,7 +582,11 @@ process_single_directory() {
   if (( DRY_RUN == 0 )) && [ "${#batch_files[@]}" -gt 0 ]; then
     _par_maybe_wait
     local worker_out="$results_dir/batch_${batch_id}.out"
-    _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+    if [ "${#PER_FILE_ALGOS[@]}" -gt 1 ]; then
+      _do_hash_batch_multi "$worker_out" "${batch_files[@]}" &
+    else
+      _do_hash_batch "$PER_FILE_ALGO" "$worker_out" "${batch_files[@]}" &
+    fi
     HASH_PIDS+=("$!")
     HASH_PIDS_COUNT=${#HASH_PIDS[@]}
     batch_files=()
@@ -579,11 +597,18 @@ process_single_directory() {
     _par_wait_all
     for worker_out in "$results_dir"/*.out; do
       [ -f "$worker_out" ] || continue
-      while IFS=$'\t' read -r rpath rhash; do
+      # Multi-algo results: path\thash1\thash2\t... (tab-separated)
+      # Single-algo results: path\thash (tab-separated, 2 fields)
+      # Read full line and split manually to support variable field counts.
+      while IFS= read -r _line; do
+        [ -z "$_line" ] && continue
+        local rpath rhash_all
+        rpath="${_line%%$'\t'*}"
+        rhash_all="${_line#*$'\t'}"
         # Detect ERROR sentinel from batch workers (file was unreadable/vanished)
-        case "${rhash:-}" in
+        case "${rhash_all:-}" in
           ERROR:*)
-            record_error "Cannot read file: $rpath (${rhash#ERROR:})"
+            record_error "Cannot read file: $rpath (${rhash_all#ERROR:})"
             count_read_errors=$((count_read_errors + 1))
             _progress_file_done
             _progress_update
@@ -591,17 +616,25 @@ process_single_directory() {
             ;;
         esac
         if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          path_to_hash["$rpath"]="${rhash:-}"
+          path_to_hash["$rpath"]="${rhash_all:-}"
           local id="${path_to_inode[$rpath]:-}"
-          [ -n "$id" ] && [ -n "${rhash:-}" ] && inode_hash_cache["$id"]="$rhash"
+          # For inode cache, store primary (first) hash only
+          if [ -n "$id" ] && [ -n "${rhash_all:-}" ]; then
+            local _primary_h="${rhash_all%%$'\t'*}"
+            inode_hash_cache["$id"]="$_primary_h"
+          fi
         else
-          map_set "$MAP_path_to_hash" "$rpath" "${rhash:-}"
+          map_set "$MAP_path_to_hash" "$rpath" "${rhash_all:-}"
           local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
-          [ -n "$id" ] && [ -n "${rhash:-}" ] && map_set "$MAP_inode_hash_cache" "$id" "$rhash"
+          if [ -n "$id" ] && [ -n "${rhash_all:-}" ]; then
+            local _primary_h="${rhash_all%%$'\t'*}"
+            map_set "$MAP_inode_hash_cache" "$id" "$_primary_h"
+          fi
         fi
         local bname; bname=$(basename "$rpath")
-        if [ -n "${rhash:-}" ]; then
-          vlog "Hashed $bname -> ${rhash:0:8}...${rhash: -8} (truncated)"
+        local _display_h="${rhash_all%%$'\t'*}"
+        if [ -n "${_display_h:-}" ]; then
+          vlog "Hashed $bname -> ${_display_h:0:8}...${_display_h: -8} (truncated)"
         else
           record_error "Hash failed for $rpath"
         fi
@@ -614,52 +647,134 @@ process_single_directory() {
   fi
 
   if (( DRY_RUN == 0 )); then
+    local _multi_algo=0
+    [ "${#PER_FILE_ALGOS[@]}" -gt 1 ] && _multi_algo=1
+
+    # --- Collect hash results and build meta lines ---
+    # path_to_hash stores: single-algo → hash; multi-algo → tab-separated hash1\thash2\t...
     if [ "${USE_ASSOC:-0}" -eq 1 ]; then
       for fpath in "${files[@]}"; do
-        local fname h meta_line
+        local fname h_all
         fname=${fpath##*/}
-        h="${path_to_hash[$fpath]:-}"
-        if [ -z "$h" ]; then
-          # Hash missing — file was either errored in batch or never hashed; retry once
-          if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
-            h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+        h_all="${path_to_hash[$fpath]:-}"
+        if [ -z "$h_all" ]; then
+          # Hash missing — retry once (multi-algo retries all algos)
+          if [ "$_multi_algo" -eq 1 ]; then
+            local _retry_hashes="" _retry_ok=1 _ra _rh
+            for _ra in "${PER_FILE_ALGOS[@]}"; do
+              if _rh=$(file_hash "$fpath" "$_ra"); then
+                _retry_hashes+="${_retry_hashes:+$'\t'}$_rh"
+              else
+                _retry_ok=0; break
+              fi
+            done
+            if [ "$_retry_ok" -eq 1 ]; then
+              h_all="$_retry_hashes"
+            else
+              record_error "Skipping unreadable file from manifest: $fpath"
+              count_read_errors=$((count_read_errors + 1))
+              continue
+            fi
           else
-            record_error "Skipping unreadable file from manifest: $fpath"
-            count_read_errors=$((count_read_errors + 1))
-            continue
+            if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+              h_all="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+            else
+              record_error "Skipping unreadable file from manifest: $fpath"
+              count_read_errors=$((count_read_errors + 1))
+              continue
+            fi
           fi
         fi
-        printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
+        # Store validated result back (used by manifest writer below)
+        path_to_hash["$fpath"]="$h_all"
+        # Meta: use primary (first) hash only
+        local h_primary="${h_all%%$'\t'*}"
         if [ "${MINIMAL:-0}" -eq 0 ]; then
-          meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h"
+          local meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h_primary"
           printf '%s\n' "$meta_line" >> "$tmp_meta"
         fi
       done
     else
       for fpath in "${files[@]}"; do
-        local fname h meta_line
+        local fname h_all
         fname=${fpath##*/}
-        h="$(map_get "$MAP_path_to_hash" "$fpath")"
-        if [ -z "$h" ]; then
-          # Hash missing — file was either errored in batch or never hashed; retry once
-          if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
-            h="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+        h_all="$(map_get "$MAP_path_to_hash" "$fpath")"
+        if [ -z "$h_all" ]; then
+          if [ "$_multi_algo" -eq 1 ]; then
+            local _retry_hashes="" _retry_ok=1 _ra _rh
+            for _ra in "${PER_FILE_ALGOS[@]}"; do
+              if _rh=$(file_hash "$fpath" "$_ra"); then
+                _retry_hashes+="${_retry_hashes:+$'\t'}$_rh"
+              else
+                _retry_ok=0; break
+              fi
+            done
+            if [ "$_retry_ok" -eq 1 ]; then
+              h_all="$_retry_hashes"
+            else
+              record_error "Skipping unreadable file from manifest: $fpath"
+              count_read_errors=$((count_read_errors + 1))
+              continue
+            fi
           else
-            record_error "Skipping unreadable file from manifest: $fpath"
-            count_read_errors=$((count_read_errors + 1))
-            continue
+            if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+              h_all="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+            else
+              record_error "Skipping unreadable file from manifest: $fpath"
+              count_read_errors=$((count_read_errors + 1))
+              continue
+            fi
           fi
         fi
-        printf '%s  ./%s\n' "$h" "$fname" >> "$tmp_sum"
+        map_set "$MAP_path_to_hash" "$fpath" "$h_all"
+        local h_primary="${h_all%%$'\t'*}"
         if [ "${MINIMAL:-0}" -eq 0 ]; then
-          meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"${h:-}"
+          local meta_line
+          meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"$h_primary"
           printf '%s\n' "$meta_line" >> "$tmp_meta"
         fi
       done
       rm -f "$MAP_path_to_hash" "$MAP_path_to_inode" "$MAP_path_to_meta" 2>/dev/null || true
     fi
 
-    if [ -s "$tmp_sum" ]; then
+    # --- Write manifest files: one per algorithm ---
+    # For single-algo, writes one manifest (backward-compatible behavior).
+    # For multi-algo, writes one manifest per algorithm from tab-separated hashes.
+    local _wrote_any=0
+    local _algo_idx
+    for (( _algo_idx=0; _algo_idx < ${#PER_FILE_ALGOS[@]}; _algo_idx++ )); do
+      local _ma_sumfn="${SUM_FILENAMES[$_algo_idx]}"
+      local _ma_sumf
+      _ma_sumf="$(_sidecar_path "$d" "$_ma_sumfn")"
+      local _ma_tmp="${_ma_sumf}.tmp"
+      for fpath in "${files[@]}"; do
+        local fname h_all h
+        fname=${fpath##*/}
+        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+          h_all="${path_to_hash[$fpath]:-}"
+        else
+          h_all="$(map_get "$MAP_path_to_hash" "$fpath")"
+        fi
+        [ -z "$h_all" ] && continue
+        # Extract the Nth hash (tab-separated; field index = _algo_idx + 1)
+        if [ "$_multi_algo" -eq 1 ]; then
+          # Use awk to extract the correct 1-based field from tab-separated hashes
+          h=$(printf '%s' "$h_all" | awk -F'\t' -v f="$((_algo_idx + 1))" '{print $f}')
+        else
+          h="$h_all"
+        fi
+        [ -z "$h" ] && continue
+        printf '%s  ./%s\n' "$h" "$fname" >> "$_ma_tmp"
+      done
+      if [ -s "$_ma_tmp" ]; then
+        mv -f "$_ma_tmp" "$_ma_sumf" || record_error "Failed to move $_ma_tmp -> $_ma_sumf"
+        _wrote_any=1
+      else
+        rm -f "$_ma_tmp" 2>/dev/null || true
+      fi
+    done
+
+    if [ "$_wrote_any" -eq 1 ]; then
       if [ "${MINIMAL:-0}" -eq 0 ]; then
         local lockfile="${metaf}${LOCK_SUFFIX}"
         local -a meta_lines=()
@@ -669,11 +784,18 @@ process_single_directory() {
           done < "$tmp_meta"
         fi
         with_lock "$lockfile" write_meta "$metaf" "${meta_lines[@]}"
-        log "Wrote $sumf and $metaf"
+        if [ "$_multi_algo" -eq 1 ]; then
+          log "Wrote manifests (${PER_FILE_ALGOS[*]}) and $metaf"
+        else
+          log "Wrote $sumf and $metaf"
+        fi
       else
-        log "Wrote $sumf"
+        if [ "$_multi_algo" -eq 1 ]; then
+          log "Wrote manifests (${PER_FILE_ALGOS[*]})"
+        else
+          log "Wrote $sumf"
+        fi
       fi
-      mv -f "$tmp_sum" "$sumf" || record_error "Failed to move $tmp_sum -> $sumf"
       count_created=$((count_created+1))
     else
       vlog "Skipped writing manifests for $d (no local files)"
@@ -682,6 +804,7 @@ process_single_directory() {
       return 0
     fi
 
+    # --- Repair pass: fix malformed entries in primary manifest ---
     local repaired=0
     local tmp_fixed="${sumf}.fixed"
     while IFS= read -r line; do
@@ -692,7 +815,6 @@ process_single_directory() {
       fname="$(printf '%s' "$fname" | sed -E 's/^[[:space:]]+[*[:space:]]*//')"
       if [ -z "$hash" ] || [[ "$hash" =~ ^[[:space:]]*$ ]]; then
         local fpath="$d/$fname"
-        # Attempt to rehash; if file is unreadable, drop it from the manifest
         if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
           local newhash
           newhash="$(file_hash "$fpath" "$PER_FILE_ALGO")"

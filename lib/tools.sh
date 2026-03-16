@@ -66,14 +66,17 @@ HINTS
 
 check_required_tools() {
   local missing=()
-  # per-file hashing
-  if [ "$PER_FILE_ALGO" = "md5" ]; then
-    [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5")
-  else
-    command -v "${PER_FILE_ALGO}sum" >/dev/null 2>&1 \
-      || command -v shasum >/dev/null 2>&1 \
-      || missing+=("${PER_FILE_ALGO}sum/shasum")
-  fi
+  # per-file hashing: check tools for ALL requested algorithms (multi-algo support)
+  local _crt_algo
+  for _crt_algo in "${PER_FILE_ALGOS[@]}"; do
+    if [ "$_crt_algo" = "md5" ]; then
+      [ -n "$TOOL_md5_cmd" ] || missing+=("md5sum/md5")
+    else
+      command -v "${_crt_algo}sum" >/dev/null 2>&1 \
+        || command -v shasum >/dev/null 2>&1 \
+        || missing+=("${_crt_algo}sum/shasum")
+    fi
+  done
   # meta signature
   if [ "$META_SIG_ALGO" = "sha256" ]; then
     [ -n "$TOOL_sha256" ] || [ -n "$TOOL_shasum" ] || missing+=("sha256sum/shasum")

@@ -160,6 +160,13 @@ _ALGO_EXPLICIT=0
 # Pass --allow-root-sidefiles to disable protection and allow sidefiles in root.
 : "${NO_ROOT_SIDEFILES:=1}"
 
+# === Multi-algorithm support ===
+# Arrays of algorithms and manifest filenames. Single-element arrays when one
+# algorithm is specified (identical to legacy behavior). Populated fully by
+# parse_args after comma-separated -a parsing; seeded here with the default.
+PER_FILE_ALGOS=("$PER_FILE_ALGO")
+SUM_FILENAMES=("${BASE_NAME}.${PER_FILE_ALGO}")
+
 # === Filenames derived from base names (set once globally) ===
 SUM_FILENAME="${BASE_NAME}.${PER_FILE_ALGO}"
 META_FILENAME="${BASE_NAME}.meta"

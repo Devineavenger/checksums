@@ -70,6 +70,8 @@ _safe_name() {
 # This makes the helpers safe to call in isolation (interactive tests, unit probes).
 # We provide safe defaults here to avoid unbound variables under `set -u`.
 SUM_EXCL="${SUM_EXCL:-$(_safe_name "$(basename "${SUM_FILENAME:-#####checksums#####.md5}")")}"
+# Multi-algo exclusion array: safe default mirrors SUM_EXCL for single-algo (populated by build_exclusions)
+if [ -z "${SUM_EXCLS+x}" ]; then SUM_EXCLS=("$SUM_EXCL"); fi
 META_EXCL="${META_EXCL:-$(_safe_name "$(basename "${META_FILENAME:-#####checksums#####.meta}")")}"
 LOG_EXCL="${LOG_EXCL:-$(_safe_name "$(basename "${LOG_FILENAME:-#####checksums#####.log}")")}"
 ALT_LOG_EXCL="${ALT_LOG_EXCL:-$(_safe_name "$(basename "${LOG_BASE:-#####checksums#####}")")}"
@@ -167,8 +169,14 @@ has_files() {
     # Note: use unquoted patterns in case arms so shell globs are interpreted
     # for matching rather than literal strings. ALT_LOG_EXCL is the log base
     # (without the trailing .log) so rotated names are like "<base>.<ts>.log".
+    # Multi-algo: check against all manifest exclusions (SUM_EXCLS)
+    local _is_sum=0 _se
+    for _se in "${SUM_EXCLS[@]}"; do
+      [ "$fname" = "$_se" ] && { _is_sum=1; break; }
+    done
+    [ "$_is_sum" -eq 1 ] && continue
     case "$fname" in
-      "$SUM_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      "$META_EXCL" | "$LOG_EXCL" ) continue ;;
       # rotated logs: base.<ts>.log (tolerate legacy variants too)
       ${ALT_LOG_EXCL}.*.log ) continue ;;
       # run-level and first-run logs (explicit names — match literally)
@@ -222,8 +230,14 @@ has_local_files() {
     # Mirror the same exclusions as has_files but only consider files directly
     # inside the directory (maxdepth 1). This prevents creating sidecars for
     # parent/container dirs that contain files only in subdirectories.
+    # Multi-algo: check against all manifest exclusions (SUM_EXCLS)
+    local _is_sum=0 _se
+    for _se in "${SUM_EXCLS[@]}"; do
+      [ "$fname" = "$_se" ] && { _is_sum=1; break; }
+    done
+    [ "$_is_sum" -eq 1 ] && continue
     case "$fname" in
-      "$SUM_EXCL" | "$META_EXCL" | "$LOG_EXCL" ) continue ;;
+      "$META_EXCL" | "$LOG_EXCL" ) continue ;;
       ${ALT_LOG_EXCL}.*.log ) continue ;;
       "$RUN_EXCL" | "$FIRST_RUN_EXCL" ) continue ;;
       *"$LOCK_SUFFIX") continue ;;
@@ -276,6 +290,14 @@ build_exclusions() {
   LOCK_EXCL="${META_EXCL}${LOCK_SUFFIX}"
   # Note: we intentionally don't export these; modules run in same shell so globals suffice.
 
+  # Multi-algo: derive exclusion basenames for each algorithm's manifest.
+  # SUM_EXCLS holds the per-algo basenames for use in find_file_expr, has_files, and planner.
+  SUM_EXCLS=()
+  local _sf
+  for _sf in "${SUM_FILENAMES[@]}"; do
+    SUM_EXCLS+=("$(_safe_name "$(basename "$_sf")")")
+  done
+
   # Central store exclusion: when STORE_DIR is inside TARGET_DIR, record it for pruning.
   STORE_DIR_EXCL=""
   if [ -n "${STORE_DIR:-}" ] && [ -n "${TARGET_DIR:-}" ]; then
@@ -292,7 +314,8 @@ build_exclusions() {
   # Add all tool-generated basenames to EXCLUDE_PATTERNS so find_file_expr's basename filtering excludes them.
   # IMPORTANT: do not exclude bare ALT_LOG_EXCL or ALT_LOG_EXCL.* (could match user files).
   # Only exclude the actual rotated log patterns to avoid skipping real data.
-  EXCLUDE_PATTERNS+=("$SUM_EXCL" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
+  # Multi-algo: add all manifest basenames (SUM_EXCLS) instead of just the primary SUM_EXCL.
+  EXCLUDE_PATTERNS+=("${SUM_EXCLS[@]}" "$META_EXCL" "$LOG_EXCL" "$RUN_EXCL" "$FIRST_RUN_EXCL" "${ALT_LOG_EXCL}.log" "${ALT_LOG_EXCL}.*.log" "$LOCK_EXCL")
 }
 
 # _get_file_size FILE
@@ -316,13 +339,19 @@ find_file_expr() {
   # candidates for inclusion in the per-directory checksum manifest.
   # Exclusions applied:
   #  - common OS metadata files (.DS_Store, Apple resource forks)
-  #  - tool-generated artifacts like .md5/.meta/.log and rotated logs
+  #  - tool-generated artifacts like .md5/.sha256/.meta/.log and rotated logs
   #  - user-supplied EXCLUDE_PATTERNS (applied to the basename)
   #  - if INCLUDE_PATTERNS is non-empty, only matching basenames are allowed
   local d="$1"
+  # Build dynamic exclusion args for all manifest filenames (multi-algo support)
+  local -a _sum_excl_args=()
+  local _se
+  for _se in "${SUM_EXCLS[@]}"; do
+    _sum_excl_args+=(! -name "$_se")
+  done
   find "$d" -maxdepth 1 -type f \
     ! -name '.DS_Store' ! -name '._*' \
-    ! -name "$SUM_EXCL" \
+    "${_sum_excl_args[@]}" \
     ! -name "$META_EXCL" \
     ! -name "$LOG_EXCL" \
     ! -name "*${LOCK_SUFFIX}" \

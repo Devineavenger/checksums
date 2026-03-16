@@ -252,7 +252,13 @@ run_checksums() {
   # --- Scattered sidefile detection and migration prompt (when --store-dir is active) ---
   if [ -n "${STORE_DIR:-}" ]; then
     local _scattered_count=0
-    _scattered_count=$(find "$TARGET_DIR" -type f \( -name "$SUM_FILENAME" -o -name "$META_FILENAME" -o -name "$LOG_FILENAME" \) 2>/dev/null \
+    # Build find name args for all manifest filenames (multi-algo support)
+    local -a _find_name_args=(-name "$META_FILENAME" -o -name "$LOG_FILENAME")
+    local _sf
+    for _sf in "${SUM_FILENAMES[@]}"; do
+      _find_name_args+=(-o -name "$_sf")
+    done
+    _scattered_count=$(find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) 2>/dev/null \
       | grep -cv "^${STORE_DIR_EXCL:-__NOMATCH__}" 2>/dev/null || echo 0)
     if [ "$_scattered_count" -gt 0 ]; then
       log "${_C_YELLOW}WARNING:${_C_RST} Found $_scattered_count existing sidecar file(s) in source directories."
@@ -289,7 +295,7 @@ run_checksums() {
             mv -f "$_sf" "$_dest" 2>/dev/null && _migrated=$((_migrated+1))
             vlog "Migrated: $_sf -> $_dest"
           fi
-        done < <(find "$TARGET_DIR" -type f \( -name "$SUM_FILENAME" -o -name "$META_FILENAME" -o -name "$LOG_FILENAME" \) -print0 2>/dev/null)
+        done < <(find "$TARGET_DIR" -type f \( "${_find_name_args[@]}" \) -print0 2>/dev/null)
         log "Migrated $_migrated file(s) into store."
       else
         log "Leaving existing sidecar files in place."
@@ -303,7 +309,7 @@ run_checksums() {
   fi
   log "Starting run on $TARGET_DIR"
   vlog "Run ID: $RUN_ID"
-  log "Base: $BASE_NAME  per-file: $PER_FILE_ALGO  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
+  log "Base: $BASE_NAME  per-file: ${PER_FILE_ALGOS[*]}  meta-sig: $META_SIG_ALGO  dry-run: $DRY_RUN  first-run: $FIRST_RUN choice: $FIRST_RUN_CHOICE  parallel: $PARALLEL_JOBS  format: $LOG_FORMAT  verify-only: $VERIFY_ONLY"
   # Log active user-supplied filter patterns (verbose only; tool-generated exclusions are implicit)
   if [ "${#EXCLUDE_PATTERNS[@]}" -gt 0 ]; then
     vlog "Exclude patterns: ${EXCLUDE_PATTERNS[*]}"
