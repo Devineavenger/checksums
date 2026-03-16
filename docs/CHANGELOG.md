@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v6.1.0 - 2026-03-17
+
 ### Fixes
 * fix: add missing input validation and safety guards across 6 modules — 16 long CLI options (`--check`, `--store-dir`, `--exclude`, `--include`, `--max-size`, `--min-size`, `--base-name`, `--per-file-algo`, `--meta-sig`, `--log-base`, `--config`, `--first-run-choice`, `--parallel`, `--parallel-dirs`, `--batch`, `--output`) now fatal with a clear message when invoked without the required argument (previously silently accepted empty); `_cfg_int()` validator rejects non-integer values for 18 boolean/numeric config keys (`DRY_RUN`, `DEBUG`, `VERBOSE`, `YES`, etc.) with a warning instead of propagating invalid strings to arithmetic comparisons; `_sem_init()` guards `mkfifo` and `exec 7<>` failures with fatal messages instead of silently breaking parallel mode; `_sidecar_path()` warns on `mkdir -p` failure for store directories instead of silently returning a nonexistent path; `pwd -P` after `cd` in `orchestrator.sh`, `status.sh`, and `verification.sh` fatals on failure instead of silently setting `TARGET_DIR=""`;  documented GNU/BSD `find -L` symlink-cycle detection behavior in `_find()` wrapper
 
