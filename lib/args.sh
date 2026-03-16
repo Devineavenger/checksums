@@ -8,7 +8,7 @@
 # This software is provided "as is," without warranty of any kind. The author shall not be liable for any damages
 # arising from its use.
 
-# shellcheck disable=SC2034
+# shellcheck disable=SC2034,SC2094
 # args.sh
 #
 # Purpose:
@@ -42,6 +42,17 @@
 #
 # NOTE: This file focuses on robust, portable parsing and clear, explicit comments
 # for maintainers. Keep comments near the code they document so future edits stay clear.
+
+# _cfg_int KEY VAL LINE_NUM FILE
+# Validate that VAL is a non-negative integer (digits only).
+# Returns 0 if valid, 1 if not. On failure, logs a warning with the file
+# location and the offending value so the user can fix their config.
+_cfg_int() {
+  local key="$1" val="$2" ln="$3" file="$4"
+  case "$val" in
+    ''|*[!0-9]*) log "WARNING: config $file:$ln: '$key' expects integer, got '$val' (ignored)"; return 1 ;;
+  esac
+}
 
 # _load_config — safe key=value config parser (no code execution)
 #
@@ -107,29 +118,29 @@ _load_config() {
       META_SIG_ALGO)      META_SIG_ALGO="$val" ;;
       LOG_BASE)           LOG_BASE="$val" ;;
       LOG_FORMAT)         LOG_FORMAT="$val" ;;
-      DRY_RUN)            DRY_RUN="$val" ;;
-      DEBUG)              DEBUG="$val" ;;
-      VERBOSE)            VERBOSE="$val" ;;
-      YES)                YES="$val" ;;
-      ASSUME_NO)          ASSUME_NO="$val" ;;
-      FORCE_REBUILD)      FORCE_REBUILD="$val" ;;
-      FIRST_RUN)          FIRST_RUN="$val" ;;
+      DRY_RUN)            _cfg_int "$key" "$val" "$line_num" "$file" && DRY_RUN="$val" || true ;;
+      DEBUG)              _cfg_int "$key" "$val" "$line_num" "$file" && DEBUG="$val" || true ;;
+      VERBOSE)            _cfg_int "$key" "$val" "$line_num" "$file" && VERBOSE="$val" || true ;;
+      YES)                _cfg_int "$key" "$val" "$line_num" "$file" && YES="$val" || true ;;
+      ASSUME_NO)          _cfg_int "$key" "$val" "$line_num" "$file" && ASSUME_NO="$val" || true ;;
+      FORCE_REBUILD)      _cfg_int "$key" "$val" "$line_num" "$file" && FORCE_REBUILD="$val" || true ;;
+      FIRST_RUN)          _cfg_int "$key" "$val" "$line_num" "$file" && FIRST_RUN="$val" || true ;;
       FIRST_RUN_CHOICE)   FIRST_RUN_CHOICE="$val" ;;
-      FIRST_RUN_KEEP)     FIRST_RUN_KEEP="$val" ;;
+      FIRST_RUN_KEEP)     _cfg_int "$key" "$val" "$line_num" "$file" && FIRST_RUN_KEEP="$val" || true ;;
       PARALLEL_JOBS)      PARALLEL_JOBS="$val" ;;
       PARALLEL_DIRS)      PARALLEL_DIRS="$val" ;;
       BATCH_RULES)        BATCH_RULES="$val" ;;
-      VERIFY_ONLY)        VERIFY_ONLY="$val" ;;
-      VERIFY_MD5_DETAILS) VERIFY_MD5_DETAILS="$val" ;;
-      STATUS_ONLY)        STATUS_ONLY="$val" ;;
+      VERIFY_ONLY)        _cfg_int "$key" "$val" "$line_num" "$file" && VERIFY_ONLY="$val" || true ;;
+      VERIFY_MD5_DETAILS) _cfg_int "$key" "$val" "$line_num" "$file" && VERIFY_MD5_DETAILS="$val" || true ;;
+      STATUS_ONLY)        _cfg_int "$key" "$val" "$line_num" "$file" && STATUS_ONLY="$val" || true ;;
       CHECK_FILE)         CHECK_FILE="$val" ;;
-      SKIP_EMPTY)         SKIP_EMPTY="$val" ;;
-      NO_REUSE)           NO_REUSE="$val" ;;
-      NO_ROOT_SIDEFILES)  NO_ROOT_SIDEFILES="$val" ;;
-      FOLLOW_SYMLINKS)    FOLLOW_SYMLINKS="$val" ;;
-      PROGRESS)           PROGRESS="$val" ;;
-      MINIMAL)            MINIMAL="$val" ;;
-      QUIET)              QUIET="$val" ;;
+      SKIP_EMPTY)         _cfg_int "$key" "$val" "$line_num" "$file" && SKIP_EMPTY="$val" || true ;;
+      NO_REUSE)           _cfg_int "$key" "$val" "$line_num" "$file" && NO_REUSE="$val" || true ;;
+      NO_ROOT_SIDEFILES)  _cfg_int "$key" "$val" "$line_num" "$file" && NO_ROOT_SIDEFILES="$val" || true ;;
+      FOLLOW_SYMLINKS)    _cfg_int "$key" "$val" "$line_num" "$file" && FOLLOW_SYMLINKS="$val" || true ;;
+      PROGRESS)           _cfg_int "$key" "$val" "$line_num" "$file" && PROGRESS="$val" || true ;;
+      MINIMAL)            _cfg_int "$key" "$val" "$line_num" "$file" && MINIMAL="$val" || true ;;
+      QUIET)              _cfg_int "$key" "$val" "$line_num" "$file" && QUIET="$val" || true ;;
       STORE_DIR)          STORE_DIR="$val" ;;
       MAX_SIZE)           MAX_SIZE="$val" ;;
       MIN_SIZE)           MIN_SIZE="$val" ;;
@@ -162,6 +173,19 @@ parse_args() {
   # initialized in lib/init.sh. This function should only parse CLI options and
   # apply overrides. Do not re-declare global defaults here to avoid surprising
   # overrides and to keep a single source of truth for runtime defaults.
+
+  local _argc=$#
+
+  # _require_optarg OPTION_NAME
+  # Verify that the next positional argument exists for a long option that
+  # requires a value. Fatals with a clear message if the argument is missing.
+  # Uses _argc (captured above) because $# inside the nested function refers
+  # to the function's own parameters, not parse_args's.
+  _require_optarg() {
+    if [ "$OPTIND" -gt "$_argc" ]; then
+      fatal "--$1 requires an argument"
+    fi
+  }
 
   # -------------------------
   # Config pre-scan (must run before getopts)
@@ -356,6 +380,7 @@ parse_args() {
             ;;
           check)
             # --check FILE : verify files against external manifest (sha256sum -c interop)
+            _require_optarg check
             CHECK_FILE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           verify-only)
@@ -386,10 +411,12 @@ parse_args() {
             FOLLOW_SYMLINKS=0
             ;;
           store-dir)
+            _require_optarg store-dir
             STORE_DIR="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           exclude)
             # --exclude PATTERN : exclude files matching basename glob (repeatable)
+            _require_optarg exclude
             local _ep_val="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             local _ep
             IFS=',' read -ra _ep <<< "$_ep_val"
@@ -397,6 +424,7 @@ parse_args() {
             ;;
           include)
             # --include PATTERN : include only files matching basename glob (repeatable)
+            _require_optarg include
             local _ip_val="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             local _ip
             IFS=',' read -ra _ip <<< "$_ip_val"
@@ -404,10 +432,12 @@ parse_args() {
             ;;
           max-size)
             # --max-size SIZE : skip files larger than SIZE (long-only, no short flag)
+            _require_optarg max-size
             MAX_SIZE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           min-size)
             # --min-size SIZE : skip files smaller than SIZE (long-only, no short flag)
+            _require_optarg min-size
             MIN_SIZE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
 
@@ -416,35 +446,45 @@ parse_args() {
           # -------------------------
           # For these we read the next positional parameter using indirect expansion.
           base-name)
+            _require_optarg base-name
             BASE_NAME="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           per-file-algo)
+            _require_optarg per-file-algo
             PER_FILE_ALGO="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             _ALGO_EXPLICIT=1
             ;;
           meta-sig)
+            _require_optarg meta-sig
             META_SIG_ALGO="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           log-base)
+            _require_optarg log-base
             LOG_BASE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           config)
             # --config FILE : explicit config file path to load before running
+            _require_optarg config
             CONFIG_FILE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           first-run-choice)
+            _require_optarg first-run-choice
             FIRST_RUN_CHOICE="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           parallel)
+            _require_optarg parallel
             PARALLEL_JOBS="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           parallel-dirs)
+            _require_optarg parallel-dirs
             PARALLEL_DIRS="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           batch)
+            _require_optarg batch
             BATCH_RULES="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           output|log-format)
+            _require_optarg output
             LOG_FORMAT="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
           *)

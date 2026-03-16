@@ -40,7 +40,9 @@ _sidecar_path() {
     else
       store_sub="${STORE_DIR%/}/$rel"
     fi
-    mkdir -p "$store_sub" 2>/dev/null || true
+    if ! mkdir -p "$store_sub" 2>/dev/null; then
+      printf 'WARNING: cannot create store directory: %s\n' "$store_sub" >&2
+    fi
     printf '%s/%s' "$store_sub" "$filename"
   else
     printf '%s/%s' "$dir" "$filename"
@@ -70,6 +72,11 @@ _safe_name() {
 # When enabled, prepends -L so symlinked files match -type f and symlinked
 # directories are descended into. All file/directory discovery commands should
 # use _find instead of find directly so the flag is honored uniformly.
+#
+# NOTE on symlink cycles: GNU find -L detects filesystem cycles and prints a
+# warning to stderr while skipping the loop. BSD find may not detect cycles and
+# could hang. This is an inherent limitation of -L; users of --follow-symlinks
+# on untrusted directory trees should be aware of this risk.
 _find() {
   if [ "${FOLLOW_SYMLINKS:-0}" -eq 1 ]; then
     command find -L "$@"

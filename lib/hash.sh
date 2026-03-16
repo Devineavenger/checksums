@@ -129,8 +129,8 @@ _dir_par_wait_all() {
 
 _sem_init() {
   SEM_FIFO="$(mktemp -u "${TMPDIR:-/tmp}/checksums_sem.XXXXXX")"
-  mkfifo "$SEM_FIFO"
-  eval "exec 7<>\"$SEM_FIFO\""
+  mkfifo "$SEM_FIFO" || fatal "Cannot create semaphore FIFO: $SEM_FIFO"
+  eval "exec 7<>\"$SEM_FIFO\"" || fatal "Cannot open semaphore FIFO: $SEM_FIFO"
   SEM_FD=7
   local i
   for ((i=0; i<PARALLEL_JOBS; i++)); do printf 'x' >&7; done

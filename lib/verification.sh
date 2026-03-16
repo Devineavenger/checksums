@@ -565,7 +565,7 @@ run_check_mode() {
 
   # Resolve TARGET_DIR to absolute path
   cd "$TARGET_DIR" || fatal "Cannot cd to $TARGET_DIR"
-  TARGET_DIR=$(pwd -P)
+  TARGET_DIR=$(pwd -P) || fatal "Cannot resolve absolute path for $TARGET_DIR"
   cd - >/dev/null 2>&1 || true
 
   # Auto-detect algorithm from manifest extension unless user explicitly set -a.

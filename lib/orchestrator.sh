@@ -223,7 +223,7 @@ run_checksums() {
   if ! check_required_tools; then fatal "Missing tools; see run log for hints."; fi
 
   cd "$TARGET_DIR" || fatal "Cannot cd to $TARGET_DIR"
-  TARGET_DIR=$(pwd -P)
+  TARGET_DIR=$(pwd -P) || fatal "Cannot resolve absolute path for $TARGET_DIR"
   cd - >/dev/null 2>&1 || true
   if [ "$TARGET_DIR" = "/" ]; then
     _global_log 0 "Refusing to run on system root"

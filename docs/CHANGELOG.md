@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Fixes
+* fix: add missing input validation and safety guards across 6 modules — 16 long CLI options (`--check`, `--store-dir`, `--exclude`, `--include`, `--max-size`, `--min-size`, `--base-name`, `--per-file-algo`, `--meta-sig`, `--log-base`, `--config`, `--first-run-choice`, `--parallel`, `--parallel-dirs`, `--batch`, `--output`) now fatal with a clear message when invoked without the required argument (previously silently accepted empty); `_cfg_int()` validator rejects non-integer values for 18 boolean/numeric config keys (`DRY_RUN`, `DEBUG`, `VERBOSE`, `YES`, etc.) with a warning instead of propagating invalid strings to arithmetic comparisons; `_sem_init()` guards `mkfifo` and `exec 7<>` failures with fatal messages instead of silently breaking parallel mode; `_sidecar_path()` warns on `mkdir -p` failure for store directories instead of silently returning a nonexistent path; `pwd -P` after `cd` in `orchestrator.sh`, `status.sh`, and `verification.sh` fatals on failure instead of silently setting `TARGET_DIR=""`;  documented GNU/BSD `find -L` symlink-cycle detection behavior in `_find()` wrapper
+
+### Tests
+* test: new `tests/test_guards.bats` — 17 tests covering all 16 long-option missing-argument guards and semaphore FIFO creation failure; 2 new tests in `tests/test_config.bats` for integer config validation (non-integer warning, default preservation)
+
 ## v6.0.0 - 2026-03-16
 
 ### Breaking

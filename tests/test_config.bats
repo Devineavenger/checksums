@@ -159,3 +159,25 @@ EOF
   _load_config "$TMPDIR/test.conf"
   [ "${#EXCLUDE_PATTERNS[@]}" -eq 0 ]
 }
+
+# --- Integer validation ---
+
+@test "_load_config warns on non-integer boolean value" {
+  DRY_RUN=0
+  printf 'DRY_RUN=maybe\n' > "$TMPDIR/test.conf"
+  run _load_config "$TMPDIR/test.conf"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"expects integer"* ]]
+  [[ "$output" == *"maybe"* ]]
+}
+
+@test "_load_config rejects non-integer and preserves default" {
+  DRY_RUN=0
+  QUIET=0
+  printf 'DRY_RUN=yes\nQUIET=true\n' > "$TMPDIR/test.conf"
+  # Call directly (not via run) so global side-effects are visible
+  _load_config "$TMPDIR/test.conf"
+  # Values should remain at their defaults since "yes"/"true" are not integers
+  [ "$DRY_RUN" = "0" ]
+  [ "$QUIET" = "0" ]
+}
