@@ -1,7 +1,7 @@
 .\" Source: docs/checksums.1.in — keep synchronized with lib/usage.sh
 .\" Generated from this template by: make man
 .\"
-.TH CHECKSUMS 1 "March 2026" "checksums 5.4.0" "User Commands"
+.TH CHECKSUMS 1 "March 2026" "checksums 6.0.0" "User Commands"
 .\"
 .SH NAME
 checksums \- generate and verify per\-file integrity metadata
@@ -507,6 +507,17 @@ Bash tab\-completion script (installed by
 .I PREFIX/share/zsh/site\-functions/_checksums
 Zsh tab\-completion script (installed by
 .BR "make install" ).
+.\"
+.SH REQUIREMENTS
+.B checksums
+requires
+.B Bash 4.0
+or later.
+Stock macOS ships Bash 3.2; install a newer version via:
+.PP
+.EX
+brew install bash
+.EE
 .\"
 .SH ENVIRONMENT
 .TP
