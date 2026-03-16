@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Features
+* feat: summary stats on console — display file-level counters (hashed vs reused), byte counters, elapsed time, and throughput in the summary output at the end of `run_checksums()`; 4 new global counters in `init.sh` (`count_files_hashed`, `count_files_reused`, `bytes_hashed`, `bytes_reused`); `_format_bytes()` helper in `orchestrator.sh` formats bytes as B/KiB/MiB/GiB/TiB using awk for portability; elapsed time via `_format_eta()` (pre-existing); throughput calculated as total bytes / elapsed seconds; file counters incremented in `process.sh` at reuse point and successful hash collection (extracts size from `path_to_meta` for accurate byte tracking); parallel aggregation via existing `COUNTER:` protocol (4 new lines); suppressed in dry-run (no hashing occurs, counters stay zero), quiet mode (log_level=0), and non-checksums modes (check/status/verify-only use separate code paths)
+
+### Tests
+* test: new `tests/test_summary_stats.bats` — 8 tests covering file hashed count after normal run, file reused count on second run (with touched file to trigger reprocessing), first run zero reused, bytes hashed/reused display, elapsed time display, dry-run suppression, `_format_bytes` unit test
+
 ## v5.2.0 - 2026-03-16
 
 ### Features

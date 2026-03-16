@@ -105,6 +105,23 @@ _format_eta() {
   fi
 }
 
+# Format bytes into human-readable string (e.g. "1.2 GiB", "345.6 MiB").
+# Uses awk for floating-point division (avoids bc dependency).
+_format_bytes() {
+  local bytes="${1:-0}"
+  if [ "$bytes" -ge 1099511627776 ]; then
+    awk "BEGIN{printf \"%.1f TiB\", $bytes/1099511627776}"
+  elif [ "$bytes" -ge 1073741824 ]; then
+    awk "BEGIN{printf \"%.1f GiB\", $bytes/1073741824}"
+  elif [ "$bytes" -ge 1048576 ]; then
+    awk "BEGIN{printf \"%.1f MiB\", $bytes/1048576}"
+  elif [ "$bytes" -ge 1024 ]; then
+    awk "BEGIN{printf \"%.1f KiB\", $bytes/1024}"
+  else
+    printf '%d B' "$bytes"
+  fi
+}
+
 # Emit a \r-overwritten progress line to stderr.
 _progress_update() {
   [ "${_PROG_ACTIVE:-0}" -eq 1 ] || return 0
@@ -174,6 +191,10 @@ run_checksums() {
   trap '_orch_cleanup' EXIT
   trap '_orch_cleanup; exit 130' INT
   trap '_orch_cleanup; exit 143' TERM
+
+  # Capture wall-clock start time for elapsed/throughput in the final summary.
+  local _run_start
+  _run_start=$(date +%s)
 
   # Defer run-log creation until TARGET_DIR is validated and normalized.
   # This prevents accidental creation of a run log in the current working dir
@@ -572,6 +593,8 @@ run_checksums() {
       (
         count_verified=0; count_verified_existing=0; count_created=0
         count_errors=0; count_read_errors=0; errors=()
+        count_files_hashed=0; count_files_reused=0
+        bytes_hashed=0; bytes_reused=0
         record_error() { errors+=("$*"); count_errors=$((count_errors+1)); }
 
         process_single_directory "$d"
@@ -581,6 +604,10 @@ run_checksums() {
           printf 'COUNTER:count_verified_existing:%d\n' "$count_verified_existing"
           printf 'COUNTER:count_created:%d\n' "$count_created"
           printf 'COUNTER:count_read_errors:%d\n' "$count_read_errors"
+          printf 'COUNTER:count_files_hashed:%d\n' "$count_files_hashed"
+          printf 'COUNTER:count_files_reused:%d\n' "$count_files_reused"
+          printf 'COUNTER:bytes_hashed:%d\n' "$bytes_hashed"
+          printf 'COUNTER:bytes_reused:%d\n' "$bytes_reused"
           for e in "${errors[@]}"; do printf 'ERROR:%s\n' "$e"; done
         } > "$_proc_out"
       ) &
@@ -608,6 +635,10 @@ run_checksums() {
           COUNTER:count_verified_existing:*) count_verified_existing=$((count_verified_existing + ${_line##*:})) ;;
           COUNTER:count_created:*)           count_created=$((count_created + ${_line##*:})) ;;
           COUNTER:count_read_errors:*)       count_read_errors=$((count_read_errors + ${_line##*:})) ;;
+          COUNTER:count_files_hashed:*)      count_files_hashed=$((count_files_hashed + ${_line##*:})) ;;
+          COUNTER:count_files_reused:*)      count_files_reused=$((count_files_reused + ${_line##*:})) ;;
+          COUNTER:bytes_hashed:*)            bytes_hashed=$((bytes_hashed + ${_line##*:})) ;;
+          COUNTER:bytes_reused:*)            bytes_reused=$((bytes_reused + ${_line##*:})) ;;
           ERROR:*)                           record_error "${_line#ERROR:}" ;;
         esac
       done < "$_proc_out"
@@ -649,8 +680,25 @@ run_checksums() {
   log "  Processed (total):             ${_C_GREEN}$count_processed${_C_RST}"
   log "  Skipped:     ${_C_YELLOW}$count_skipped${_C_RST}"
   log "  Overwritten: ${_C_MAGENTA}$count_overwritten${_C_RST}"
+  if [ "$count_files_hashed" -gt 0 ] || [ "$count_files_reused" -gt 0 ]; then
+    log "  Files hashed:  ${_C_GREEN}$count_files_hashed${_C_RST}"
+    log "  Files reused:  ${_C_CYAN}$count_files_reused${_C_RST}"
+  fi
   if [ "$count_read_errors" -gt 0 ]; then
     log "  Read errors: ${_C_RED}$count_read_errors${_C_RST} file(s) skipped"
+  fi
+  if [ "$bytes_hashed" -gt 0 ] || [ "$bytes_reused" -gt 0 ]; then
+    log "  Bytes hashed:  $(_format_bytes "$bytes_hashed")"
+    log "  Bytes reused:  $(_format_bytes "$bytes_reused")"
+  fi
+  local _run_elapsed=$(( $(date +%s) - _run_start ))
+  log "  Elapsed:       $(_format_eta "$_run_elapsed")"
+  if [ "$_run_elapsed" -gt 0 ]; then
+    local _total_bytes=$((bytes_hashed + bytes_reused))
+    if [ "$_total_bytes" -gt 0 ]; then
+      local _rate=$((_total_bytes / _run_elapsed))
+      log "  Throughput:    $(_format_bytes "$_rate")/s"
+    fi
   fi
   if [ "$count_errors" -gt 0 ]; then
     log "  Errors:      ${_C_RED}$count_errors${_C_RST}"

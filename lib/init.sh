@@ -219,6 +219,10 @@ declare -g count_skipped=0        # Directories skipped
 declare -g count_overwritten=0    # Directories overwritten (first-run scheduling)
 declare -g count_errors=0         # Errors encountered
 declare -g count_read_errors=0    # Files skipped due to read errors (permission denied, vanished)
+declare -g count_files_hashed=0   # Files newly hashed (not reused)
+declare -g count_files_reused=0   # Files reused from cache (unchanged since last run)
+declare -g bytes_hashed=0         # Total bytes of newly hashed files
+declare -g bytes_reused=0         # Total bytes of reused files
 
 # === Run ID (audit trail) ===
 RUN_ID=$(uuidgen 2>/dev/null || printf '%s-%s-%s' "$(date +%s)" "$$" "$RANDOM")

@@ -539,6 +539,8 @@ process_single_directory() {
       else
         map_set "$MAP_path_to_hash" "$fpath" "$h"
       fi
+      count_files_reused=$((count_files_reused + 1))
+      bytes_reused=$((bytes_reused + size))
       _progress_file_done
       _progress_update
       continue
@@ -635,6 +637,17 @@ process_single_directory() {
         local _display_h="${rhash_all%%$'\t'*}"
         if [ -n "${_display_h:-}" ]; then
           vlog "Hashed $bname -> ${_display_h:0:8}...${_display_h: -8} (truncated)"
+          count_files_hashed=$((count_files_hashed + 1))
+          # Extract file size from path_to_meta (field 5: fname\tinode\tdev\tmtime\tsize)
+          local _hashed_meta_line
+          if [ "${USE_ASSOC:-0}" -eq 1 ]; then
+            _hashed_meta_line="${path_to_meta[$rpath]:-}"
+          else
+            _hashed_meta_line="$(map_get "$MAP_path_to_meta" "$rpath")"
+          fi
+          local _hashed_size
+          _hashed_size=$(printf '%s' "$_hashed_meta_line" | cut -f5)
+          bytes_hashed=$((bytes_hashed + ${_hashed_size:-0}))
         else
           record_error "Hash failed for $rpath"
         fi
