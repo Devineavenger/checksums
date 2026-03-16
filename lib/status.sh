@@ -20,7 +20,7 @@
 #  - run_status(): top-level orchestrator for status mode.
 #  - Uses shared color palette from color.sh (_C_GREEN, _C_RED, _C_YELLOW, etc.).
 
-# === Per-directory result accumulators (Bash 3.2 safe — no namerefs) ===
+# === Per-directory result accumulators ===
 
 _STATUS_DIR_NEW=()
 _STATUS_DIR_DEL=()
@@ -102,8 +102,8 @@ status_single_directory() {
 
     local classified=0
 
-    # Fast path: meta with stat comparison (Bash 4+ assoc arrays)
-    if [ "$have_meta" -eq 1 ] && [ "${USE_ASSOC:-0}" -eq 1 ]; then
+    # Meta with stat comparison via associative arrays
+    if [ "$have_meta" -eq 1 ]; then
       if [ -n "${meta_mtime[$fname]+x}" ]; then
         local _sl _si _sd _sm _ss
         _sl="$(stat_all_fields "$d/$fname" 2>/dev/null)" || _sl=""
@@ -130,40 +130,6 @@ status_single_directory() {
           classified=1
         fi
       fi
-    fi
-
-    # Fallback: meta with text parsing (Bash 3.2 or assoc miss)
-    if [ "$classified" -eq 0 ] && [ "$have_meta" -eq 1 ] && [ "${USE_ASSOC:-0}" -eq 0 ]; then
-      local _found=0
-      while IFS=$'\t' read -r _path _inode _dev _mtime _size _hash; do
-        [ -z "$_path" ] && continue
-        case "$_path" in \#meta|\#sig|\#run) continue ;; esac
-        [ "$_path" != "$fname" ] && continue
-        _found=1
-        local _sl _si _sd _sm _ss
-        _sl="$(stat_all_fields "$d/$fname" 2>/dev/null)" || _sl=""
-        IFS=$'\t' read -r _si _sd _sm _ss <<< "$_sl"
-        if [ "${_sm:-0}" = "$_mtime" ] \
-           && [ "${_ss:-0}" = "$_size" ] \
-           && [ "${_si:-0}:${_sd:-0}" = "${_inode:-0}:${_dev:-0}" ]; then
-          _STATUS_DIR_UNCH+=("$fname")
-        else
-          if [ "${NO_REUSE:-0}" -eq 1 ]; then
-            local rehash
-            if ! rehash=$(file_hash "$d/$fname" "$PER_FILE_ALGO"); then
-              _STATUS_DIR_MOD+=("$fname")
-            elif [ "$rehash" = "$_hash" ]; then
-              _STATUS_DIR_UNCH+=("$fname")
-            else
-              _STATUS_DIR_MOD+=("$fname")
-            fi
-          else
-            _STATUS_DIR_MOD+=("$fname")
-          fi
-        fi
-        break
-      done < "$metaf"
-      [ "$_found" -eq 1 ] && classified=1
     fi
 
     # No meta: use .md5 hash comparison with -R, otherwise assume unchanged
@@ -196,9 +162,7 @@ status_single_directory() {
   done
 
   # Clear STAT_CACHE to prevent unbounded growth
-  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    STAT_CACHE=()
-  fi
+  STAT_CACHE=()
 
   # Return: 0 = clean, 1 = changes
   [ "${#_STATUS_DIR_NEW[@]}" -eq 0 ] \

@@ -508,6 +508,17 @@ Bash tab\-completion script (installed by
 Zsh tab\-completion script (installed by
 .BR "make install" ).
 .\"
+.SH REQUIREMENTS
+.B checksums
+requires
+.B Bash 4.0
+or later.
+Stock macOS ships Bash 3.2; install a newer version via:
+.PP
+.EX
+brew install bash
+.EE
+.\"
 .SH ENVIRONMENT
 .TP
 .B NO_COLOR

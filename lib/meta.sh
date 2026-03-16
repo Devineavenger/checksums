@@ -47,7 +47,7 @@ _meta_canonical_from_file() {
     | LC_ALL=C sort >"$canon"
 }
 
-# Produce canonical content from in-memory data lines (exclude entries) we’re about to write.
+# Produce canonical content from in-memory data lines (exclude entries) we're about to write.
 _meta_canonical_from_lines() {
   local canon="$1"; shift
   # Normalize: trim trailing spaces and sort using awk, not Bash parameter expansion
@@ -68,27 +68,19 @@ read_meta() {
     record_error "Meta file unreadable (permission denied): $meta"
     return 0
   fi
-  # Bash 3.x (macOS) does not support associative arrays. Guard the declaration
-  # and let downstream modules use their text-map fallbacks when arrays aren’t available.
-  if declare -p -A >/dev/null 2>&1; then
-    # Bash ≥ 4: use associative arrays for fast lookups.
-    declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode
-    meta_hash_by_path=(); meta_mtime=(); meta_size=(); meta_inode_dev=(); meta_path_by_inode=()
-    while IFS=$'\t' read -r path inode dev mtime size hash; do
-      [ -z "$path" ] && continue
-      case "$path" in \#meta|\#sig|\#run) continue ;; # skip headers/signature and audit lines
-      esac
-      meta_hash_by_path["$path"]="$hash"
-      meta_mtime["$path"]="$mtime"
-      meta_size["$path"]="$size"
-      meta_inode_dev["$path"]="${inode}:${dev}"
-      meta_path_by_inode["${inode}:${dev}"]="$path"
-    done < "$meta"
-  else
-    # Bash < 4: do not populate arrays here. process.sh and planner.sh already
-    # implement non-assoc text-map fallbacks by re-reading the meta file as needed.
-    :
-  fi
+  # Populate associative arrays for fast lookups by downstream modules.
+  declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode
+  meta_hash_by_path=(); meta_mtime=(); meta_size=(); meta_inode_dev=(); meta_path_by_inode=()
+  while IFS=$'\t' read -r path inode dev mtime size hash; do
+    [ -z "$path" ] && continue
+    case "$path" in \#meta|\#sig|\#run) continue ;; # skip headers/signature and audit lines
+    esac
+    meta_hash_by_path["$path"]="$hash"
+    meta_mtime["$path"]="$mtime"
+    meta_size["$path"]="$size"
+    meta_inode_dev["$path"]="${inode}:${dev}"
+    meta_path_by_inode["${inode}:${dev}"]="$path"
+  done < "$meta"
 }
 
 verify_meta_sig() {

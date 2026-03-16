@@ -227,19 +227,10 @@ declare -g bytes_reused=0         # Total bytes of reused files
 # === Run ID (audit trail) ===
 RUN_ID=$(uuidgen 2>/dev/null || printf '%s-%s-%s' "$(date +%s)" "$$" "$RANDOM")
 
-# === Associative arrays for meta (declare if supported) ===
-# Avoid scalar assignments that would convert arrays; initialize as empty maps.
-if declare -p -A >/dev/null 2>&1; then
-  # shellcheck disable=SC2154,SC2034
-  declare -gA meta_hash_by_path meta_mtime meta_size meta_inode_dev meta_path_by_inode 2>/dev/null || true
-  declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
-  # scheduled-first-run lookup (assoc)
-  declare -gA first_run_overwrite_set 2>/dev/null || true
-  declare -gA first_run_overwrite_set=()
-else
-  # fallback text-map file (created lazily)
-  MAP_first_run_overwrite=""
-fi
+# === Associative arrays for meta ===
+# shellcheck disable=SC2154,SC2034
+declare -gA meta_hash_by_path=() meta_mtime=() meta_size=() meta_inode_dev=() meta_path_by_inode=()
+declare -gA first_run_overwrite_set=()
 
 # Ensure first_run_overwrite array exists for first_run.sh usage
 first_run_overwrite=()

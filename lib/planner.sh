@@ -236,37 +236,20 @@ _plan_one_directory() {
         vr=$(emit_md5_file_details "$d" "$sumf"; printf '%s' "$?")
         emit_md5_detail "$d" "$vr"
       fi
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        # shellcheck disable=SC2154  # meta_mtime/meta_size/meta_inode_dev defined in init.sh and populated by read_meta
-        if [ "${#meta_mtime[@]}" -gt 0 ]; then
-          for p in "${!meta_mtime[@]}"; do
-            if [ ! -e "$d/$p" ]; then changed=1; reason="meta-missing-path"; break; fi
-            local _sl
-            _sl="$(stat_all_fields "$d/$p" 2>/dev/null)" || _sl=""
-            local _si _sd _sm _ss
-            IFS=$'\t' read -r _si _sd _sm _ss <<< "$_sl"
-            if [ "${_sm:-0}" != "${meta_mtime[$p]:-}" ] \
-               || [ "${_ss:-0}" != "${meta_size[$p]:-}" ] \
-               || [ "${_si:-0}:${_sd:-0}" != "${meta_inode_dev[$p]:-}" ]; then
-              changed=1; reason="meta-stat-changed"; break
-            fi
-          done
-        fi
-      else
-        while IFS=$'\t' read -r path _inode _dev mtime size _hash; do
-          [ -z "$path" ] && continue
-          case "$path" in \#meta|\#sig|\#run) continue ;; esac
-          if [ ! -e "$d/$path" ]; then changed=1; reason="meta-missing-path"; break; fi
+      # shellcheck disable=SC2154  # meta_mtime/meta_size/meta_inode_dev defined in init.sh and populated by read_meta
+      if [ "${#meta_mtime[@]}" -gt 0 ]; then
+        for p in "${!meta_mtime[@]}"; do
+          if [ ! -e "$d/$p" ]; then changed=1; reason="meta-missing-path"; break; fi
           local _sl
-          _sl="$(stat_all_fields "$d/$path" 2>/dev/null)" || _sl=""
+          _sl="$(stat_all_fields "$d/$p" 2>/dev/null)" || _sl=""
           local _si _sd _sm _ss
           IFS=$'\t' read -r _si _sd _sm _ss <<< "$_sl"
-          if [ "${_sm:-0}" != "$mtime" ] \
-             || [ "${_ss:-0}" != "$size" ] \
-             || [ "${_si:-0}:${_sd:-0}" != "${_inode:-0}:${_dev:-0}" ]; then
+          if [ "${_sm:-0}" != "${meta_mtime[$p]:-}" ] \
+             || [ "${_ss:-0}" != "${meta_size[$p]:-}" ] \
+             || [ "${_si:-0}:${_sd:-0}" != "${meta_inode_dev[$p]:-}" ]; then
             changed=1; reason="meta-stat-changed"; break
           fi
-        done < "$metaf"
+        done
       fi
 
       if [ "$changed" -eq 0 ]; then

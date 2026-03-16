@@ -235,6 +235,9 @@ ${B}Common Usage Patterns:${R}
      * Exit 0 if all verified, exit 1 if any failure
      * Use -q for quiet mode (failures only, like sha256sum -c --quiet)
 
+${B}Requirements:${R}
+  Bash 4.0 or later. On macOS, install via: brew install bash
+
 ${B}Exit Codes:${R}
   0   Success (also: user abort, --help, --version, --assume-no)
   1   Error (validation failure, runtime error, missing tools); also: changes found in --status mode; check failures in --check mode

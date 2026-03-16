@@ -36,17 +36,14 @@
 #  - The function returns early without side effects when SKIP_EMPTY indicates the directory
 #    should be skipped; this prevents creating any .meta/.md5/.log files unnecessarily.
 #  - We expose LOG_FILEPATH as the current logfile so logging helpers write to the correct per-dir log.
-#  - Reuse heuristics use inode-aware caching to handle renames and hardlinks, and fall back to
-#    path-based reuse when associative arrays are not available.
+#  - Reuse heuristics use inode-aware caching to handle renames and hardlinks.
 #  - All temporary artifacts are used in the local scope and cleaned up where appropriate.
 #  - Hashing is batched adaptively (based on file size), and parallel workers write results
 #    to per-batch files to avoid contention and make aggregation deterministic.
 #
-# Backwards-compatibility:
+# Notes:
 #  - Behavior mirrors the previous monolithic checksums.sh while adding safety guards and
 #    improved diagnostics to make race conditions and log mismatches easier to diagnose.
-#  - Bash < 4 support: when associative arrays are not available, text-based "maps" are used
-#    via helper functions (map_get/map_set) and temporary files, preserving functionality.
 
 
 # Stub progress callbacks for test harnesses that source process.sh without orchestrator.sh.
@@ -59,35 +56,16 @@ if ! declare -F _progress_update >/dev/null 2>&1; then
 fi
 
 # Ensure associative meta arrays exist (no-op if already declared in init.sh).
-# Works in shells that support -A and is safe if arrays are already declared.
 # These hold previous-run metadata so we can reuse hashes based on inode/dev pairs or paths.
-if declare -p -A >/dev/null 2>&1; then
-  declare -gA meta_inode_dev meta_size meta_hash_by_path 2>/dev/null || true
-  # initialize to empty maps only if not already associative arrays
-  : "${meta_inode_dev:=}"  # no-op; keeps ShellCheck quiet about undefined vars
-fi
+declare -gA meta_inode_dev meta_size meta_hash_by_path 2>/dev/null || true
 
 # Precompute batch thresholds once per run to avoid repeated numfmt conversions.
-# Ensure global associative type even inside functions.
 # These thresholds let us choose batch sizes (how many files a worker processes) by file size,
 # balancing throughput and resource use.
-if declare -p -A >/dev/null 2>&1; then
-  # re-declare globally to avoid local shadowing issues under set -u
-  declare -gA BATCH_THRESHOLDS 2>/dev/null || true
-  # If not yet declared as associative, reset and declare
-  if ! declare -p BATCH_THRESHOLDS 2>/dev/null | grep -q 'declare \-A'; then
-    unset BATCH_THRESHOLDS
-    declare -gA BATCH_THRESHOLDS
-  fi
-else
-  # Fallback (Bash < 4): keep a scalar to avoid set -u complaints; not used on Bash 5.x
-  BATCH_THRESHOLDS=()
-fi
-# Fallback list is referenced below; declare defensively even on Bash 5.x
-declare -g THRESHOLDS_LIST=""
+declare -gA BATCH_THRESHOLDS 2>/dev/null || true
 
 # Parse BATCH_RULES (e.g. "0-10M:20,10M-40M:20,>40M:5") into byte ranges and counts.
-# Called once (orchestrator) to populate BATCH_THRESHOLDS or THRESHOLDS_LIST.
+# Called once (orchestrator) to populate BATCH_THRESHOLDS.
 # Rules are forgiving to whitespace and validated to avoid malformed entries.
 init_batch_thresholds() {
   local rules="${BATCH_RULES:-0-10M:20,10M-40M:20,>40M:5}"
@@ -115,11 +93,7 @@ init_batch_thresholds() {
       case "$low_bytes"  in ''|*[!0-9]*) dbg "init_batch_thresholds: low not numeric for '$rule'"; continue ;; esac
       case "$high_bytes" in ''|*[!0-9]*) dbg "init_batch_thresholds: high not numeric for '$rule'"; continue ;; esac
 
-      if declare -p -A >/dev/null 2>&1; then
-        BATCH_THRESHOLDS["$low_bytes-$high_bytes"]="$count"
-      else
-        THRESHOLDS_LIST+="$low_bytes $high_bytes $count"$'\n'
-      fi
+      BATCH_THRESHOLDS["$low_bytes-$high_bytes"]="$count"
 
     elif [[ "${rule:0:1}" == ">" && "$rule" == *:* ]]; then
       # Open-ended: >HIGH:COUNT
@@ -138,11 +112,7 @@ init_batch_thresholds() {
       # Store open-ended as ">$high_bytes" so the classify_batch_size lookup's
       # ">"* case branch can match it. The previous format "$high_bytes-" matched
       # the "*-*" branch instead, where ${key##*-} is empty → rule was skipped.
-      if declare -p -A >/dev/null 2>&1; then
-        BATCH_THRESHOLDS[">$high_bytes"]="$count"
-      else
-        THRESHOLDS_LIST+="> $high_bytes $count"$'\n'
-      fi
+      BATCH_THRESHOLDS[">$high_bytes"]="$count"
 
     else
       dbg "init_batch_thresholds: unrecognized rule format: '$rule'"
@@ -151,15 +121,10 @@ init_batch_thresholds() {
 
   # Optional debug print
   if [ "${DEBUG:-0}" -gt 0 ]; then
-    if declare -p -A >/dev/null 2>&1; then
-      dbg "BATCH_THRESHOLDS contents (sorted):"
-      for k in $(printf '%s\n' "${!BATCH_THRESHOLDS[@]}" | sort -V); do
-        dbg "  $k -> ${BATCH_THRESHOLDS[$k]}"
-      done
-    else
-      dbg "THRESHOLDS_LIST:"
-      dbg "$(printf '%s' "$THRESHOLDS_LIST")"
-    fi
+    dbg "BATCH_THRESHOLDS contents (sorted):"
+    for k in $(printf '%s\n' "${!BATCH_THRESHOLDS[@]}" | sort -V); do
+      dbg "  $k -> ${BATCH_THRESHOLDS[$k]}"
+    done
   fi
 }
 
@@ -175,45 +140,25 @@ classify_batch_size() {
   size="$(printf '%s' "$size_raw" | sed -E 's/[^0-9]//g')"
   [ -z "$size" ] && size=0
 
-  if declare -p -A >/dev/null 2>&1; then
-    for key in "${!BATCH_THRESHOLDS[@]}"; do
-      case "$key" in
-        *-*)
-          local low="${key%%-*}" high="${key##*-}"
-          # skip malformed thresholds
-          [[ -z "$low" || -z "$high" || "$low" =~ [^0-9] || "$high" =~ [^0-9] ]] && continue
-          if (( size >= low )) && (( size < high )); then
-            echo "${BATCH_THRESHOLDS[$key]}"; return
-          fi
-          ;;
-        ">"*)
-          local high="${key#*>}"
-          [[ -z "$high" || "$high" =~ [^0-9] ]] && continue
-          if (( size >= high )); then
-            echo "${BATCH_THRESHOLDS[$key]}"; return
-          fi
-          ;;
-      esac
-    done
-  else
-    # fallback: parse THRESHOLDS_LIST safely
-    local line low high count
-    while IFS= read -r line; do
-      [ -z "$line" ] && continue
-      case "$line" in
-        "> "*)
-          read -r _ high count <<<"$line"
-          [[ -z "$high" || -z "$count" || "$high" =~ [^0-9] || "$count" =~ [^0-9] ]] && continue
-          if (( size >= high )); then echo "$count"; return; fi
-          ;;
-        *)
-          read -r low high count <<<"$line"
-          [[ -z "$low" || -z "$high" || -z "$count" || "$low" =~ [^0-9] || "$high" =~ [^0-9] || "$count" =~ [^0-9] ]] && continue
-          if (( size >= low )) && (( size < high )); then echo "$count"; return; fi
-          ;;
-      esac
-    done <<<"$THRESHOLDS_LIST"
-  fi
+  for key in "${!BATCH_THRESHOLDS[@]}"; do
+    case "$key" in
+      *-*)
+        local low="${key%%-*}" high="${key##*-}"
+        # skip malformed thresholds
+        [[ -z "$low" || -z "$high" || "$low" =~ [^0-9] || "$high" =~ [^0-9] ]] && continue
+        if (( size >= low )) && (( size < high )); then
+          echo "${BATCH_THRESHOLDS[$key]}"; return
+        fi
+        ;;
+      ">"*)
+        local high="${key#*>}"
+        [[ -z "$high" || "$high" =~ [^0-9] ]] && continue
+        if (( size >= high )); then
+          echo "${BATCH_THRESHOLDS[$key]}"; return
+        fi
+        ;;
+    esac
+  done
   echo 1
 }
 
@@ -259,13 +204,7 @@ process_single_directory() {
   fi
 
   local is_scheduled=0
-  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    [ -n "${first_run_overwrite_set[$d]:-}" ] && is_scheduled=1
-  else
-    if [ -n "${MAP_first_run_overwrite:-}" ] && [ -f "$MAP_first_run_overwrite" ]; then
-      if map_get "$MAP_first_run_overwrite" "$d" >/dev/null 2>&1; then is_scheduled=1; fi
-    fi
-  fi
+  [ -n "${first_run_overwrite_set[$d]:-}" ] && is_scheduled=1
 
   # Early decision: if SKIP_EMPTY applies and directory is not scheduled, use has_local_files
   # to avoid doing unnecessary work. This guard must not create side-effects.
@@ -384,39 +323,17 @@ process_single_directory() {
   # Build old manifest maps and inode-based cache (for hardlinks).
   declare -A old_path_by_inode old_mtime old_size old_hash
   declare -A inode_hash_cache
-  local MAP_old_path_by_inode MAP_old_mtime MAP_old_size MAP_old_hash MAP_inode_hash_cache
-  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
-    MAP_old_path_by_inode="$(mktemp)"; : > "$MAP_old_path_by_inode"
-    MAP_old_mtime="$(mktemp)"; : > "$MAP_old_mtime"
-    MAP_old_size="$(mktemp)"; : > "$MAP_old_size"
-    MAP_old_hash="$(mktemp)"; : > "$MAP_old_hash"
-    MAP_inode_hash_cache="$(mktemp)"; : > "$MAP_inode_hash_cache"
-  fi
 
-  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
-      for p in "${!meta_inode_dev[@]}"; do
-        if [ -n "${meta_inode_dev[$p]:-}" ]; then
-          old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
-          old_mtime["$p"]="${meta_mtime[$p]:-}"
-          old_size["$p"]="${meta_size[$p]:-}"
-          old_hash["$p"]="${meta_hash_by_path[$p]:-}"
-          inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]:-}"
-        fi
-      done
-    fi
-  else
-    if [ -f "$metaf" ]; then
-      while IFS=$'\t' read -r path inode dev mtime size hash; do
-        [ -z "$path" ] && continue
-        case "$path" in \#meta|\#sig|\#run) continue ;; esac
-        map_set "$MAP_old_path_by_inode" "${inode}:${dev}" "$path"
-        map_set "$MAP_old_mtime" "$path" "$mtime"
-        map_set "$MAP_old_size" "$path" "$size"
-        map_set "$MAP_old_hash" "$path" "$hash"
-        map_set "$MAP_inode_hash_cache" "${inode}:${dev}" "$hash"
-      done < "$metaf"
-    fi
+  if [ "${#meta_inode_dev[@]}" -gt 0 ]; then
+    for p in "${!meta_inode_dev[@]}"; do
+      if [ -n "${meta_inode_dev[$p]:-}" ]; then
+        old_path_by_inode["${meta_inode_dev[$p]}"]="$p"
+        old_mtime["$p"]="${meta_mtime[$p]:-}"
+        old_size["$p"]="${meta_size[$p]:-}"
+        old_hash["$p"]="${meta_hash_by_path[$p]:-}"
+        inode_hash_cache["${meta_inode_dev[$p]}"]="${meta_hash_by_path[$p]:-}"
+      fi
+    done
   fi
 
   # Prepare hashing work
@@ -432,12 +349,6 @@ process_single_directory() {
   }
 
   declare -A path_to_hash path_to_inode path_to_meta
-  local MAP_path_to_hash MAP_path_to_inode MAP_path_to_meta
-  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
-    MAP_path_to_hash="$(mktemp)"; : > "$MAP_path_to_hash"
-    MAP_path_to_inode="$(mktemp)"; : > "$MAP_path_to_inode"
-    MAP_path_to_meta="$(mktemp)"; : > "$MAP_path_to_meta"
-  fi
 
   local -a batch_files=()
   local batch_id=0
@@ -470,24 +381,10 @@ process_single_directory() {
     if [ "${NO_REUSE:-0}" -eq 1 ]; then
       reuse=0
     else
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        if [ -n "${inode_hash_cache[$inode_dev]:-}" ] && [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
-          local oldp="${old_path_by_inode[$inode_dev]}"
-          if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
-            h="${inode_hash_cache[$inode_dev]}"
-            if [ -n "$h" ]; then
-              reuse=1
-              vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
-            fi
-          fi
-        fi
-      else
-        local oldp; oldp="$(map_get "$MAP_old_path_by_inode" "$inode_dev")"
-        local cached; cached="$(map_get "$MAP_inode_hash_cache" "$inode_dev")"
-        local om; om="$(map_get "$MAP_old_mtime" "$oldp")"
-        local os; os="$(map_get "$MAP_old_size" "$oldp")"
-        if [ -n "$cached" ] && [ -n "$oldp" ] && [ "$om" = "$mtime" ] && [ "$os" = "$size" ]; then
-          h="$cached"
+      if [ -n "${inode_hash_cache[$inode_dev]:-}" ] && [ -n "${old_path_by_inode[$inode_dev]:-}" ]; then
+        local oldp="${old_path_by_inode[$inode_dev]}"
+        if [ "${old_mtime[$oldp]}" = "$mtime" ] && [ "${old_size[$oldp]}" = "$size" ]; then
+          h="${inode_hash_cache[$inode_dev]}"
           if [ -n "$h" ]; then
             reuse=1
             vlog "Reusing hash via inode for $fname (inode=$inode_dev from $oldp)"
@@ -500,45 +397,21 @@ process_single_directory() {
     [ -z "$no_reuse_val" ] && no_reuse_val=0
     if (( ${reuse:-0} == 0 )) && (( ${no_reuse_val:-0} == 0 )); then
       dbg "DEBUG: considering reuse: reuse='${reuse:-0}' NO_REUSE='${no_reuse_val}' file='$fname'"
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
-          h="${meta_hash_by_path[$fname]:-}"
-          if [ -n "$h" ]; then
-            reuse=1
-            inode_hash_cache["$inode_dev"]="$h"
-            vlog "Reusing hash for unchanged file $fname"
-          fi
-        fi
-      else
-        local mm ms mh
-        mm="$(map_get "$MAP_old_mtime" "$fname")"
-        ms="$(map_get "$MAP_old_size" "$fname")"
-        mh="$(map_get "$MAP_old_hash" "$fname")"
-        if [ -n "$mm" ] && [ "$mm" = "$mtime" ] && [ -n "$ms" ] && [ "$ms" = "$size" ] && [ -n "$mh" ]; then
-          h="$mh"
-          if [ -n "$h" ]; then
-            reuse=1
-            map_set "$MAP_inode_hash_cache" "$inode_dev" "$h"
-            vlog "Reusing hash for unchanged file $fname"
-          fi
+      if [ -n "${meta_mtime[$fname]:-}" ] && [ "${meta_mtime[$fname]}" = "$mtime" ] && [ "${meta_size[$fname]}" = "$size" ]; then
+        h="${meta_hash_by_path[$fname]:-}"
+        if [ -n "$h" ]; then
+          reuse=1
+          inode_hash_cache["$inode_dev"]="$h"
+          vlog "Reusing hash for unchanged file $fname"
         fi
       fi
     fi
 
-    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-      path_to_inode["$fpath"]="$inode_dev"
-      path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
-    else
-      map_set "$MAP_path_to_inode" "$fpath" "$inode_dev"
-      map_set "$MAP_path_to_meta" "$fpath" "${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
-    fi
+    path_to_inode["$fpath"]="$inode_dev"
+    path_to_meta["$fpath"]="${fname}"$'\t'"${inode}"$'\t'"${dev}"$'\t'"${mtime}"$'\t'"${size}"
 
     if (( reuse == 1 )); then
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        path_to_hash["$fpath"]="$h"
-      else
-        map_set "$MAP_path_to_hash" "$fpath" "$h"
-      fi
+      path_to_hash["$fpath"]="$h"
       count_files_reused=$((count_files_reused + 1))
       bytes_reused=$((bytes_reused + size))
       _progress_file_done
@@ -548,11 +421,7 @@ process_single_directory() {
 
     if (( DRY_RUN == 1 )); then
       vlog "${_C_YELLOW}DRYRUN:${_C_RST} would hash $fpath with ${PER_FILE_ALGOS[*]}"
-      if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-        path_to_hash["$fpath"]=""
-      else
-        map_set "$MAP_path_to_hash" "$fpath" ""
-      fi
+      path_to_hash["$fpath"]=""
       _progress_file_done
       _progress_update
     else
@@ -617,21 +486,12 @@ process_single_directory() {
             continue
             ;;
         esac
-        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          path_to_hash["$rpath"]="${rhash_all:-}"
-          local id="${path_to_inode[$rpath]:-}"
-          # For inode cache, store primary (first) hash only
-          if [ -n "$id" ] && [ -n "${rhash_all:-}" ]; then
-            local _primary_h="${rhash_all%%$'\t'*}"
-            inode_hash_cache["$id"]="$_primary_h"
-          fi
-        else
-          map_set "$MAP_path_to_hash" "$rpath" "${rhash_all:-}"
-          local id; id="$(map_get "$MAP_path_to_inode" "$rpath")"
-          if [ -n "$id" ] && [ -n "${rhash_all:-}" ]; then
-            local _primary_h="${rhash_all%%$'\t'*}"
-            map_set "$MAP_inode_hash_cache" "$id" "$_primary_h"
-          fi
+        path_to_hash["$rpath"]="${rhash_all:-}"
+        local id="${path_to_inode[$rpath]:-}"
+        # For inode cache, store primary (first) hash only
+        if [ -n "$id" ] && [ -n "${rhash_all:-}" ]; then
+          local _primary_h="${rhash_all%%$'\t'*}"
+          inode_hash_cache["$id"]="$_primary_h"
         fi
         local bname; bname=$(basename "$rpath")
         local _display_h="${rhash_all%%$'\t'*}"
@@ -640,11 +500,7 @@ process_single_directory() {
           count_files_hashed=$((count_files_hashed + 1))
           # Extract file size from path_to_meta (field 5: fname\tinode\tdev\tmtime\tsize)
           local _hashed_meta_line
-          if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-            _hashed_meta_line="${path_to_meta[$rpath]:-}"
-          else
-            _hashed_meta_line="$(map_get "$MAP_path_to_meta" "$rpath")"
-          fi
+          _hashed_meta_line="${path_to_meta[$rpath]:-}"
           local _hashed_size
           _hashed_size=$(printf '%s' "$_hashed_meta_line" | cut -f5)
           bytes_hashed=$((bytes_hashed + ${_hashed_size:-0}))
@@ -665,90 +521,47 @@ process_single_directory() {
 
     # --- Collect hash results and build meta lines ---
     # path_to_hash stores: single-algo → hash; multi-algo → tab-separated hash1\thash2\t...
-    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-      for fpath in "${files[@]}"; do
-        local fname h_all
-        fname=${fpath##*/}
-        h_all="${path_to_hash[$fpath]:-}"
-        if [ -z "$h_all" ]; then
-          # Hash missing — retry once (multi-algo retries all algos)
-          if [ "$_multi_algo" -eq 1 ]; then
-            local _retry_hashes="" _retry_ok=1 _ra _rh
-            for _ra in "${PER_FILE_ALGOS[@]}"; do
-              if _rh=$(file_hash "$fpath" "$_ra"); then
-                _retry_hashes+="${_retry_hashes:+$'\t'}$_rh"
-              else
-                _retry_ok=0; break
-              fi
-            done
-            if [ "$_retry_ok" -eq 1 ]; then
-              h_all="$_retry_hashes"
+    for fpath in "${files[@]}"; do
+      local fname h_all
+      fname=${fpath##*/}
+      h_all="${path_to_hash[$fpath]:-}"
+      if [ -z "$h_all" ]; then
+        # Hash missing — retry once (multi-algo retries all algos)
+        if [ "$_multi_algo" -eq 1 ]; then
+          local _retry_hashes="" _retry_ok=1 _ra _rh
+          for _ra in "${PER_FILE_ALGOS[@]}"; do
+            if _rh=$(file_hash "$fpath" "$_ra"); then
+              _retry_hashes+="${_retry_hashes:+$'\t'}$_rh"
             else
-              record_error "Skipping unreadable file from manifest: $fpath"
-              count_read_errors=$((count_read_errors + 1))
-              continue
+              _retry_ok=0; break
             fi
+          done
+          if [ "$_retry_ok" -eq 1 ]; then
+            h_all="$_retry_hashes"
           else
-            if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
-              h_all="$(file_hash "$fpath" "$PER_FILE_ALGO")"
-            else
-              record_error "Skipping unreadable file from manifest: $fpath"
-              count_read_errors=$((count_read_errors + 1))
-              continue
-            fi
+            record_error "Skipping unreadable file from manifest: $fpath"
+            count_read_errors=$((count_read_errors + 1))
+            continue
+          fi
+        else
+          if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
+            h_all="$(file_hash "$fpath" "$PER_FILE_ALGO")"
+          else
+            record_error "Skipping unreadable file from manifest: $fpath"
+            count_read_errors=$((count_read_errors + 1))
+            continue
           fi
         fi
-        # Store validated result back (used by manifest writer below)
-        path_to_hash["$fpath"]="$h_all"
-        # Meta: use primary (first) hash only
-        local h_primary="${h_all%%$'\t'*}"
-        if [ "${MINIMAL:-0}" -eq 0 ]; then
-          local meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h_primary"
-          printf '%s\n' "$meta_line" >> "$tmp_meta"
-        fi
-      done
-    else
-      for fpath in "${files[@]}"; do
-        local fname h_all
-        fname=${fpath##*/}
-        h_all="$(map_get "$MAP_path_to_hash" "$fpath")"
-        if [ -z "$h_all" ]; then
-          if [ "$_multi_algo" -eq 1 ]; then
-            local _retry_hashes="" _retry_ok=1 _ra _rh
-            for _ra in "${PER_FILE_ALGOS[@]}"; do
-              if _rh=$(file_hash "$fpath" "$_ra"); then
-                _retry_hashes+="${_retry_hashes:+$'\t'}$_rh"
-              else
-                _retry_ok=0; break
-              fi
-            done
-            if [ "$_retry_ok" -eq 1 ]; then
-              h_all="$_retry_hashes"
-            else
-              record_error "Skipping unreadable file from manifest: $fpath"
-              count_read_errors=$((count_read_errors + 1))
-              continue
-            fi
-          else
-            if file_hash "$fpath" "$PER_FILE_ALGO" >/dev/null 2>&1; then
-              h_all="$(file_hash "$fpath" "$PER_FILE_ALGO")"
-            else
-              record_error "Skipping unreadable file from manifest: $fpath"
-              count_read_errors=$((count_read_errors + 1))
-              continue
-            fi
-          fi
-        fi
-        map_set "$MAP_path_to_hash" "$fpath" "$h_all"
-        local h_primary="${h_all%%$'\t'*}"
-        if [ "${MINIMAL:-0}" -eq 0 ]; then
-          local meta_line
-          meta_line="$(map_get "$MAP_path_to_meta" "$fpath")"$'\t'"$h_primary"
-          printf '%s\n' "$meta_line" >> "$tmp_meta"
-        fi
-      done
-      rm -f "$MAP_path_to_hash" "$MAP_path_to_inode" "$MAP_path_to_meta" 2>/dev/null || true
-    fi
+      fi
+      # Store validated result back (used by manifest writer below)
+      path_to_hash["$fpath"]="$h_all"
+      # Meta: use primary (first) hash only
+      local h_primary="${h_all%%$'\t'*}"
+      if [ "${MINIMAL:-0}" -eq 0 ]; then
+        local meta_line="${path_to_meta[$fpath]:-}"$'\t'"$h_primary"
+        printf '%s\n' "$meta_line" >> "$tmp_meta"
+      fi
+    done
 
     # --- Write manifest files: one per algorithm ---
     # For single-algo, writes one manifest (backward-compatible behavior).
@@ -763,11 +576,7 @@ process_single_directory() {
       for fpath in "${files[@]}"; do
         local fname h_all h
         fname=${fpath##*/}
-        if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-          h_all="${path_to_hash[$fpath]:-}"
-        else
-          h_all="$(map_get "$MAP_path_to_hash" "$fpath")"
-        fi
+        h_all="${path_to_hash[$fpath]:-}"
         [ -z "$h_all" ] && continue
         # Extract the Nth hash (tab-separated; field index = _algo_idx + 1)
         if [ "$_multi_algo" -eq 1 ]; then
@@ -849,14 +658,8 @@ process_single_directory() {
     fi
   fi
 
-  if [ "${USE_ASSOC:-0}" -eq 0 ]; then
-    rm -f "$MAP_old_path_by_inode" "$MAP_old_mtime" "$MAP_old_size" "$MAP_old_hash" "$MAP_inode_hash_cache" 2>/dev/null || true
-  fi
-
   # Clear stat cache to prevent unbounded memory growth across directories
-  if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-    STAT_CACHE=()
-  fi
+  STAT_CACHE=()
 
   log "Finished directory: $d"
   _proc_cleanup

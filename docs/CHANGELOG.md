@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Breaking
+* **BREAKING: require Bash 4.0+** — drop Bash 3.2 support; `check_bash_version()` now fatals at startup with install hints if Bash < 4 detected; removed text-file associative map fallback (`map_set`/`map_get`/`map_del` from `compat.sh`), `USE_ASSOC` flag, all 15+ dual-path `if USE_ASSOC` conditionals across `process.sh`, `orchestrator.sh`, `planner.sh`, `status.sh`, `first_run.sh`, `meta.sh`, `init.sh`; removed `MAP_*` variable declarations, `mktemp`/`rm -f` cleanup for text maps, `THRESHOLDS_LIST` scalar fallback, `declare -p -A` guards, and `seen_list` string-based deduplication; associative arrays used unconditionally throughout (~200 lines removed); stock macOS users must install Bash 4+ via `brew install bash`; added REQUIREMENTS section to man page
+
+### CI/CD
+* ci: add macOS runner to CI matrix — `ci.yml` now runs on both `ubuntu-latest` and `macos-latest` with `fail-fast: false`; macOS job installs Bash 5.x, GNU coreutils, bats-core, shellcheck, jq, and parallel via Homebrew; `GITHUB_PATH` updated to prefer Homebrew binaries over BSD system tools; PR changelog comment restricted to Linux job to avoid duplicates; validates cross-platform tool detection (BSD stat, md5 -r, shasum fallbacks in `tools.sh` and `stat.sh`)
+
 ## v5.4.0 - 2026-03-16
 
 ### Features

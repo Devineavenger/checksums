@@ -138,7 +138,7 @@ _verify_md5_parallel() {
   [ -f "$sumf" ] || return 2
 
   local processed_count=0
-  # Indexed arrays for Bash 3 compatibility (no assoc needed)
+  # Indexed arrays for parallel result collection
   local -a to_hash_paths=()
   local -a to_hash_expected=()
 
@@ -471,7 +471,7 @@ _check_verify_parallel() {
     _par_wait_all
 
     # Phase 3: Collect results into indexed lookup arrays (path -> hash).
-    # Parallel indexed arrays for Bash 3.2 compatibility (no assoc arrays needed).
+    # Parallel indexed arrays for result collection.
     local -a result_paths=()
     local -a result_hashes=()
     local rpath rhash

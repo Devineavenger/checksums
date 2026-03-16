@@ -11,68 +11,19 @@
 # compat.sh
 #
 # Shell compatibility helpers.
-# v2.4 adds detection of Bash version and fallback map functions for Bash < 4.
-# Associative arrays are used when available; otherwise, we emulate maps with text files.
-# This preserves behavior while ensuring portability to older macOS (Bash 3.2).
+#
+# Responsibilities:
+# - Enforce Bash 4.0+ at startup (required for associative arrays).
+# - Provide a clear error message and install hint on older Bash (e.g. macOS stock 3.2).
 
-# shellcheck disable=SC2034
-USE_ASSOC=1   # 1 = use associative arrays, 0 = fallback text maps
-
+# check_bash_version — Verify Bash >= 4.0 (required for associative arrays).
+# Called once at startup from each entry point (run_checksums, run_status, run_check_mode).
+# Fatals with a clear message and install hints if the version is too old.
 check_bash_version() {
   local major=${BASH_VERSINFO[0]:-0}
   if [ "$major" -lt 4 ]; then
-    USE_ASSOC=0
-    log "Bash < 4 detected (version $major), using POSIX text-map fallback"
-  else
-    USE_ASSOC=1
-  fi
-}
-
-# Fallback map functions (text-file based)
-# Each map is stored in a temp file with lines "key:value"
-# For performance, these are only used when USE_ASSOC=0.
-
-map_set() {
-  local mapfile="$1" key="$2" val="$3"
-  # Protect map updates with file lock when available to avoid lost updates.
-  if [ "${TOOL_flock:-0}" -eq 1 ]; then
-    # shellcheck disable=SC2016  # $1/$2/$3 are for the child sh -c, not this shell
-    with_lock "$mapfile.lock" sh -c '
-      set -e
-      mapfile="$1"; key="$2"; val="$3"
-      grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
-      mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
-      printf "%s:%s\n" "$key" "$val" >> "$mapfile"
-    ' _ "$mapfile" "$key" "$val"
-  else
-    grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
-    mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
-    printf "%s:%s\n" "$key" "$val" >> "$mapfile"
-  fi
-}
-
-map_get() {
-  local mapfile="$1" key="$2"
-  if [ "${TOOL_flock:-0}" -eq 1 ]; then
-    # Use lock for a consistent snapshot and print only once
-    # shellcheck disable=SC2016
-    with_lock "$mapfile.lock" sh -c 'grep -F "^$1:" "$0" 2>/dev/null | cut -d: -f2-' "$mapfile" "$key"
-  else
-    grep -F "^$key:" "$mapfile" 2>/dev/null | cut -d: -f2-
-  fi
-}
-
-map_del() {
-  local mapfile="$1" key="$2"
-  if [ "${TOOL_flock:-0}" -eq 1 ]; then
-    # shellcheck disable=SC2016  # $1/$2 are for the child sh -c, not this shell
-    with_lock "$mapfile.lock" sh -c '
-      mapfile="$1"; key="$2"
-      grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
-      mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
-    ' _ "$mapfile" "$key"
-  else
-    grep -vF "^$key:" "$mapfile" 2>/dev/null > "$mapfile.tmp" || true
-    mv -f "$mapfile.tmp" "$mapfile" 2>/dev/null || true
+    printf 'ERROR: checksums requires Bash 4.0 or later (found %s).\n' "${BASH_VERSION:-unknown}" >&2
+    printf 'On macOS, install a newer Bash: brew install bash\n' >&2
+    exit 1
   fi
 }

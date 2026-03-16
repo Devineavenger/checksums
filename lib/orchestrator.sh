@@ -417,35 +417,14 @@ run_checksums() {
   # First-run verification (post confirmation)
   # ----------------------------
   if [ "$FIRST_RUN" -eq 1 ]; then
-    # ensure MAP_first_run_overwrite exists for non-assoc fallback
-    if [ "${USE_ASSOC:-0}" -eq 0 ] && [ -z "${MAP_first_run_overwrite:-}" ]; then
-      MAP_first_run_overwrite="$(mktemp)"; : > "$MAP_first_run_overwrite"
-      _orch_register_tmp "$MAP_first_run_overwrite"
-    fi
     first_run_verify "$TARGET_DIR"
-    # when first_run_verify schedules entries it appended to first_run_overwrite and also
-    # set the lookup (first_run_overwrite_set or MAP_first_run_overwrite). If not, ensure any
-    # array entries are reflected into the lookup so later stages consult it.
-    # Build a fast lookup for scheduled first-run overwrites (assoc-array or text-map fallback)
-    if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-      # Ensure the associative array exists (safe to run repeatedly)
-      declare -gA first_run_overwrite_set 2>/dev/null || true
-      # Clear any previous contents without changing type
-      unset first_run_overwrite_set
-      declare -gA first_run_overwrite_set
-      for d in "${first_run_overwrite[@]:-}"; do
-        [ -n "$d" ] && first_run_overwrite_set["$d"]=1
-      done
-    else
-      # Ensure the map file exists and is empty if not already set
-      if [ -z "${MAP_first_run_overwrite:-}" ]; then
-        MAP_first_run_overwrite="$(mktemp)" && : > "$MAP_first_run_overwrite"
-        _orch_register_tmp "$MAP_first_run_overwrite"
-      fi
-      for d in "${first_run_overwrite[@]:-}"; do
-        map_set "$MAP_first_run_overwrite" "$d" "1"
-      done
-    fi
+    # Build a fast lookup for scheduled first-run overwrites
+    declare -gA first_run_overwrite_set 2>/dev/null || true
+    unset first_run_overwrite_set
+    declare -gA first_run_overwrite_set
+    for d in "${first_run_overwrite[@]:-}"; do
+      [ -n "$d" ] && first_run_overwrite_set["$d"]=1
+    done
   fi
   
   # track directories that have actually been processed during this run
@@ -473,13 +452,8 @@ run_checksums() {
         fi
         # After processing, remove from the scheduled lookup so SKIP_EMPTY resumes normal behavior
         if [ -n "$d" ]; then
-          if [ "${USE_ASSOC:-0}" -eq 1 ]; then
-            dbg "DEBUG: removing scheduled overwrite entry for d='$d'"
-            unset "first_run_overwrite_set[$d]"
-          else
-		    dbg "DEBUG: post-process cleanup for d='${d}' USE_ASSOC=${USE_ASSOC}"
-            map_del "$MAP_first_run_overwrite" "$d"
-          fi
+          dbg "DEBUG: removing scheduled overwrite entry for d='$d'"
+          unset "first_run_overwrite_set[$d]"
         fi
         count_overwritten=$((count_overwritten+1))
         count_processed=$((count_processed+1))

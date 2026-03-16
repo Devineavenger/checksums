@@ -298,54 +298,29 @@ first_run_verify() {
   local _fr_search_base="$base"
   [ -n "${STORE_DIR:-}" ] && [ -d "${STORE_DIR:-}" ] && _fr_search_base="$STORE_DIR"
 
-  # Bash 3.x lacks associative arrays; guard declare -A and provide a simple fallback.
-  if declare -p -A >/dev/null 2>&1; then
-    # Bash >= 4: use an assoc set to avoid duplicate targets.
-    declare -A _fr_seen=()
-    while IFS= read -r -d '' f; do
-      local d; d=$(dirname "$f")
-      # Map store path back to source directory when using STORE_DIR
-      if [ -n "${STORE_DIR:-}" ]; then
-        local _rel="${d#"${STORE_DIR%/}"}"
-        _rel="${_rel#/}"
-        if [ -z "$_rel" ]; then
-          d="${base%/}"
-        else
-          d="${base%/}/$_rel"
-        fi
+  # Use an associative array set to avoid duplicate targets.
+  declare -A _fr_seen=()
+  while IFS= read -r -d '' f; do
+    local d; d=$(dirname "$f")
+    # Map store path back to source directory when using STORE_DIR
+    if [ -n "${STORE_DIR:-}" ]; then
+      local _rel="${d#"${STORE_DIR%/}"}"
+      _rel="${_rel#/}"
+      if [ -z "$_rel" ]; then
+        d="${base%/}"
+      else
+        d="${base%/}/$_rel"
       fi
-      [ -d "$d" ] || continue
-      # Select if either .meta OR .log is missing
-      if [ ! -f "$(_sidecar_path "$d" "$META_FILENAME")" ] || [ ! -f "$(_sidecar_path "$d" "$LOG_FILENAME")" ]; then
-        if [ -z "${_fr_seen[$d]:-}" ]; then
-          targets+=("$d")
-          _fr_seen["$d"]=1
-        fi
+    fi
+    [ -d "$d" ] || continue
+    # Select if either .meta OR .log is missing
+    if [ ! -f "$(_sidecar_path "$d" "$META_FILENAME")" ] || [ ! -f "$(_sidecar_path "$d" "$LOG_FILENAME")" ]; then
+      if [ -z "${_fr_seen[$d]:-}" ]; then
+        targets+=("$d")
+        _fr_seen["$d"]=1
       fi
-    done < <(_find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
-  else
-    # Bash < 4: use a space-delimited "seen_list" to prevent duplicates.
-    local seen_list=""
-    while IFS= read -r -d '' f; do
-      local d; d=$(dirname "$f")
-      if [ -n "${STORE_DIR:-}" ]; then
-        local _rel="${d#"${STORE_DIR%/}"}"
-        _rel="${_rel#/}"
-        if [ -z "$_rel" ]; then
-          d="${base%/}"
-        else
-          d="${base%/}/$_rel"
-        fi
-      fi
-      [ -d "$d" ] || continue
-      if [ ! -f "$(_sidecar_path "$d" "$META_FILENAME")" ] || [ ! -f "$(_sidecar_path "$d" "$LOG_FILENAME")" ]; then
-        case " $seen_list " in
-          *" $d "*) ;;               # already present
-          *) targets+=("$d"); seen_list="$seen_list $d" ;;
-        esac
-      fi
-    done < <(_find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
-  fi
+    fi
+  done < <(_find "$_fr_search_base" -type f -name "$SUM_FILENAME" -print0 | LC_ALL=C sort -z)
 
   if [ "${#targets[@]}" -eq 0 ]; then
     log "First-run: no existing $SUM_FILENAME needing verification found."
