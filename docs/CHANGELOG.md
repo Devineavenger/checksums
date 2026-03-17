@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v6.2.1 - 2026-03-17
+
 ### Fixes
 * fix: menu size fields (`--max-size`/`--min-size`) now use retry-loop validation instead of silently discarding invalid input; first-run-choice field validates against `skip|overwrite|prompt`
 * fix: add `--log-format` alias to usage help text, man page (`docs/checksums.1.in`), and zsh completion — previously only accepted by `args.sh` and bash completion
