@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## v6.2.0 - 2026-03-17
+
 ### Features
 * feat: interactive menu mode (`--menu` / `--interactive`) — guided step-by-step CLI command builder for users who don't remember all 68 flags; 5 compact screens: (1) mode & target, (2) algorithm & filtering, (3) parallelism & storage, (4) run control, output & first-run, (5) review & execute; numbered choice menus, y/n toggles, and free-text input with validation; enforces mutual exclusivity by skipping incompatible options with dim-colored notes; only includes non-default flags in the generated command for clean output; review screen offers run-now (in-process dispatch) or print-and-exit (stdout); supports pre-set values from CLI (`--menu -a sha256 -p auto`) and config files (`--menu --config prod.conf`); back (`b`) and abort (`q`) navigation at every prompt; requires interactive TTY (fatals on piped/redirected stdin/stdout); new `lib/menu.sh` module (~500 LOC) with reusable UI primitives (`_menu_prompt`, `_menu_choice`, `_menu_yesno`, `_menu_freetext`, `_menu_do_yesno`), 5 validators, 5 screen functions, and command construction logic; all display output routed to stderr so `$()` subshells capture only return values; navigation uses distinct return codes (not globals) for correct back/abort propagation through nested subshells; `MENU_MODE` global in `init.sh`; `parse_args()` early-return skips TARGET_DIR validation when menu mode active; updated `usage.sh`, `checksums.1.in`, and both bash/zsh completions
 
