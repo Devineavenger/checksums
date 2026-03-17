@@ -149,6 +149,11 @@ MIN_SIZE_BYTES=0        # parsed byte value (0 = no limit)
 # When non-empty, main() dispatches to run_check_mode() instead of run_checksums().
 : "${CHECK_FILE:=}"
 
+# Interactive menu mode: guided CLI builder that walks through all options
+# step-by-step and constructs a valid command for copy/paste or immediate execution.
+# Set via --menu / --interactive. Requires an interactive terminal (TTY).
+: "${MENU_MODE:=0}"
+
 # Tracks whether the user explicitly passed -a / --per-file-algo on the CLI.
 # Used by check mode to decide whether to auto-detect algorithm from manifest extension.
 # 0 = PER_FILE_ALGO is the default; 1 = user explicitly set it.

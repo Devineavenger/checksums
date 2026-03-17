@@ -87,6 +87,15 @@ Show version and exit.
 Load configuration from
 .I FILE
 (overrides default config lookup).
+.TP
+.BR \-\-menu ", " \-\-interactive
+Launch an interactive guided command builder.
+Walks through all options step\-by\-step and displays the full command
+for copy/paste or immediate execution.
+Requires a TTY (not available in non\-interactive shells).
+Combine with other flags to pre\-set defaults
+(e.g.\&
+.BR \-\-menu " " \-a " sha256" ).
 .\"
 .SS File Naming Options
 .TP

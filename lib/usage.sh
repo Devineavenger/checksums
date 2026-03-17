@@ -40,6 +40,11 @@ ${B}General Options:${R}
   -h, --help         show this help
   --version          show version and exit
   --config FILE      load configuration from FILE (overrides default)
+  --menu, --interactive
+                     launch guided command builder (requires TTY)
+                     walks through all options step-by-step, then
+                     offers to run the command or print it for copy/paste
+                     combine with other flags to pre-set defaults (e.g. --menu -a sha256)
 
 ${B}File Naming Options:${R}
   -f NAME, --base-name NAME

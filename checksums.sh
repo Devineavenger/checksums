@@ -47,7 +47,9 @@ fi
 
 main() {
   parse_args "$@"
-  if [ -n "${CHECK_FILE:-}" ]; then
+  if [ "${MENU_MODE:-0}" -eq 1 ]; then
+    run_menu
+  elif [ -n "${CHECK_FILE:-}" ]; then
     run_check_mode
   elif [ "${STATUS_ONLY:-0}" -eq 1 ]; then
     run_status

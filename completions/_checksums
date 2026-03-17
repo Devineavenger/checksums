@@ -51,6 +51,8 @@ _checksums() {
     _arguments -s -S \
         '(- *)'{-h,--help}'[show help and exit]' \
         '(- *)--version[show version and exit]' \
+        '(- *)--menu[launch guided command builder]' \
+        '(- *)--interactive[launch guided command builder]' \
         '--config[load configuration from FILE]:config file:_files' \
         {-f,--base-name}'[base name for sidecar files]:name: ' \
         {-l,--log-base}'[log base name]:name: ' \

@@ -487,6 +487,10 @@ parse_args() {
             _require_optarg output
             LOG_FORMAT="${!OPTIND}"; OPTIND=$((OPTIND + 1))
             ;;
+          menu|interactive)
+            # --menu / --interactive : launch guided CLI builder
+            MENU_MODE=1
+            ;;
           *)
             # Unknown long option: show usage and exit non-zero
             usage
@@ -506,6 +510,12 @@ parse_args() {
   # Post-parsing: shift to remaining positionals
   # -------------------------
   shift $((OPTIND - 1))
+
+  # Menu mode handles its own target directory and validation; skip the rest
+  # of parse_args so --menu can be used without a positional DIRECTORY argument.
+  if [ "${MENU_MODE:-0}" -eq 1 ]; then
+    return 0
+  fi
 
   # -------------------------
   # Defaults and validation

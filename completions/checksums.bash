@@ -95,7 +95,7 @@ _checksums() {
     # Flag completion when the current word starts with a dash.
     if [[ "$cur" == -* ]]; then
         local flags="
-            -h --help --version --config
+            -h --help --version --config --menu --interactive
             -f --base-name -l --log-base -D --store-dir
             -a --per-file-algo -m --meta-sig -R --no-reuse
             -p --parallel -P --parallel-dirs -b --batch
