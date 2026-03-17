@@ -146,7 +146,7 @@ ${B}File Filtering Options:${R}
   --min-size SIZE    skip files smaller than SIZE (e.g., 1K, 100)
 
 ${B}Logging Options:${R}
-  -o FORMAT, --output FORMAT
+  -o FORMAT, --output FORMAT, --log-format FORMAT
                      log format: text (default), json, csv
 
 ${B}Config file:${R}

@@ -589,7 +589,6 @@ run_checksums() {
       DIR_PIDS_COUNT=${#DIR_PIDS[@]}
       count_processed=$((count_processed+1))
       processed_dirs+=("$d")
-      _PROG_DIR_DONE=$((_PROG_DIR_DONE+1))
       _PROG_CURRENT_DIR="$d"
       _proc_idx=$((_proc_idx+1))
     done
@@ -598,9 +597,12 @@ run_checksums() {
     _progress_update
     _sem_destroy
 
-    # Aggregate results from workers
+    # Aggregate results from workers; increment dir-done counter as each result
+    # is consumed so that progress reporting reflects completion, not dispatch.
     local i
     for (( i=0; i<_proc_idx; i++ )); do
+      _PROG_DIR_DONE=$((_PROG_DIR_DONE+1))
+      _progress_update
       local _proc_out="$_proc_results_dir/worker_${i}.result"
       [ -f "$_proc_out" ] || continue
       while IFS= read -r _line; do

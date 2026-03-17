@@ -89,7 +89,7 @@ _checksums() {
         '*'{-i,--include}'[include only files matching pattern (repeatable)]:pattern: ' \
         '--max-size[skip files larger than SIZE]:size: ' \
         '--min-size[skip files smaller than SIZE]:size: ' \
-        {-o,--output}'[log format]:format:(($format_values))' \
+        {-o,--output,--log-format}'[log format]:format:(($format_values))' \
         '*:target directory:_directories'
 }
 

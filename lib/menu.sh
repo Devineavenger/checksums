@@ -57,6 +57,11 @@ _m_log_format=""        # text | json | csv
 _m_verbose=""           # y or n
 _m_quiet=""             # y or n
 _m_progress=""          # y or n (inverted: n means --no-progress)
+_m_no_reuse=""          # y or n — force rehash all files
+_m_debug=""             # y or n — debug verbosity
+_m_md5_details=""       # y or n — MD5 verification details in planning
+_m_skip_empty=""        # y or n — skip empty directories
+_m_allow_root=""        # y or n — allow sidecar files in root directory
 _m_first_run=""         # y or n
 _m_first_run_choice=""  # skip | overwrite | prompt
 _m_first_run_keep=""    # y or n
@@ -299,6 +304,17 @@ _menu_validate_log_format() {
   esac
 }
 
+# _menu_validate_first_run_choice VALUE — validate first-run mismatch handling.
+_menu_validate_first_run_choice() {
+  case "$1" in
+    skip|overwrite|prompt) return 0 ;;
+    *)
+      printf '  %bInvalid choice: %s (use skip, overwrite, prompt)%b\n' "${_C_RED}" "$1" "${_C_RST}" >&2
+      return 1
+      ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # Screen Functions
 #
@@ -436,22 +452,15 @@ _menu_screen_algo_filter() {
       _menu_nav_freetext $?; return $?
     }
 
-    # Max size
-    _m_max_size=$(_menu_freetext "Max file size (e.g. 10M, 1G)" "${MAX_SIZE:-}") || {
+    # Max size (validator loops on bad input; empty = no limit)
+    _m_max_size=$(_menu_freetext "Max file size (e.g. 10M, 1G)" "${MAX_SIZE:-}" _menu_validate_size) || {
       _menu_nav_freetext $?; return $?
     }
-    # Validate only if non-empty
-    if [ -n "$_m_max_size" ] && ! _menu_validate_size "$_m_max_size"; then
-      _m_max_size=""
-    fi
 
-    # Min size
-    _m_min_size=$(_menu_freetext "Min file size (e.g. 1K, 100)" "${MIN_SIZE:-}") || {
+    # Min size (validator loops on bad input; empty = no limit)
+    _m_min_size=$(_menu_freetext "Min file size (e.g. 1K, 100)" "${MIN_SIZE:-}" _menu_validate_size) || {
       _menu_nav_freetext $?; return $?
     }
-    if [ -n "$_m_min_size" ] && ! _menu_validate_size "$_m_min_size"; then
-      _m_min_size=""
-    fi
 
     # Follow symlinks
     local sym_default="n"
@@ -515,6 +524,28 @@ _menu_screen_parallel_storage() {
     _menu_do_yesno "Minimal mode (hash-only, no .meta/.log)" "$min_default" _m_minimal || return $?
   fi
 
+  # --- Directory handling (not for check mode) ---
+  if [ "$_m_mode" = "check" ]; then
+    _m_skip_empty="y"
+    _m_allow_root="n"
+  else
+    printf '\n  %bDirectory handling:%b\n' "${_C_DIM}" "${_C_RST}" >&2
+
+    # Skip empty directories (default: on)
+    local se_default="y"
+    [ "${SKIP_EMPTY:-1}" -eq 0 ] && se_default="n"
+    _menu_do_yesno "Skip empty directories" "$se_default" _m_skip_empty || return $?
+
+    # Allow root sidefiles (default: no — root stays clean)
+    if [ "$_m_mode" = "generate" ] || [ "$_m_mode" = "verify" ]; then
+      local ar_default="n"
+      [ "${NO_ROOT_SIDEFILES:-1}" -eq 0 ] && ar_default="y"
+      _menu_do_yesno "Allow sidecar files in root directory" "$ar_default" _m_allow_root || return $?
+    else
+      _m_allow_root="n"
+    fi
+  fi
+
   return "$_MENU_NEXT"
 }
 
@@ -560,6 +591,15 @@ _menu_screen_control() {
     _menu_do_yesno "Force rebuild (ignore manifests)" "$fr_default" _m_force_rebuild || return $?
   fi
 
+  # --- No-reuse (generate mode only, after force-rebuild) ---
+  if [ "$_m_mode" = "generate" ]; then
+    local nr_default="n"
+    [ "${NO_REUSE:-0}" -eq 1 ] && nr_default="y"
+    _menu_do_yesno "Disable reuse (force rehash all files)" "$nr_default" _m_no_reuse || return $?
+  else
+    _m_no_reuse="n"
+  fi
+
   # --- Auto-confirm (default to yes since user is already interacting) ---
   _menu_do_yesno "Auto-confirm prompts (--assume-yes)" "y" _m_assume_yes || return $?
 
@@ -574,6 +614,11 @@ _menu_screen_control() {
   [ "${VERBOSE:-0}" -ge 1 ] && v_default="y"
   _menu_do_yesno "Verbose output" "$v_default" _m_verbose || return $?
 
+  # --- Debug ---
+  local d_default="n"
+  [ "${DEBUG:-0}" -ge 1 ] && d_default="y"
+  _menu_do_yesno "Debug output" "$d_default" _m_debug || return $?
+
   # --- Quiet ---
   local q_default="n"
   [ "${QUIET:-0}" -eq 1 ] && q_default="y"
@@ -583,6 +628,15 @@ _menu_screen_control() {
   local p_default="y"
   [ "${PROGRESS:-1}" -eq 0 ] && p_default="n"
   _menu_do_yesno "Live progress reporting" "$p_default" _m_progress || return $?
+
+  # --- MD5 verification details in planning (generate/verify modes) ---
+  if [ "$_m_mode" = "generate" ] || [ "$_m_mode" = "verify" ]; then
+    local md_default="y"
+    [ "${VERIFY_MD5_DETAILS:-1}" -eq 0 ] && md_default="n"
+    _menu_do_yesno "MD5 verification details in planning" "$md_default" _m_md5_details || return $?
+  else
+    _m_md5_details="y"
+  fi
 
   # --- First-run (only for generate mode, not minimal) ---
   if [ "$_m_mode" != "generate" ]; then
@@ -604,7 +658,7 @@ _menu_screen_control() {
       # First-run choice
       _m_first_run_choice=$(_menu_freetext \
         "First-run mismatch handling (skip, overwrite, prompt)" \
-        "${FIRST_RUN_CHOICE:-prompt}") || {
+        "${FIRST_RUN_CHOICE:-prompt}" _menu_validate_first_run_choice) || {
         _menu_nav_freetext $?; return $?
       }
 
@@ -722,6 +776,10 @@ _menu_build_command() {
     _menu_args+=(-r)
     _menu_cmd_str+=" -r"
   fi
+  if [ "$_m_no_reuse" = "y" ]; then
+    _menu_args+=(-R)
+    _menu_cmd_str+=" -R"
+  fi
   if [ "$_m_assume_yes" = "y" ]; then
     _menu_args+=(-y)
     _menu_cmd_str+=" -y"
@@ -736,6 +794,10 @@ _menu_build_command() {
     _menu_args+=(-v)
     _menu_cmd_str+=" -v"
   fi
+  if [ "$_m_debug" = "y" ]; then
+    _menu_args+=(-d)
+    _menu_cmd_str+=" -d"
+  fi
   if [ "$_m_quiet" = "y" ]; then
     _menu_args+=(-q)
     _menu_cmd_str+=" -q"
@@ -743,6 +805,20 @@ _menu_build_command() {
   if [ "$_m_progress" = "n" ]; then
     _menu_args+=(-Q)
     _menu_cmd_str+=" -Q"
+  fi
+  if [ "$_m_md5_details" = "n" ]; then
+    _menu_args+=(-z)
+    _menu_cmd_str+=" -z"
+  fi
+
+  # --- Directory handling (only emit when changed from defaults) ---
+  if [ "$_m_skip_empty" = "n" ]; then
+    _menu_args+=(--no-skip-empty)
+    _menu_cmd_str+=" --no-skip-empty"
+  fi
+  if [ "$_m_allow_root" = "y" ]; then
+    _menu_args+=(--allow-root-sidefiles)
+    _menu_cmd_str+=" --allow-root-sidefiles"
   fi
 
   # --- First-run ---

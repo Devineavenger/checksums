@@ -328,7 +328,7 @@ Skip files smaller than
 .\"
 .SS Logging Options
 .TP
-.BI \-o " FORMAT" "\fR,\fB \-\-output " FORMAT
+.BI \-o " FORMAT" "\fR,\fB \-\-output " FORMAT "\fR,\fB \-\-log\-format " FORMAT
 Log format:
 .B text
 (default),

@@ -203,6 +203,31 @@ _source_menu_libs() {
   assert_output --partial "Invalid format"
 }
 
+@test "_menu_validate_first_run_choice accepts skip" {
+  _source_menu_libs
+  run _menu_validate_first_run_choice "skip"
+  assert_success
+}
+
+@test "_menu_validate_first_run_choice accepts overwrite" {
+  _source_menu_libs
+  run _menu_validate_first_run_choice "overwrite"
+  assert_success
+}
+
+@test "_menu_validate_first_run_choice accepts prompt" {
+  _source_menu_libs
+  run _menu_validate_first_run_choice "prompt"
+  assert_success
+}
+
+@test "_menu_validate_first_run_choice rejects invalid" {
+  _source_menu_libs
+  run _menu_validate_first_run_choice "delete"
+  assert_failure
+  assert_output --partial "Invalid choice"
+}
+
 # ---------------------------------------------------------------------------
 # Command construction
 # ---------------------------------------------------------------------------
@@ -235,6 +260,11 @@ _build_default_cmd() {
   _m_verbose="n"
   _m_quiet="n"
   _m_progress="y"
+  _m_no_reuse="n"
+  _m_debug="n"
+  _m_md5_details="y"
+  _m_skip_empty="y"
+  _m_allow_root="n"
   _m_first_run="n"
   _m_first_run_choice=""
   _m_first_run_keep="n"
@@ -429,6 +459,76 @@ _build_default_cmd() {
   [[ "$_menu_cmd_str" != *"-a "* ]]
 }
 
+@test "_menu_build_command no-reuse adds -R" {
+  _build_default_cmd
+  _m_no_reuse="y"
+  _menu_build_command
+  [[ "$_menu_cmd_str" == *"-R"* ]]
+}
+
+@test "_menu_build_command no-reuse default omits -R" {
+  _build_default_cmd
+  _m_no_reuse="n"
+  _menu_build_command
+  [[ "$_menu_cmd_str" != *"-R"* ]]
+}
+
+@test "_menu_build_command debug adds -d" {
+  _build_default_cmd
+  _m_debug="y"
+  _menu_build_command
+  [[ "$_menu_cmd_str" == *"-d"* ]]
+}
+
+@test "_menu_build_command debug default omits -d" {
+  _build_default_cmd
+  _m_debug="n"
+  _menu_build_command
+  [[ "$_menu_cmd_str" != *"-d"* ]]
+}
+
+@test "_menu_build_command md5-details disabled adds -z" {
+  _build_default_cmd
+  _m_md5_details="n"
+  _menu_build_command
+  [[ "$_menu_cmd_str" == *"-z"* ]]
+}
+
+@test "_menu_build_command md5-details default omits -z" {
+  _build_default_cmd
+  _m_md5_details="y"
+  _menu_build_command
+  [[ "$_menu_cmd_str" != *"-z"* ]]
+}
+
+@test "_menu_build_command no-skip-empty adds --no-skip-empty" {
+  _build_default_cmd
+  _m_skip_empty="n"
+  _menu_build_command
+  [[ "$_menu_cmd_str" == *"--no-skip-empty"* ]]
+}
+
+@test "_menu_build_command skip-empty default omits flag" {
+  _build_default_cmd
+  _m_skip_empty="y"
+  _menu_build_command
+  [[ "$_menu_cmd_str" != *"skip-empty"* ]]
+}
+
+@test "_menu_build_command allow-root-sidefiles adds flag" {
+  _build_default_cmd
+  _m_allow_root="y"
+  _menu_build_command
+  [[ "$_menu_cmd_str" == *"--allow-root-sidefiles"* ]]
+}
+
+@test "_menu_build_command allow-root default omits flag" {
+  _build_default_cmd
+  _m_allow_root="n"
+  _menu_build_command
+  [[ "$_menu_cmd_str" != *"--allow-root-sidefiles"* ]]
+}
+
 # ---------------------------------------------------------------------------
 # Flag parsing integration
 # ---------------------------------------------------------------------------
@@ -521,20 +621,22 @@ _build_default_cmd() {
 
   # Build a script that sources libs directly, sets _MENU_FORCE_TTY, feeds
   # scripted input via a here-doc, and runs the menu.
-  # Input sequence:
+  # Input sequence (31 prompts):
   #   Screen 1: mode=1 (generate), target=tmpdir
   #   Screen 2: algo=Enter, meta-sig=Enter, exclude=Enter, include=Enter,
   #             max-size=Enter, min-size=Enter, symlinks=Enter(n)
   #   Screen 3: parallel=Enter, parallel-dirs=Enter, batch=Enter,
-  #             base-name=Enter, log-base=Enter, store-dir=Enter, minimal=Enter(n)
-  #   Screen 4: dry-run=Enter(n), force-rebuild=Enter(n), assume-yes=Enter(y),
-  #             log-format=Enter, verbose=Enter(n), quiet=Enter(n),
-  #             progress=Enter(y), first-run=Enter(n)
+  #             base-name=Enter, log-base=Enter, store-dir=Enter,
+  #             minimal=Enter(n), skip-empty=Enter(y), allow-root=Enter(n)
+  #   Screen 4: dry-run=Enter(n), force-rebuild=Enter(n), no-reuse=Enter(n),
+  #             assume-yes=Enter(y), log-format=Enter, verbose=Enter(n),
+  #             debug=Enter(n), quiet=Enter(n), progress=Enter(y),
+  #             md5-details=Enter(y), first-run=Enter(n)
   #   Screen 5: choice=2 (print & exit)
   run timeout 10 bash -c '
     export _MENU_FORCE_TTY=1
     export NO_COLOR=1
-    printf "1\n'"$tmpdir"'\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n2\n" \
+    printf "1\n'"$tmpdir"'\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n2\n" \
       | bash "'"$BATS_TEST_DIRNAME"'/../checksums.sh" --menu
   ' 2>&1
 

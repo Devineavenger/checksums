@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Fixes
+* fix: menu size fields (`--max-size`/`--min-size`) now use retry-loop validation instead of silently discarding invalid input; first-run-choice field validates against `skip|overwrite|prompt`
+* fix: add `--log-format` alias to usage help text, man page (`docs/checksums.1.in`), and zsh completion — previously only accepted by `args.sh` and bash completion
+* fix: parallel directory progress counter (`_PROG_DIR_DONE`) now increments during result aggregation instead of at dispatch time, so progress display reflects completed (not dispatched) directories
+* fix: add 5 missing CLI options to interactive menu: `--no-reuse` / `-R` (Screen 4), `--debug` / `-d` (Screen 4), `--md5-details` / `--no-md5-details` / `-z` (Screen 4), `--skip-empty` / `--no-skip-empty` (Screen 3), `--allow-root-sidefiles` (Screen 3)
+* fix: remove outdated version (`v4.4`) from `example/checksums.conf` header
+
+### Tests
+* test: add `_menu_validate_first_run_choice` validator tests (4) and command construction tests for all 5 new menu options (10); update end-to-end scripted flow; 439 tests across 45 files
+
 ## v6.2.0 - 2026-03-17
 
 ### Features
